@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f3e9">
+  <title>픽메뉴 | 오늘의 식사 추천</title>
+  <link rel="icon" href="/mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="masthead"><div class="wrap top">
+    <a class="brand" href="/"><img src="/mark.svg" alt="">픽메뉴</a>
+    <span class="location">⌖ 경기 수원시</span>
+  </div></header>
+  <main class="wrap">
+    <section class="hero" aria-labelledby="title">
+      <div>
+        <p class="eyebrow">PICK MENU <span>／</span> 수원 식사 가이드</p>
+        <h1 id="title">오늘은<br>어떤 <em>식사</em>가 좋을까요?</h1>
+        <p class="intro">수원 배달 리뷰에 등장한 메뉴 중에서 오늘의 조건과 취향에 맞는 한 끼를 찾아보세요.</p>
+      </div>
+      <svg class="art" viewBox="0 0 340 215" aria-hidden="true">
+        <path d="M32 170h268M59 185h217" stroke="#dbb8a2" stroke-width="1.5"/>
+        <path d="m206 106 91-74m-77 77 91-60" stroke="#683627" stroke-width="5" stroke-linecap="round"/>
+        <path d="M154 63c-16-18 10-21 0-42m31 45c-16-18 10-21 0-42" fill="none" stroke="#aa5437" stroke-width="2.5" stroke-linecap="round"/>
+        <ellipse cx="164" cy="114" rx="112" ry="29" fill="#f7c17b" stroke="#683627" stroke-width="3"/>
+        <path d="M73 119c16-18 38-16 45 0m8 4c17-24 44-22 51-1m8 0c20-20 46-20 66-3" fill="none" stroke="#955223" stroke-width="3" stroke-linecap="round"/>
+        <path d="M52 114c7 46 45 73 87 77h50c44-4 79-33 87-77-20 23-181 32-224 0z" fill="#b24a2e" stroke="#683627" stroke-width="3"/>
+        <path d="M80 145c30 14 109 20 164 0m-147 16c35 14 92 15 134-1" fill="none" stroke="#f3ae85" stroke-width="2"/>
+        <path d="M46 52v22m-11-11h22m232 53v20m-10-10h20" stroke="#ad543a" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </section>
+    <div class="layout">
+      <section class="panel" aria-labelledby="profile-title">
+        <div class="section-head"><span class="index">01</span><div><h2 id="profile-title">내 식사 조건</h2><p>프로필은 이 브라우저에 저장할 수 있어요.</p></div></div>
+        <form id="profile">
+          <div class="fields">
+            <label>식단 유형<select name="diet"><option value="general">일반식</option><option value="vegetarian">채식</option><option value="vegan">비건</option><option value="meat">육식 선호</option></select></label>
+            <label>영양 목표<select name="goal"><option value="balance">균형 식사</option><option value="protein">단백질 중심</option><option value="light">가벼운 식사</option></select></label>
+            <label>맵기<select name="spice"><option value="">상관없음</option><option value="mild">안 매운 메뉴</option><option value="hot">매운 메뉴</option></select></label>
+            <label>국물<select name="soup"><option value="">상관없음</option><option value="yes">국물 있는 메뉴</option><option value="no">국물 없는 메뉴</option></select></label>
+            <label class="wide">선호 음식군<select name="category" id="category"><option value="">상관없음</option></select></label>
+            <label>기피 식재료<input name="exclude" maxlength="100" placeholder="예: 오이, 양파"></label>
+            <label>알레르기<input name="allergy" maxlength="100" placeholder="예: 땅콩, 우유"></label>
+          </div>
+          <fieldset><legend>이번 식사</legend><div class="fields">
+            <label>수원 지역<select name="district"><option value="">수원시 전체</option><option>권선구</option><option>영통구</option><option>장안구</option><option>팔달구</option></select></label>
+            <label>오늘 먹고 싶은 메뉴<input name="query" maxlength="40" placeholder="예: 비빔밥"></label>
+          </div></fieldset>
+          <button class="primary" type="submit">메뉴 추천받기 <span aria-hidden="true">→</span></button>
+          <div class="form-actions"><button type="button" id="save">프로필 저장</button><button type="button" id="reset-profile">초기화</button></div>
+          <p id="profile-status" class="muted status" role="status"></p>
+        </form>
+      </section>
+      <section class="panel results" aria-labelledby="results-title">
+        <div class="section-head"><span class="index">02</span><div><h2 id="results-title">오늘의 추천</h2><p id="results-sub">조건을 선택해 내 식사에 맞는 메뉴를 찾아보세요.</p></div></div>
+        <div id="result-status" role="status"></div>
+        <div id="results"><div class="empty"><strong>추천 메뉴가 여기에 표시돼요</strong><p>메뉴마다 추천 근거와 참고 영양정보를 확인할 수 있어요.</p></div></div>
+      </section>
+    </div>
+    <footer><b>픽메뉴</b><span>과거 리뷰에 기록된 메뉴예요. 현재 판매 여부와 실제 원재료는 주문 전 확인해 주세요.</span></footer>
+  </main>
+  <dialog id="detail" aria-labelledby="detail-title">
+    <div class="dialog-head"><span class="eyebrow">03 ／ 선택한 메뉴</span><form method="dialog"><button aria-label="상세 닫기" class="close">×</button></form></div>
+    <h2 id="detail-title"></h2><div id="detail-body"></div>
+    <form method="dialog"><button class="primary">추천 목록으로</button></form>
+  </dialog>
+</body>
+</html>
