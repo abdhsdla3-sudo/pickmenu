@@ -14,6 +14,7 @@
 - [다른 기기에서 Codex로 개발하기](docs/codex-access.md)
 - [Windows LLM PC에 접속하기](docs/llm-access.md)
 - [버전과 릴리스 관리](docs/releases.md)
+- [모바일 앱형 데모 흐름](docs/mobile-demo.md)
 - [데이터와 추천 기준](pickmenu/DATA.md)
 
 Windows CMD에서 GitHub에 인증한 뒤 저장소를 내려받는다.

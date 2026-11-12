@@ -6,12 +6,105 @@ const profileStatus = document.querySelector("#profile-status");
 const results = document.querySelector("#results");
 const subtitle = document.querySelector("#results-sub");
 const dialog = document.querySelector("#detail");
-const submit = form.querySelector('[type="submit"]');
-const resetButton = document.querySelector("#reset-profile");
-const storageKey = "pickmenu.profile.v1";
-const fields = ["diet", "goal", "spice", "soup", "category", "exclude", "allergy"];
+const scroller = document.querySelector("#app-scroll");
+const chatLog = document.querySelector("#chat-log");
+const chatChips = document.querySelector("#chat-chips");
+const chatInput = document.querySelector("#chat-input");
+const storageKey = "pickmenu.profile.v2";
+const legacyKey = "pickmenu.profile.v1";
+const preferenceFields = ["diet", "goal", "spice", "soup", "category", "exclude", "allergy"];
+const personalFields = ["nickname", "age", "height", "weight"];
+const goalLabels = {balance: "균형 식사", protein: "단백질 중심", light: "가벼운 식사"};
+const dietLabels = {general: "일반식", vegetarian: "채식", vegan: "비건", meat: "육식 선호"};
 const labels = ["열량", "단백질", "탄수화물", "지방", "나트륨"];
 const units = ["kcal", "g", "g", "g", "mg"];
+const defaults = {nickname: "", age: "", height: "", weight: "", diet: "general",
+  goal: "balance", spice: "", soup: "", category: "", exclude: "", allergy: ""};
+let profile = {...defaults};
+let hasProfile = false;
+let step = 0;
+let sourceMode = "choice";
+let chatStage = 0;
+let chatConditions = {};
+let activeRecommendation = null;
+let storageNotice = "";
+let categoryTouched = false;
+document.querySelector("#category").addEventListener("change", () => { categoryTouched = true; });
+
+function showScreen(name) {
+  for (const screen of document.querySelectorAll("[data-screen]")) {
+    screen.hidden = screen.dataset.screen !== name;
+  }
+  document.querySelector(".bottom-nav").hidden = ["welcome", "onboarding"].includes(name);
+  scroller.scrollTop = 0;
+  const title = document.querySelector(`[data-screen="${name}"] h2`);
+  if (title) title.focus({preventScroll: true});
+}
+
+function cancelRecommendation() {
+  activeRecommendation?.abort();
+  activeRecommendation = null;
+  setBusy(false);
+}
+
+function setBusy(busy) {
+  document.querySelector("#meal button[type=submit]").disabled = busy;
+  document.querySelector("#chat-form button").disabled = busy;
+  chatInput.disabled = busy;
+  for (const button of chatChips.querySelectorAll("button")) button.disabled = busy;
+}
+
+function summary() {
+  return [dietLabels[profile.diet], goalLabels[profile.goal], profile.category || "음식군 골고루",
+    profile.allergy ? "알레르기 설정" : "", profile.exclude ? "기피 재료 설정" : ""].filter(Boolean).join(" · ");
+}
+
+function applyProfile() {
+  for (const key of [...personalFields, ...preferenceFields]) {
+    const field = form.elements.namedItem(key);
+    const value = profile[key];
+    if (field instanceof RadioNodeList) {
+      if (Array.from(field).some(input => input.value === value)) field.value = value;
+    } else if (field instanceof HTMLSelectElement) {
+      if (Array.from(field.options).some(option => option.value === value)) field.value = value;
+    } else {
+      field.value = value;
+    }
+  }
+}
+
+function updateStep() {
+  for (const slide of document.querySelectorAll("[data-step]")) {
+    slide.hidden = Number(slide.dataset.step) !== step;
+  }
+  document.querySelector("#step-label").textContent = `프로필 만들기 · ${step + 1} / 4`;
+  document.querySelector("#progress-fill").style.width = `${(step + 1) * 25}%`;
+  document.querySelector("#skip-body").hidden = step !== 0;
+  document.querySelector("#step-next").replaceChildren(
+    document.createTextNode(step === 3 ? "내 프로필 완성하기" : "다음으로"), node("span", "→"));
+  profileStatus.textContent = "";
+  scroller.scrollTop = 0;
+  document.querySelector(`[data-step="${step}"] h2`).focus({preventScroll: true});
+}
+
+function startOnboarding() {
+  cancelRecommendation();
+  applyProfile();
+  step = 0;
+  showScreen("onboarding");
+  updateStep();
+}
+
+function openModes() {
+  cancelRecommendation();
+  document.querySelector("#greeting-name").textContent = profile.nickname || "메뉴고민러";
+  document.querySelector("#profile-summary").textContent = [summary(), storageNotice].filter(Boolean).join(" · ");
+  showScreen("modes");
+}
+
+function profilePayload() {
+  return Object.fromEntries(preferenceFields.map(key => [key, profile[key]]));
+}
 
 function node(tag, text, className) {
   const element = document.createElement(tag);
@@ -32,7 +125,7 @@ async function request(url, options) {
     response = await fetch(url, options);
     data = await response.json();
   } catch {
-    throw new Error("로컬 서버에 연결할 수 없어요. 서버 실행 상태를 확인해 주세요.");
+    throw new Error("추천 서버에 연결할 수 없어요. 잠시 뒤 다시 시도해 주세요.");
   }
   if (!response.ok) throw new Error(data.error || "요청을 처리할 수 없어요.");
   return data;
@@ -133,74 +226,271 @@ function render(data) {
   });
 }
 
-form.addEventListener("submit", async event => {
+form.addEventListener("submit", event => {
   event.preventDefault();
-  submit.disabled = true;
-  resetButton.disabled = true;
-  status.textContent = "수원 메뉴를 비교하고 있어요.";
-  results.replaceChildren();
-  try {
-    const data = await request("/api/recommend", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(Object.fromEntries(new FormData(form))),
-    });
-    render(data);
-  } catch (error) {
-    subtitle.textContent = "조건과 데이터 상태를 확인해 주세요.";
-    status.textContent = error.message;
-    empty("추천을 불러오지 못했어요", "입력을 확인하고 다시 시도해 주세요.");
-  } finally {
-    submit.disabled = false;
-    resetButton.disabled = false;
+  const slide = document.querySelector(`[data-step="${step}"]`);
+  for (const field of slide.querySelectorAll("input,select")) {
+    if (!field.checkValidity()) {
+      field.reportValidity();
+      return;
+    }
   }
-});
-
-document.querySelector("#save").addEventListener("click", () => {
+  if (step < 3) {
+    step += 1;
+    updateStep();
+    return;
+  }
+  const values = Object.fromEntries(new FormData(form));
+  for (const key of personalFields) values[key] = values[key].trim();
+  for (const key of ["allergy", "exclude"]) {
+    if (values[key].trim() && !/[^,;/\s]/u.test(values[key])) {
+      profileStatus.textContent = "알레르기와 기피 재료의 이름을 입력해 주세요.";
+      return;
+    }
+  }
+  profile = values;
+  hasProfile = true;
   try {
-    const values = Object.fromEntries(fields.map(key => [key, form.elements.namedItem(key).value]));
-    localStorage.setItem(storageKey, JSON.stringify(values));
-    profileStatus.textContent = "이 브라우저에 프로필을 저장했어요.";
+    localStorage.setItem(storageKey, JSON.stringify(profile));
+    localStorage.removeItem(legacyKey);
+    storageNotice = "";
+    profileStatus.textContent = "";
   } catch {
-    profileStatus.textContent = "브라우저 저장소를 사용할 수 없어요.";
+    storageNotice = "저장소를 사용할 수 없어 이번 이용 중에만 프로필을 기억해요.";
   }
+  openModes();
 });
 
-resetButton.addEventListener("click", () => {
-  form.reset();
+document.querySelector("#start-onboarding").addEventListener("click", startOnboarding);
+document.querySelector("#resume").addEventListener("click", openModes);
+document.querySelector("#step-back").addEventListener("click", () => {
+  if (step === 0) {
+    if (hasProfile) openModes();
+    else showScreen("welcome");
+    return;
+  }
+  step -= 1;
+  updateStep();
+});
+document.querySelector("#skip-body").addEventListener("click", () => {
+  for (const key of ["age", "height", "weight"]) form.elements.namedItem(key).value = "";
+  step = 1;
+  updateStep();
+});
+for (const button of document.querySelectorAll("[data-action]")) {
+  button.addEventListener("click", () => {
+    if (button.dataset.action === "edit-profile") startOnboarding();
+    else openModes();
+  });
+}
+
+document.querySelector("#delete-profile").addEventListener("click", () => {
   try {
     localStorage.removeItem(storageKey);
-    profileStatus.textContent = "프로필과 이번 식사 조건을 초기화했어요.";
+    localStorage.removeItem(legacyKey);
   } catch {
-    profileStatus.textContent = "입력은 초기화했어요. 브라우저 저장소는 확인이 필요해요.";
+    document.querySelector("#profile-summary").textContent = "저장소에 접근할 수 없어 삭제하지 못했어요. 브라우저 설정을 확인해 주세요.";
+    return;
   }
-  status.textContent = "";
-  subtitle.textContent = "조건을 선택해 내 식사에 맞는 메뉴를 찾아보세요.";
-  empty("추천 메뉴가 여기에 표시돼요", "메뉴마다 추천 근거와 참고 영양정보를 확인할 수 있어요.");
+  cancelRecommendation();
+  profile = {...defaults};
+  storageNotice = "";
+  hasProfile = false;
+  form.reset();
+  document.querySelector("#meal").reset();
+  chatLog.replaceChildren();
+  chatChips.replaceChildren();
+  results.replaceChildren();
+  document.querySelector("#resume").hidden = true;
+  showScreen("welcome");
+});
+
+document.querySelector("#open-choice").addEventListener("click", () => {
+  sourceMode = "choice";
+  document.querySelector("#meal").elements.namedItem("goal").value = profile.goal;
+  document.querySelector("#choice-profile").textContent = summary();
+  showScreen("choice");
+});
+
+async function recommendNow(conditions, mode) {
+  activeRecommendation?.abort();
+  const controller = new AbortController();
+  activeRecommendation = controller;
+  sourceMode = mode;
+  setBusy(true);
+  if (mode === "choice") {
+    showScreen("results");
+    status.textContent = "오늘의 메뉴를 비교하고 있어요.";
+    results.replaceChildren();
+    subtitle.textContent = "";
+  } else {
+    bubble("좋아요. 알려주신 조건으로 메뉴를 찾아볼게요.");
+  }
+  try {
+    const data = await request("/api/recommend", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({...profilePayload(), ...conditions}), signal: controller.signal,
+    });
+    if (controller.signal.aborted) return;
+    render(data);
+    if (mode === "chat") {
+      bubble(data.items.length ? `취향과 조건을 살펴 ${data.items.length}개 메뉴를 골랐어요. 추천 이유도 함께 확인해 보세요.`
+        : "지금 조건으로 추천할 메뉴를 찾지 못했어요. 확인이 필요한 정보와 조건을 살펴보세요.");
+      const button = node("button", data.items.length ? "추천 메뉴 보러 가기 →" : "결과와 확인 사항 보기 →", "chat-results-link");
+      button.type = "button";
+      button.addEventListener("click", () => showScreen("results"));
+      chatLog.append(button);
+      chatStage = 3;
+      setChatChips(["다시 골라볼래요"]);
+    }
+  } catch (error) {
+    if (controller.signal.aborted) return;
+    if (mode === "chat") {
+      bubble(error.message);
+      setChatChips(["다시 시도"]);
+    } else {
+      status.textContent = error.message;
+      empty("추천을 불러오지 못했어요", "조건을 다시 확인하거나 잠시 뒤 재시도해 주세요.");
+    }
+  } finally {
+    if (activeRecommendation === controller) {
+      activeRecommendation = null;
+      setBusy(false);
+      if (mode === "chat") scrollChat();
+    }
+  }
+}
+
+document.querySelector("#meal").addEventListener("submit", event => {
+  event.preventDefault();
+  recommendNow(Object.fromEntries(new FormData(event.currentTarget)), "choice");
+});
+function returnToConditions() {
+  if (sourceMode === "chat") showScreen("chat");
+  else showScreen("choice");
+}
+document.querySelector("#results-back").addEventListener("click", returnToConditions);
+document.querySelector("#change-conditions").addEventListener("click", returnToConditions);
+
+function scrollChat() {
+  requestAnimationFrame(() => { scroller.scrollTop = scroller.scrollHeight; });
+}
+function bubble(text, who = "bot") {
+  chatLog.append(node("div", text, `bubble ${who}`));
+  scrollChat();
+}
+function setChatChips(answers) {
+  chatChips.replaceChildren();
+  for (const answer of answers) {
+    const button = node("button", answer);
+    button.type = "button";
+    button.addEventListener("click", () => respond(answer));
+    chatChips.append(button);
+  }
+  scrollChat();
+}
+function startChat() {
+  cancelRecommendation();
+  sourceMode = "chat";
+  chatStage = 0;
+  chatConditions = {goal: profile.goal, spice: profile.spice, soup: profile.soup, query: ""};
+  chatLog.replaceChildren();
+  chatInput.value = "";
+  chatInput.placeholder = "아래 선택지로 답해도 좋아요";
+  showScreen("chat");
+  bubble(`${profile.nickname || "메뉴고민러"}님, 반가워요! 저장된 취향을 기억하고 있어요. 오늘은 어떤 식사가 좋을까요?`);
+  setChatChips(["균형 있게 먹을래요", "단백질 위주로요", "가볍게 먹고 싶어요"]);
+}
+document.querySelector("#open-chat").addEventListener("click", startChat);
+document.querySelector("#restart-chat").addEventListener("click", startChat);
+
+function respond(answer) {
+  if (activeRecommendation || !answer.trim()) return;
+  const text = answer.trim();
+  bubble(text, "user");
+  chatInput.value = "";
+  if (text === "다시 골라볼래요") {
+    startChat();
+    return;
+  }
+  if (text === "다시 시도") {
+    recommendNow({...chatConditions, district: document.querySelector("#chat-district").value}, "chat");
+    return;
+  }
+  if (chatStage === 0) {
+    if (/단백질/u.test(text)) chatConditions.goal = "protein";
+    else if (/가볍/u.test(text)) chatConditions.goal = "light";
+    else if (/균형/u.test(text)) chatConditions.goal = "balance";
+    else {
+      bubble("균형 식사, 단백질 중심, 가벼운 식사 중 하나로 답해 주세요.");
+      return;
+    }
+    chatStage = 1;
+    bubble("좋아요! 오늘 끌리는 맛이나 형태가 있나요?");
+    setChatChips(["국물 있는 메뉴", "매콤한 메뉴", "안 매운 메뉴", "프로필 취향대로"]);
+    return;
+  }
+  if (chatStage === 1) {
+    if (/국물/u.test(text)) chatConditions.soup = "yes";
+    else if (/안 매운|안매운/u.test(text)) chatConditions.spice = "mild";
+    else if (/매콤|매운/u.test(text)) chatConditions.spice = "hot";
+    else if (!/프로필|상관없/u.test(text)) {
+      bubble("아래 선택지에서 오늘의 취향을 골라주세요.");
+      return;
+    }
+    chatStage = 2;
+    bubble("마지막으로 먹고 싶은 메뉴가 있나요? 메뉴 이름을 적거나, 바로 추천받기를 눌러주세요.");
+    chatInput.placeholder = "메뉴명 입력 · 예. 비빔밥";
+    setChatChips(["비빔밥", "국밥", "바로 추천받기"]);
+    return;
+  }
+  if (chatStage === 3) {
+    bubble("새로운 조건으로 골라볼까요? 다시 시작을 눌러주세요.");
+    return;
+  }
+  const query = text === "바로 추천받기" ? "" : text;
+  if (query.length > 40) {
+    bubble("찾고 싶은 메뉴명을 40자 이내로 적어주세요.");
+    return;
+  }
+  chatConditions.query = query;
+  chatChips.replaceChildren();
+  recommendNow({...chatConditions, district: document.querySelector("#chat-district").value}, "chat");
+}
+document.querySelector("#chat-form").addEventListener("submit", event => {
+  event.preventDefault();
+  respond(chatInput.value);
 });
 
 async function initialize() {
-  submit.disabled = true;
+  try {
+    const stored = localStorage.getItem(storageKey) || localStorage.getItem(legacyKey);
+    if (stored) {
+      const saved = JSON.parse(stored);
+      if (saved && typeof saved === "object" && !Array.isArray(saved)) {
+        for (const key of [...personalFields, ...preferenceFields]) {
+          if (typeof saved[key] === "string") profile[key] = saved[key];
+        }
+        hasProfile = true;
+        document.querySelector("#resume").hidden = false;
+      }
+    }
+  } catch {
+    // 저장값이 손상됐을 때 새 프로필로 시작한다.
+  }
+  applyProfile();
+  // 목록으로 정해진 저장값은 화면에 적용된 값을 기준으로 복원한다.
+  for (const key of preferenceFields.filter(key => key !== "category")) {
+    profile[key] = form.elements.namedItem(key).value;
+  }
   try {
     const data = await request("/api/catalog");
     const select = document.querySelector("#category");
     for (const label of data.categories) select.add(new Option(label, label));
-  } catch (error) {
-    status.textContent = error.message;
-  } finally {
-    submit.disabled = false;
-  }
-  try {
-    const saved = JSON.parse(localStorage.getItem(storageKey) || "{}");
-    for (const key of fields) {
-      if (typeof saved[key] !== "string") continue;
-      const field = form.elements.namedItem(key);
-      if (field instanceof HTMLSelectElement && !Array.from(field.options).some(option => option.value === saved[key])) continue;
-      field.value = saved[key];
-    }
+    if (!categoryTouched && data.categories.includes(profile.category)) select.value = profile.category;
+    if (!data.categories.includes(profile.category)) profile.category = "";
   } catch {
-    profileStatus.textContent = "저장된 프로필을 읽을 수 없어요.";
+    // 프로필 작성은 가능하며 실제 추천 시 연결 상태를 안내한다.
   }
 }
-
 initialize();
