@@ -13,6 +13,8 @@ const cases = [
   { district: "영통구", query: "후라이드 반반" }, { district: "영통구", query: "비빔밥" },
   { diet: "meat", soup: "yes", spice: "hot", category: "치킨" }, { query: "후보존재하지않는입력" },
   { district: "서울" }, { allergy: ",,," }, { query: "x".repeat(41) }, { goal: null }, [],
+  { meal_category: "고기", category: "고기" }, { meal_category: "밥·덮밥", category: "밥·덮밥" },
+  { meal_category: "없는 음식군" }, { meal_category: "고기", diet: "vegan", goal: "protein" },
 ];
 for (const data of cases) {
   const init = {

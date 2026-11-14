@@ -15,6 +15,7 @@
 - [Windows LLM PC에 접속하기](docs/llm-access.md)
 - [버전과 릴리스 관리](docs/releases.md)
 - [모바일 앱형 데모 흐름](docs/mobile-demo.md)
+- [2026-11-14 자료 수정 반영과 재실행](docs/data-update-20261114.md)
 - [데이터와 추천 기준](pickmenu/DATA.md)
 
 Windows CMD에서 GitHub에 인증한 뒤 저장소를 내려받는다.
@@ -33,7 +34,7 @@ python -X utf8 -m unittest discover -s tests -v
 
 ```bat
 cd /d "D:\학교\3학년\캡스톤\pickmenu-dev\pickmenu"
-set "PICKMENU_CATALOG_PATH=D:\학교\3학년\캡스톤\pickmenu\local\catalog.sqlite3"
+set "PICKMENU_CATALOG_PATH=D:\학교\3학년\캡스톤\pickmenu\local\catalog-v03.sqlite3"
 start.cmd --port 8766
 ```
 

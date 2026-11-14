@@ -7,6 +7,7 @@ const options = {
   diet: ["general", "vegetarian", "vegan", "meat"], goal: Object.keys(goals),
   spice: ["", "mild", "hot"], soup: ["", "yes", "no"], category: ["", ...categories],
   district: ["", "권선구", "영통구", "장안구", "팔달구"],
+  meal_category: ["", ...categories],
 };
 const meatPattern = /소고기|쇠고기|우삼겹|돼지|삼겹|닭|오리|족발|보쌈|스테이크|돈까스|돈가스|치킨|베이컨|소시지|곱창|막창|갈비|육회|불고기/;
 const seafoodPattern = /생선|새우|해물|해산물|오징어|아귀|아구|참치|연어|멸치|젓갈|굴소스|조개|바지락|전복|장어/;
@@ -95,7 +96,8 @@ function recommend(profile) {
     const evidence = menu.regions[region];
     const signal = [menu.name, menu.category, ...menu.components].join(" ");
     const normalized = compact(signal);
-    if (!evidence || !normalized.includes(query)) continue;
+    if (!evidence || !normalized.includes(query) ||
+        (profile.meal_category && menu.category !== profile.meal_category)) continue;
     const meat = meatPattern.test(signal);
     const conflict = terms.some(term => normalized.includes(term)) ||
       (plant && (meat || seafoodPattern.test(signal) ||

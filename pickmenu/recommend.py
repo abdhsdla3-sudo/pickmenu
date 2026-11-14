@@ -32,6 +32,7 @@ class Profile:
     query: str
     exclude: str
     allergy: str
+    meal_category: str = ""
 
     @classmethod
     def parse(cls, data: Any, categories: list[str]) -> "Profile":
@@ -40,7 +41,7 @@ class Profile:
         values = {}
         enums = {"diet": {"general", "vegetarian", "vegan", "meat"}, "goal": set(GOALS),
                  "spice": {"", "mild", "hot"}, "soup": {"", "yes", "no"},
-                 "category": {"", *categories}, "district": DISTRICTS}
+                 "category": {"", *categories}, "meal_category": {"", *categories}, "district": DISTRICTS}
         for field, options in enums.items():
             value = data.get(field, {"diet": "general", "goal": "balance"}.get(field, ""))
             if not isinstance(value, str) or value not in options:
@@ -96,7 +97,8 @@ def recommend(menus: list[dict[str, Any]], profile: Profile) -> dict[str, Any]:
     for menu in menus:
         evidence = menu["regions"].get(region)
         signal = " ".join((menu["name"], menu["category"], *menu["components"]))
-        if not evidence or compact(profile.query) not in compact(signal):
+        if (not evidence or compact(profile.query) not in compact(signal)
+                or (profile.meal_category and menu["category"] != profile.meal_category)):
             continue
         meat = bool(MEAT.search(signal))
         conflict = any(term in compact(signal) for term in terms) or (

@@ -67,6 +67,16 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(taste_tags("볶음우동", [], "면"), ("", "no"))
         self.assertIsNone(reference({}, 1, {}, {}))
 
+    def test_meal_category_is_an_exact_filter(self):
+        menus = [fixture("돼지고기덮밥", "MN_1"),
+                 {**fixture("갈비", "MN_2"), "category": "고기"}]
+        profile = Profile.parse({"category": "밥·덮밥", "meal_category": "고기"}, ["밥·덮밥", "고기"])
+        result = recommend(menus, profile)
+        self.assertEqual([m['standard_menu_id'] for m in result['items']], ['MN_2'])
+        self.assertEqual(recommend(menus, Profile.parse({'meal_category': '고기', 'district': '권선구'}, ['고기']))['eligible'], 0)
+        with self.assertRaises(ValueError):
+            Profile.parse({'meal_category': '없는 음식군'}, ['고기'])
+
     def test_db_unavailable(self):
         with patch("server.sqlite3.connect", side_effect=sqlite3.OperationalError):
             with self.assertRaises(sqlite3.OperationalError):

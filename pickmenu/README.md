@@ -6,6 +6,8 @@
 
 Python 3.11 이상이 필요하다. 현재 작업 폴더에는 전처리 결과가 준비되어 있다.
 
+현재 0.3.0 공유 데모는 [2차 보완 갱신 절차](../docs/data-update-20261114.md)의 `catalog-v03.sqlite3`를 사용한다. 이 PC에서 실행할 때는 아래 `start.cmd` 앞에 `set "PICKMENU_CATALOG_PATH=D:\학교\3학년\캡스톤\pickmenu\local\catalog-v03.sqlite3"`를 실행한다. 다른 환경에서는 해당 환경의 DB 절대 경로를 지정한다. 별도 지정이 없으면 체크아웃 안의 `local\catalog.sqlite3`를 찾는다.
+
 ```bat
 chcp 65001 > nul
 cd /d "D:\학교\3학년\캡스톤\pickmenu-dev\pickmenu"
@@ -58,8 +60,8 @@ cd /d "D:\학교\3학년\캡스톤\pickmenu-dev\pickmenu"
 python -m pip install -r requirements-preprocess.txt ruff mypy
 python -X utf8 -m unittest discover -s tests -v
 python -m ruff check .
-python -m mypy raw.py drive_data.py prepare.py recommend.py server.py tests
-python -m compileall -q raw.py drive_data.py prepare.py recommend.py server.py tests
+python -m mypy raw.py drive_data.py prepare.py refresh.py recommend.py server.py tests
+python -m compileall -q raw.py drive_data.py prepare.py refresh.py recommend.py server.py tests
 node --check web\app.js
 ```
 

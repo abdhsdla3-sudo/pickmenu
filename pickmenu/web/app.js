@@ -363,7 +363,10 @@ async function recommendNow(conditions, mode) {
 
 document.querySelector("#meal").addEventListener("submit", event => {
   event.preventDefault();
-  recommendNow(Object.fromEntries(new FormData(event.currentTarget)), "choice");
+  const conditions = Object.fromEntries(new FormData(event.currentTarget));
+  // 오늘 고른 음식군은 검색 범위와 선호 점수에 함께 적용한다. 저장 프로필은 유지한다.
+  if (conditions.meal_category) conditions.category = conditions.meal_category;
+  recommendNow(conditions, "choice");
 });
 function returnToConditions() {
   if (sourceMode === "chat") showScreen("chat");
@@ -487,9 +490,14 @@ async function initialize() {
     const data = await request("/api/catalog");
     const select = document.querySelector("#category");
     for (const label of data.categories) select.add(new Option(label, label));
+    const mealCategory = document.querySelector("#meal-category");
+    for (const label of data.categories) mealCategory.add(new Option(label, label));
+    mealCategory.disabled = false;
+    document.querySelector("#meal-category-help").textContent = "음식군을 고르면 그 안에서 추천해요. 선택하지 않으면 저장한 취향을 반영해요.";
     if (!categoryTouched && data.categories.includes(profile.category)) select.value = profile.category;
     if (!data.categories.includes(profile.category)) profile.category = "";
   } catch {
+    document.querySelector("#meal-category-help").textContent = "음식군을 불러오지 못했어요. 연결을 확인한 뒤 새로고침해 주세요.";
     // 프로필 작성은 가능하며 실제 추천 시 연결 상태를 안내한다.
   }
 }
