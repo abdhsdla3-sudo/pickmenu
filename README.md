@@ -17,6 +17,7 @@
 - [버전과 릴리스 관리](docs/releases.md)
 - [모바일 앱형 데모 흐름](docs/mobile-demo.md)
 - [회원 계정과 로그인](docs/accounts.md)
+- [가입 기본정보·암호화·마스킹](docs/account-privacy.md)
 - [2026-11-14 자료 수정 반영과 재실행](docs/data-update-20261114.md)
 - [데이터와 추천 기준](pickmenu/DATA.md)
 

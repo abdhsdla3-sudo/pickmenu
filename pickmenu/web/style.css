@@ -77,6 +77,12 @@ input, select { font-size: 16px; }
 .field input::placeholder { color: #9ba38e; font-size: 12px; }
 .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
 .field-grid .field:first-child { grid-column: 1 / -1; }
+.signup-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.signup-grid input { min-width: 0; padding: 12px 8px; }
+.signup-preferences { margin-top: 25px; border: 1px solid #dfe4d5; border-radius: 12px; padding: 14px; }
+.signup-preferences summary { cursor: pointer; font-size: 12px; font-weight: 650; }
+.signup-preferences summary span { color: #7b8371; font-weight: 400; margin-left: 8px; }
+.signup-preferences .tiny { margin-top: 12px; }
 .input-unit { display: flex; position: relative; align-items: center; }
 .input-unit input { padding-right: 38px; }
 .input-unit > span { position: absolute; right: 13px; top: 23px; color: #929b84; font-size: 11px; }

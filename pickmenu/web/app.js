@@ -13,12 +13,12 @@ const chatInput = document.querySelector("#chat-input");
 const storageKey = "pickmenu.profile.v2";
 const legacyKey = "pickmenu.profile.v1";
 const preferenceFields = ["diet", "goal", "spice", "soup", "category", "exclude", "allergy"];
-const personalFields = ["nickname", "age", "height", "weight"];
+const personalFields = ["nickname", "age", "height", "weight", "gender"];
 const goalLabels = {balance: "균형 식사", protein: "단백질 중심", light: "가벼운 식사"};
 const dietLabels = {general: "일반식", vegetarian: "채식", vegan: "비건", meat: "육식 선호"};
 const labels = ["열량", "단백질", "탄수화물", "지방", "나트륨"];
 const units = ["kcal", "g", "g", "g", "mg"];
-const defaults = {nickname: "", age: "", height: "", weight: "", diet: "general",
+const defaults = {nickname: "", age: "", height: "", weight: "", gender: "", diet: "general",
   goal: "balance", spice: "", soup: "", category: "", exclude: "", allergy: ""};
 let profile = {...defaults};
 let hasProfile = false;
@@ -29,8 +29,8 @@ let chatConditions = {};
 let activeRecommendation = null;
 let storageNotice = "";
 let categoryTouched = false;
-// 로그인 상태. 서버에는 닉네임과 취향 항목만 저장하고 신체정보는 브라우저에만 둔다.
-const serverFields = ["nickname", ...preferenceFields];
+// 기본정보·취향은 서버에 암호화해 저장하며 브라우저 저장소에는 남기지 않는다.
+const serverFields = [...personalFields, ...preferenceFields];
 const authForm = document.querySelector("#auth-form");
 const authStatus = document.querySelector("#auth-status");
 let account = null;
@@ -91,7 +91,8 @@ function updateStep() {
   }
   document.querySelector("#step-label").textContent = `프로필 만들기 · ${step + 1} / 4`;
   document.querySelector("#progress-fill").style.width = `${(step + 1) * 25}%`;
-  document.querySelector("#skip-body").hidden = step !== 0;
+  document.querySelector("#skip-body").hidden = step === 0;
+  document.querySelector("#skip-body").textContent = "취향은 나중에";
   document.querySelector("#step-next").replaceChildren(
     document.createTextNode(step === 3 ? "내 프로필 완성하기" : "다음으로"), node("span", "→"));
   profileStatus.textContent = "";
@@ -110,6 +111,7 @@ function startOnboarding() {
 
 function openModes() {
   if (!account) return openAccount();
+  if (!personalFields.every(key => profile[key])) return startOnboarding();
   cancelRecommendation();
   document.querySelector("#greeting-name").textContent = profile.nickname || "메뉴고민러";
   document.querySelector("#profile-summary").textContent = [summary(), storageNotice, syncNotice].filter(Boolean).join(" · ");
@@ -251,11 +253,12 @@ function render(data) {
 
 function persistLocal() {
   try {
-    localStorage.setItem(storageKey, JSON.stringify(profile));
+    // 이전 버전의 개인정보 캐시도 지운다. 새 프로필은 메모리에만 유지한다.
+    localStorage.removeItem(storageKey);
     localStorage.removeItem(legacyKey);
     storageNotice = "";
   } catch {
-    storageNotice = "저장소를 사용할 수 없어 이번 이용 중에만 프로필을 기억해요.";
+    storageNotice = "이 기기의 이전 저장값을 지우지 못했어요. 공용 기기라면 브라우저 데이터를 지워주세요.";
   }
 }
 
@@ -270,7 +273,7 @@ async function pushProfile() {
       body: JSON.stringify(serverPayload())});
     syncNotice = "";
   } catch (error) {
-    syncNotice = `서버 저장 실패: ${error.message} 이 브라우저에는 저장했어요.`;
+    syncNotice = `서버 저장 실패: ${error.message} 현재 화면에만 유지돼요. 다시 저장해 주세요.`;
   }
 }
 
@@ -320,6 +323,8 @@ function openAccount(mode = "login") {
 
 function setAuthMode() {
   const signup = authForm.elements.namedItem("mode").value === "signup";
+  document.querySelector("#signup-fields").hidden = !signup;
+  document.querySelector("#signup-fields").disabled = !signup;
   document.querySelector("#account-title").textContent = signup ? "회원가입" : "로그인";
   document.querySelector("#auth-description").textContent = signup
     ? "내 계정을 만들고, 취향에 맞는 한 끼를 찾아보세요."
@@ -335,7 +340,7 @@ function clearLocalProfile() {
     localStorage.removeItem(storageKey);
     localStorage.removeItem(legacyKey);
   } catch {
-    return false;
+    storageNotice = "이전 브라우저 저장값을 지우지 못했어요.";
   }
   cancelRecommendation();
   profile = {...defaults};
@@ -356,24 +361,31 @@ authForm.addEventListener("change", event => {
 
 authForm.addEventListener("submit", async event => {
   event.preventDefault();
-  for (const field of authForm.querySelectorAll("input[name=username],input[name=password]")) {
+  for (const field of authForm.querySelectorAll("input,select")) {
     if (!field.checkValidity()) {
       field.reportValidity();
       return;
     }
   }
   const values = Object.fromEntries(new FormData(authForm));
+  if (values.mode === "signup" && values.password !== values.password_confirm) {
+    authStatus.textContent = "비밀번호와 비밀번호 확인이 같지 않아요.";
+    return;
+  }
   const submit = document.querySelector("#auth-submit");
   submit.disabled = true;
   authStatus.textContent = "";
   try {
     const data = await request(`/api/auth/${values.mode === "signup" ? "signup" : "login"}`, {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({username: values.username, password: values.password}),
+      body: JSON.stringify({username: values.username, password: values.password,
+        ...(values.mode === "signup" ? {profile: Object.fromEntries(
+          serverFields.map(key => [key, values[key] || ""]))} : {})}),
     });
     account = data.user;
     clearLocalProfile();
-    authForm.elements.namedItem("password").value = "";
+    authForm.reset();
+    setAuthMode();
     updateAccountUI();
     syncNotice = "";
     if (adoptServerProfile(data.profile)) {
@@ -468,10 +480,12 @@ document.querySelector("#step-back").addEventListener("click", () => {
   step -= 1;
   updateStep();
 });
-document.querySelector("#skip-body").addEventListener("click", () => {
-  for (const key of ["age", "height", "weight"]) form.elements.namedItem(key).value = "";
-  step = 1;
-  updateStep();
+document.querySelector("#skip-body").addEventListener("click", async () => {
+  if (step === 0) return;
+  for (const key of personalFields) profile[key] = form.elements.namedItem(key).value.trim();
+  hasProfile = true;
+  await pushProfile();
+  openModes();
 });
 for (const button of document.querySelectorAll("[data-action]")) {
   button.addEventListener("click", () => {
@@ -659,21 +673,7 @@ document.querySelector("#chat-form").addEventListener("submit", event => {
 });
 
 async function initialize() {
-  try {
-    const stored = localStorage.getItem(storageKey) || localStorage.getItem(legacyKey);
-    if (stored) {
-      const saved = JSON.parse(stored);
-      if (saved && typeof saved === "object" && !Array.isArray(saved)) {
-        for (const key of [...personalFields, ...preferenceFields]) {
-          if (typeof saved[key] === "string") profile[key] = saved[key];
-        }
-        hasProfile = true;
-        document.querySelector("#resume").hidden = false;
-      }
-    }
-  } catch {
-    // 저장값이 손상됐을 때 새 프로필로 시작한다.
-  }
+  persistLocal();
   try {
     // 로그인 세션이 있으면 계정에 저장된 취향을 우선 적용한다.
     const me = await request("/api/auth/me");
@@ -695,6 +695,7 @@ async function initialize() {
     const data = await request("/api/catalog");
     const select = document.querySelector("#category");
     for (const label of data.categories) select.add(new Option(label, label));
+    for (const label of data.categories) document.querySelector("#signup-category").add(new Option(label, label));
     const mealCategory = document.querySelector("#meal-category");
     for (const label of data.categories) mealCategory.add(new Option(label, label));
     mealCategory.disabled = false;
