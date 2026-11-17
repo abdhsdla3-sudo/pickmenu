@@ -14,6 +14,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import auth
+import menu_reco
 from raw import BASE, LOCAL
 from recommend import Profile, recommend
 
@@ -86,6 +87,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(400, {"error": "입력 형식 또는 길이를 확인해 주세요."})
             return INVALID
 
+    def reference(self) -> menu_reco.Data | None:
+        """추천·지도 참고자료 DB를 읽는다. 연결할 수 없으면 503을 보낸다."""
+        try:
+            return menu_reco.data()
+        except Exception as error:  # 드라이버 미설치·연결 실패·권한 오류를 같은 안내로 돌려준다.
+            self.log_error("참고자료 DB 오류 %s", error)
+            self.send_json(503, {"error": "가게 추천 자료를 불러올 수 없어요. 잠시 뒤 다시 시도해 주세요."})
+            return None
+
     def session_token(self) -> str | None:
         try:
             cookie = SimpleCookie(self.headers.get("Cookie", ""))
@@ -155,6 +165,10 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(200, content_type, (BASE / "web" / filename).read_bytes())
         elif path == "/api/auth/me":
             self.handle_auth(path)
+        elif path == "/api/v2/options":
+            if (data := self.reference()) is not None:
+                self.send_json(200, {"districts": list(menu_reco.DISTRICTS),
+                                     "groups": menu_reco.public_groups(data), "batch_id": data.batch_id})
         elif path == "/api/catalog":
             if (menus := self.load()) is not None:
                 self.send_json(200, {"categories": categories(menus), "menu_count": len(menus),
@@ -175,6 +189,19 @@ class Handler(BaseHTTPRequestHandler):
         if path in {"/api/auth/signup", "/api/auth/login", "/api/auth/logout"}:
             if self.authorize_api():
                 self.handle_auth(path)
+            return
+        if path == "/api/v2/recommend":
+            if not self.authorize_api() or (payload := self.read_json()) is INVALID:
+                return
+            if (data := self.reference()) is None:
+                return
+            try:
+                query = menu_reco.Query.parse(payload, set(data.visible_groups),
+                                              set(data.visible_groups) | set(data.group_columns))
+            except ValueError as error:
+                self.send_json(400, {"error": str(error)})
+                return
+            self.send_json(200, menu_reco.recommend(data, query))
             return
         if path != "/api/recommend":
             self.send_json(404, {"error": "페이지를 찾을 수 없어요."})
