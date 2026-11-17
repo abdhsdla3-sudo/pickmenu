@@ -286,7 +286,13 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(404, {"error": "메뉴를 찾을 수 없어요."})
             return
         try:
-            self.send_json(200, menu_stores.stores(catalog_path(), selected, district))
+            # 기준표 DB를 쓸 수 없으면 별점 정보 없이 보여 준다.
+            ratings = menu_stores.rating_index(menu_reco.data().menus)
+        except Exception as error:  # 드라이버 미설치·연결 실패
+            self.log_error("기준표 별점 연결 생략 %s", error)
+            ratings = None
+        try:
+            self.send_json(200, menu_stores.stores(catalog_path(), selected, district, ratings=ratings))
         except sqlite3.Error as error:
             self.log_error("매장 집계 오류 %s", error)
             self.send_json(503, {"error": "매장 자료를 열 수 없어요. 잠시 뒤 다시 시도해 주세요."})

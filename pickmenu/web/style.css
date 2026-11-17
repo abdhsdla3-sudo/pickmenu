@@ -136,12 +136,7 @@ legend { font-size: 12px; font-weight: 650; margin-bottom: 10px; }
 .mini-picks i { font-style: normal; font-size: 9px; border: 1px solid #dfcbb5; color: #8a6949; border-radius: 7px; padding: 5px 8px; }
 .detail-stores { background: #f3f6eb; border-radius: 14px; padding: 4px 14px 12px; margin: 14px 0; }
 .detail-stores h3 { margin-top: 12px; }
-.store-mode { background: #e6ece9; margin-top: 13px; }
-.store-mode .mode-icon { color: #4f7268; }
-.store-mode small, .store-mode .mode-text > span { color: #4f7268; }
 .legend-note { font-weight: 400; color: var(--muted); font-size: 10px; margin-left: 4px; }
-#pick-form .pill input[type=checkbox]:checked + span { border-color: #819568; background: #edf2e5; color: #53654a; font-weight: 700; }
-.pick-card .card-head { align-items: center; }
 .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
 .tag { font-size: 9px; border-radius: 6px; padding: 3px 7px; background: #eef1e7; color: #6c7f55; }
 .tag.warn { background: #f5eddf; color: #94704e; }
@@ -236,3 +231,4 @@ dialog h3 { font-size: 14px; margin-top: 20px; }
 .family-store-name span { color: var(--muted); }
 .small-link { flex: none; border: 0; background: #edf1e5; color: var(--green); font-size: 11px; font-weight: 700; padding: 8px 12px; border-radius: 10px; }
 .menu-comment { font-size: 12px; line-height: 1.6; color: var(--ink); margin-top: 10px; }
+.store-rating { color: var(--rust); }
