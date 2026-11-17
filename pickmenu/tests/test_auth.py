@@ -80,7 +80,10 @@ class AuthTest(unittest.TestCase):
 class AuthHttpTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.env = patch.dict(os.environ, {"PICKMENU_USERS_PATH": str(Path(self.temp.name) / "users.sqlite3")})
+        self.env = patch.dict(os.environ, {
+            "PICKMENU_USERS_PATH": str(Path(self.temp.name) / "users.sqlite3"),
+            "PICKMENU_REQUIRE_LOGIN": "1",
+        })
         self.env.start()
         os.environ.pop("PICKMENU_API_TOKEN", None)
         auth._failures.clear()
@@ -126,6 +129,25 @@ class AuthHttpTest(unittest.TestCase):
         self.assertIn("Max-Age=0", cleared)
         self.assertEqual(self.call("GET", "/api/auth/me", cookie=session)[1]["user"], None)
         self.assertEqual(self.call("PUT", "/api/nothing", {})[0], 404)
+
+    def test_recommendation_requires_live_login(self):
+        menu = {"standard_menu_id": "MN_1", "name": "두부덮밥", "category": "밥·덮밥",
+                "components": ["두부덮밥"], "spice": "", "soup": "no", "nutrition": None,
+                "regions": {"수원시": {"reviews": 30, "stores": 3}}}
+        with patch("server.catalog", return_value=[menu]):
+            self.assertEqual(self.call("GET", "/api/catalog")[0], 200)
+            self.assertEqual(self.call("POST", "/api/recommend", {})[0], 401)
+            self.assertEqual(self.call("GET", "/api/menus/MN_1")[0], 401)
+            self.assertEqual(self.call("POST", "/api/recommend", {}, "pickmenu_session=invalid")[0], 401)
+            _, _, cookie = self.call("POST", "/api/auth/signup",
+                                     {"username": "member", "password": "password1"})
+            session = cookie.split(";")[0]
+            self.assertEqual(self.call("POST", "/api/recommend", {}, session)[0], 200)
+            self.assertEqual(self.call("GET", "/api/menus/MN_1", cookie=session)[0], 200)
+            self.call("POST", "/api/auth/logout", cookie=session)
+            self.assertEqual(self.call("POST", "/api/recommend", {}, session)[0], 401)
+            with patch.dict(os.environ, {"PICKMENU_REQUIRE_LOGIN": "0"}):
+                self.assertEqual(self.call("POST", "/api/recommend", {})[0], 200)
 
 
 if __name__ == "__main__":

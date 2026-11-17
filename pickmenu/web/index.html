@@ -13,7 +13,7 @@
 <div class="keywords"><span>#나를아는한끼</span><span>#수원에서시작</span><span>#취향대로픽</span></div><div class="story-line">취향을 담고 <i></i> 고민을 덜고</div>
 </aside>
 <main class="phone" aria-label="픽메뉴 모바일 앱 데모">
-<header class="app-header"><a class="wordmark small" href="/" aria-label="픽메뉴 시작 화면"><img src="/mark.svg" alt="">픽메뉴<span class="demo-label">DEMO</span></a><div class="header-right"><span class="location">⌖ 수원시</span><button type="button" class="account-button" id="account-open" aria-label="로그인 또는 회원가입">로그인</button></div></header>
+<header class="app-header"><a class="wordmark small" href="/" aria-label="픽메뉴 시작 화면"><img src="/mark.svg" alt="">픽메뉴<span class="demo-label">DEMO</span></a><div class="header-right"><span class="location">⌖ 수원시</span><button type="button" class="account-button" id="account-open" aria-label="로그인">로그인</button><button type="button" class="account-button" id="signup-open">회원가입</button></div></header>
 <div class="app-scroll" id="app-scroll">
 <section class="screen welcome" data-screen="welcome" aria-labelledby="welcome-title">
 <div class="welcome-top"><span class="mini-badge">나를 아는 한 끼</span><span class="spark">✳</span></div>
@@ -26,7 +26,7 @@
 <path d="m229 92 63-58m-52 66 65-51" stroke="#743e2e" stroke-width="5" stroke-linecap="round"/><path d="M145 70c-11-14 11-22 0-36m30 27c-11-14 11-22 0-36" fill="none" stroke="#a6b182" stroke-width="3" stroke-linecap="round"/>
 <path d="M106 174q74 42 151-1" fill="none" stroke="#f9d4b6" stroke-width="4"/><path d="M54 94v20m-10-10h20m234 64v18m-9-9h18" stroke="#9aab7e" stroke-width="3" stroke-linecap="round"/></svg>
 <span class="floating-note note-one">취향은 쏙 ♡</span><span class="floating-note note-two">고민은 가볍게</span></div>
-<div class="welcome-bottom"><p class="tiny">약 1분이면 내 식사 프로필 완성</p><button class="primary" id="start-onboarding">내 취향 알려주기 <span>↗</span></button><button class="text-button" id="resume" hidden>저장된 프로필로 시작하기 →</button><button class="text-button" id="welcome-login">계정이 있어요 · 로그인하고 불러오기 →</button></div>
+<div class="welcome-bottom"><p class="tiny" id="welcome-note">로그인하거나 회원가입하고 내 취향을 알려주세요</p><button class="primary" id="welcome-login">로그인 <span>→</span></button><button class="secondary" id="welcome-signup">회원가입 <span>↗</span></button><button class="primary" id="start-onboarding" hidden>내 취향 알려주기 <span>↗</span></button><button class="text-button" id="resume" hidden>저장된 프로필로 시작하기 →</button></div>
 </section>
 <section class="screen" data-screen="onboarding" hidden aria-labelledby="onboarding-title">
 <div class="step-top"><button type="button" class="icon-button" id="step-back" aria-label="이전 단계">←</button><span id="step-label">프로필 만들기 · 1 / 4</span><button class="text-button" id="skip-body">건너뛰기</button></div><div class="progress" aria-label="프로필 설정 진행"><span id="progress-fill"></span></div>
@@ -65,7 +65,7 @@
 <form id="chat-form" class="composer"><label class="sr-only" for="chat-input">픽메뉴에게 답하기</label><input id="chat-input" maxlength="100" autocomplete="off" placeholder="답변을 입력해 주세요"><button type="submit" aria-label="답변 보내기">↑</button></form></section>
 <section class="screen" data-screen="account" hidden aria-labelledby="account-title">
 <div class="page-top"><button type="button" class="icon-button" id="account-back" aria-label="이전 화면으로">←</button><span>내 계정</span></div>
-<div id="account-guest"><p class="eyebrow">MY ACCOUNT</p><h2 id="account-title" tabindex="-1">로그인하고<br>내 프로필을 이어가요.</h2><p class="lead">로그인하면 취향·알레르기 프로필을 서버에 저장해<br>다른 기기에서도 그대로 불러올 수 있어요.</p>
+<div id="account-guest"><p class="eyebrow">MY ACCOUNT</p><h2 id="account-title" tabindex="-1">로그인</h2><p class="lead" id="auth-description">로그인하고 저장한 취향으로 메뉴를 찾아보세요.</p>
 <form id="auth-form" novalidate><fieldset><legend class="sr-only">계정 작업 선택</legend><div class="pills auth-tabs"><label class="pill"><input type="radio" name="mode" value="login" checked><span>로그인</span></label><label class="pill"><input type="radio" name="mode" value="signup"><span>회원가입</span></label></div></fieldset>
 <label class="field">아이디<input name="username" required minlength="4" maxlength="20" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="영문 소문자·숫자·밑줄 4~20자"></label>
 <label class="field">비밀번호<input name="password" type="password" required minlength="8" maxlength="64" autocomplete="current-password" placeholder="8자 이상"></label>

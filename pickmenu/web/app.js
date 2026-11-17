@@ -39,6 +39,10 @@ let syncNotice = "";
 document.querySelector("#category").addEventListener("change", () => { categoryTouched = true; });
 
 function showScreen(name) {
+  if (!account && !["welcome", "account"].includes(name)) {
+    openAccount();
+    return;
+  }
   for (const screen of document.querySelectorAll("[data-screen]")) {
     screen.hidden = screen.dataset.screen !== name;
   }
@@ -96,6 +100,7 @@ function updateStep() {
 }
 
 function startOnboarding() {
+  if (!account) return openAccount();
   cancelRecommendation();
   applyProfile();
   step = 0;
@@ -104,6 +109,7 @@ function startOnboarding() {
 }
 
 function openModes() {
+  if (!account) return openAccount();
   cancelRecommendation();
   document.querySelector("#greeting-name").textContent = profile.nickname || "메뉴고민러";
   document.querySelector("#profile-summary").textContent = [summary(), storageNotice, syncNotice].filter(Boolean).join(" · ");
@@ -135,7 +141,16 @@ async function request(url, options) {
   } catch {
     throw new Error("추천 서버에 연결할 수 없어요. 잠시 뒤 다시 시도해 주세요.");
   }
-  if (!response.ok) throw new Error(data.error || "요청을 처리할 수 없어요.");
+  if (!response.ok) {
+    if (response.status === 401 && !url.startsWith("/api/auth/")) {
+      account = null;
+      clearLocalProfile();
+      updateAccountUI();
+      openAccount();
+      authStatus.textContent = "로그인이 만료됐어요. 다시 로그인해 주세요.";
+    }
+    throw new Error(data.error || "요청을 처리할 수 없어요.");
+  }
   return data;
 }
 
@@ -272,16 +287,27 @@ function adoptServerProfile(saved) {
 function updateAccountUI() {
   const button = document.querySelector("#account-open");
   button.textContent = account ? account.username : "로그인";
-  button.setAttribute("aria-label", account ? `${account.username} 계정 보기` : "로그인 또는 회원가입");
-  document.querySelector("#welcome-login").hidden = Boolean(account);
+  button.setAttribute("aria-label", account ? `${account.username} 계정 보기` : "로그인");
+  for (const id of ["welcome-login", "welcome-signup", "signup-open"]) {
+    document.getElementById(id).hidden = Boolean(account);
+  }
+  document.querySelector("#start-onboarding").hidden = !account;
+  document.querySelector("#resume").hidden = !account || !hasProfile;
+  document.querySelector("#welcome-note").textContent = account
+    ? "약 1분이면 내 식사 프로필 완성" : "로그인하거나 회원가입하고 내 취향을 알려주세요";
 }
 
-function openAccount() {
+function openAccount(mode = "login") {
   cancelRecommendation();
   const current = document.querySelector("[data-screen]:not([hidden])")?.dataset.screen;
   if (current && current !== "account") accountReturn = current;
   document.querySelector("#account-guest").hidden = Boolean(account);
   document.querySelector("#account-member").hidden = !account;
+  if (!account) {
+    authForm.elements.namedItem("mode").value = mode === "signup" ? "signup" : "login";
+    authForm.elements.namedItem("password").value = "";
+    setAuthMode();
+  }
   if (account) {
     document.querySelector("#account-name").textContent = account.username;
     document.querySelector("#account-sync").textContent = syncNotice
@@ -294,6 +320,10 @@ function openAccount() {
 
 function setAuthMode() {
   const signup = authForm.elements.namedItem("mode").value === "signup";
+  document.querySelector("#account-title").textContent = signup ? "회원가입" : "로그인";
+  document.querySelector("#auth-description").textContent = signup
+    ? "내 계정을 만들고, 취향에 맞는 한 끼를 찾아보세요."
+    : "로그인하고 저장한 취향으로 메뉴를 찾아보세요.";
   document.querySelector("#auth-submit").replaceChildren(
     document.createTextNode(signup ? "가입하고 시작하기" : "로그인"), node("span", "→"));
   authForm.elements.namedItem("password").autocomplete = signup ? "new-password" : "current-password";
@@ -342,16 +372,13 @@ authForm.addEventListener("submit", async event => {
       body: JSON.stringify({username: values.username, password: values.password}),
     });
     account = data.user;
+    clearLocalProfile();
     authForm.elements.namedItem("password").value = "";
     updateAccountUI();
     syncNotice = "";
     if (adoptServerProfile(data.profile)) {
       persistLocal();
       applyProfile();
-      openModes();
-    } else if (hasProfile) {
-      // 로그인 전에 만든 프로필을 계정에 옮긴다.
-      await pushProfile();
       openModes();
     } else {
       startOnboarding();
@@ -365,6 +392,8 @@ authForm.addEventListener("submit", async event => {
 
 document.querySelector("#account-open").addEventListener("click", openAccount);
 document.querySelector("#welcome-login").addEventListener("click", openAccount);
+document.querySelector("#welcome-signup").addEventListener("click", () => openAccount("signup"));
+document.querySelector("#signup-open").addEventListener("click", () => openAccount("signup"));
 document.querySelector("#nav-account").addEventListener("click", openAccount);
 document.querySelector("#account-back").addEventListener("click", () => {
   if (accountReturn === "onboarding") startOnboarding();
@@ -396,6 +425,7 @@ document.querySelector("#logout").addEventListener("click", async event => {
 
 form.addEventListener("submit", async event => {
   event.preventDefault();
+  if (!account) return openAccount();
   const slide = document.querySelector(`[data-step="${step}"]`);
   for (const field of slide.querySelectorAll("input,select")) {
     if (!field.checkValidity()) {
@@ -650,9 +680,10 @@ async function initialize() {
     if (me.user) {
       account = me.user;
       if (adoptServerProfile(me.profile)) persistLocal();
-    }
+    } else clearLocalProfile();
   } catch {
-    // 계정 서버에 연결하지 못해도 브라우저 프로필로 계속 이용한다.
+    // 세션을 확인할 수 없으면 로그인 전 상태를 유지한다.
+    clearLocalProfile();
   }
   updateAccountUI();
   applyProfile();

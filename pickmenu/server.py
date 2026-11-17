@@ -146,6 +146,18 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(503, {"error": "추천 데이터를 열 수 없어요. 전처리를 완료한 뒤 다시 시도해 주세요."})
             return None
 
+    def require_session(self) -> bool:
+        if os.environ.get("PICKMENU_REQUIRE_LOGIN") != "1":
+            return True
+        try:
+            if auth.current(self.session_token()) is not None:
+                return True
+        except sqlite3.Error:
+            self.send_json(503, {"error": "로그인 상태를 확인할 수 없어요. 잠시 뒤 다시 시도해 주세요."})
+            return False
+        self.send_json(401, {"error": "로그인하고 메뉴를 추천받아 주세요."})
+        return False
+
     def do_GET(self) -> None:
         path = urlsplit(self.path).path
         if path.startswith("/api/") and not self.authorize_api():
@@ -160,6 +172,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, {"categories": categories(menus), "menu_count": len(menus),
                                      "period": "2026년 7~9월"})
         elif path.startswith("/api/menus/"):
+            if not self.require_session():
+                return
             if (menus := self.load()) is not None:
                 mid = path.removeprefix("/api/menus/")
                 selected = next((menu for menu in menus if menu["standard_menu_id"] == mid), None)
@@ -180,6 +194,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(404, {"error": "페이지를 찾을 수 없어요."})
             return
         if not self.authorize_api():
+            return
+        if not self.require_session():
             return
         if (payload := self.read_json()) is INVALID:
             return
