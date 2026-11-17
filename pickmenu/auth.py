@@ -11,11 +11,10 @@ import sqlite3
 import threading
 import time
 from contextlib import closing
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo
 
 import account_crypto as privacy
 from raw import LOCAL
@@ -139,7 +138,7 @@ def age_from_birth(birth: str, today: date | None = None) -> str:
         born = date.fromisoformat(birth)
     except ValueError:
         raise AuthError("생년월일을 올바르게 선택해 주세요.") from None
-    today = today or datetime.now(ZoneInfo("Asia/Seoul")).date()
+    today = today or datetime.now(timezone(timedelta(hours=9))).date()
     years = today.year - born.year - ((today.month, today.day) < (born.month, born.day))
     if born > today or not 0 <= years <= 120:
         raise AuthError("생년월일의 입력 범위를 확인해 주세요.")
