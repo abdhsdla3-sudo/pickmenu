@@ -537,13 +537,6 @@ function clearLocalProfile() {
   chatLog.replaceChildren();
   chatChips.replaceChildren();
   results.replaceChildren();
-  pickRequest?.abort();
-  pickRequest = null;
-  pickForm.reset();
-  pickForm.querySelector("button[type=submit]").disabled = false;
-  pickResults.replaceChildren();
-  pickExpand.replaceChildren();
-  pickStatus.textContent = "";
   document.querySelector("#resume").hidden = true;
   return true;
 }
@@ -627,7 +620,7 @@ document.querySelector("#account-settings").addEventListener("submit", async eve
 document.querySelector("#account-back").addEventListener("click", () => {
   if (accountReturn === "onboarding") startOnboarding();
   else if (accountReturn === "welcome" || !hasProfile) showScreen("welcome");
-  else if (["choice", "chat", "results", "pick"].includes(accountReturn)) showScreen(accountReturn);
+  else if (["choice", "chat", "results"].includes(accountReturn)) showScreen(accountReturn);
   else openModes();
 });
 document.querySelector("#account-continue").addEventListener("click", () => {
@@ -731,7 +724,10 @@ document.querySelector("#delete-profile").addEventListener("click", async () => 
 
 document.querySelector("#open-choice").addEventListener("click", () => {
   sourceMode = "choice";
-  document.querySelector("#meal").elements.namedItem("goal").value = profile.goal;
+  const meal = document.querySelector("#meal");
+  meal.elements.namedItem("goal").value = profile.goal;
+  meal.elements.namedItem("spice").value = profile.spice || "";
+  meal.elements.namedItem("soup").value = profile.soup || "";
   document.querySelector("#choice-profile").textContent = summary();
   showScreen("choice");
 });
@@ -890,57 +886,7 @@ document.querySelector("#chat-form").addEventListener("submit", event => {
   respond(chatInput.value);
 });
 
-// 가게까지 추천: 추천 기준표 v1.3(/api/v2). 음식 5개 안팎과 음식별 가게 순위를 보여 준다.
-const pickForm = document.querySelector("#pick-form");
-const pickResults = document.querySelector("#pick-results");
-const pickStatus = document.querySelector("#pick-status");
-const pickExpand = document.querySelector("#pick-expand");
-const goalNotes = {
-  balance: "영양 비율 점수: 탄수화물·단백질·지방 비율이 권장 범위에 얼마나 가까운지 본 점수예요. 칼로리나 건강함을 뜻하지는 않아요.",
-  protein: "영양 비율 점수: 단백질 비율과 양을 본 점수예요.",
-};
-let pickOptionsLoaded = false;
-let pickRequest = null;
-
-async function loadPickOptions() {
-  if (pickOptionsLoaded) return;
-  const box = document.querySelector("#pick-groups");
-  try {
-    const data = await request("/api/v2/options");
-    box.replaceChildren();
-    for (const group of data.groups) {
-      const label = node("label", undefined, "pill");
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.name = "groups";
-      input.value = group.name;
-      label.append(input, node("span", group.name));
-      box.append(label);
-    }
-    pickOptionsLoaded = true;
-  } catch (error) {
-    box.replaceChildren(node("span", error.message, "tiny"));
-  }
-}
-
-document.querySelector("#pick-groups").addEventListener("change", event => {
-  if (pickForm.querySelectorAll("input[name=groups]:checked").length > 3) {
-    event.target.checked = false;
-    pickStatus.textContent = "음식군은 3개까지 고를 수 있어요.";
-  } else {
-    pickStatus.textContent = "";
-  }
-});
-
-function openPick() {
-  cancelRecommendation();
-  pickForm.elements.namedItem("goal").value = profile.goal === "protein" ? "protein" : "balance";
-  pickForm.elements.namedItem("spice").checked = profile.spice === "mild";
-  pickForm.elements.namedItem("broth").value = profile.soup || "";
-  showScreen("pick");
-  loadPickOptions();
-}
-
+// 메뉴 상세의 가게 목록(추천 기준표 v1.3 /api/v2/stores) 항목.
 function storeItem(store) {
   const item = node("li");
   const name = node("div", undefined, "store-name");
@@ -955,116 +901,6 @@ function storeItem(store) {
   return item;
 }
 
-function pickCard(column, index) {
-  const card = node("article", undefined, "card pick-card");
-  const head = node("div", undefined, "card-head");
-  const title = node("h3");
-  title.append(node("span", String(index + 1).padStart(2, "0"), "rank"), column.display_name);
-  head.append(title, node("span", column.groups[0] || "음식", "badge"));
-  card.append(head);
-  if (column.notes.length) {
-    const tags = node("div", undefined, "tags");
-    for (const note of column.notes) tags.append(node("span", note, note === "선호 밖" ? "tag" : "tag warn"));
-    card.append(tags);
-  }
-  card.append(node("p", `가게 ${column.store_count}곳 · 리뷰 ${column.review_count.toLocaleString("ko-KR")}개 · 영양 비율 점수 ${column.nutrition_score}점${column.nutrition_estimated ? "(추정)" : ""}`, "score-line"));
-  if (column.goal_low) card.append(node("p", "고른 영양 목표와는 잘 맞지 않는 음식이에요", "muted"));
-  const list = node("ul", undefined, "store-list");
-  column.stores.forEach((store, at) => {
-    const item = storeItem(store);
-    item.hidden = at >= 3;
-    list.append(item);
-  });
-  card.append(list);
-  if (column.stores.length > 3) {
-    const more = node("button", `가게 ${column.stores.length - 3}곳 더 보기`, "more-stores");
-    more.type = "button";
-    more.addEventListener("click", () => {
-      for (const item of list.children) item.hidden = false;
-      more.remove();
-    });
-    card.append(more);
-  }
-  return card;
-}
-
-function filterLabel(payload) {
-  return [payload.spice === "mild" ? "안 매운" : "", payload.broth === "yes" ? "국물 있음" : payload.broth === "no" ? "국물 없음" : ""]
-    .filter(Boolean).join("·");
-}
-
-function renderPick(data, payload) {
-  pickResults.replaceChildren();
-  pickExpand.replaceChildren();
-  document.querySelector("#pick-footnote").hidden = !data.items.length;
-  pickStatus.textContent = data.items.length ? "" : "조건에 맞는 음식을 찾지 못했어요. 지역이나 맵기·국물 조건을 바꿔 보세요.";
-  if (data.expand) {
-    const box = node("div", undefined, "expand-box");
-    const label = filterLabel(payload);
-    if (data.expand_reason.startsWith("추천")) {
-      box.append(node("p", `이 조건에 맞는 음식이 ${data.items.length}개뿐이에요. 수원 전체로 넓혀 볼까요? 배달 가능 여부는 가게에서 확인해 주세요`));
-    } else {
-      box.append(node("p", `${data.region}에는 고른 음식 가게가 적어요. 수원 전체로 넓혀 볼까요? 배달 가능 여부는 가게에서 확인해 주세요`));
-    }
-    if (data.expand_hints.length) {
-      const list = node("ul");
-      for (const hint of data.expand_hints) {
-        list.append(node("li", hint.reason === "filter"
-          ? `${hint.column}: ${data.region}에는 [${label}] 조건에 맞는 가게가 ${hint.district_stores}곳 → 수원 전체 ${hint.city_stores}곳`
-          : `${hint.column}: ${data.region}에 ${hint.district_stores}곳 → 수원 전체 ${hint.city_stores}곳`));
-      }
-      box.append(list);
-    }
-    const widen = node("button", "수원 전체로 넓히기");
-    widen.type = "button";
-    widen.addEventListener("click", () => {
-      pickForm.elements.namedItem("district").value = "";
-      runPick();
-    });
-    box.append(widen);
-    pickExpand.append(box);
-  }
-  if (data.unavailable.length) {
-    pickExpand.append(node("p", `[${filterLabel(payload)}] 조건에 맞는 ${data.unavailable.join(", ")} 가게는 수원 전체에도 적어요`, "muted"));
-  }
-  data.items.forEach((column, index) => pickResults.append(pickCard(column, index)));
-  if (data.items.length) pickResults.append(node("p", goalNotes[payload.goal], "muted"));
-}
-
-async function runPick() {
-  pickRequest?.abort();
-  const controller = new AbortController();
-  pickRequest = controller;
-  const values = new FormData(pickForm);
-  const payload = {district: values.get("district") || "", goal: values.get("goal") || "balance",
-    diet: profile.diet || "general", spice: values.get("spice") || "", broth: values.get("broth") || "",
-    groups: values.getAll("groups")};
-  const submit = pickForm.querySelector("button[type=submit]");
-  submit.disabled = true;
-  pickStatus.textContent = "음식과 가게를 비교하고 있어요.";
-  pickResults.replaceChildren();
-  pickExpand.replaceChildren();
-  try {
-    const data = await request("/api/v2/recommend", {method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(payload), signal: controller.signal});
-    if (controller.signal.aborted) return;
-    renderPick(data, payload);
-    pickStatus.scrollIntoView({block: "start", behavior: "smooth"});
-  } catch (error) {
-    if (!controller.signal.aborted) pickStatus.textContent = error.message;
-  } finally {
-    if (pickRequest === controller) {
-      pickRequest = null;
-      submit.disabled = false;
-    }
-  }
-}
-
-pickForm.addEventListener("submit", event => {
-  event.preventDefault();
-  runPick();
-});
-document.querySelector("#open-pick").addEventListener("click", openPick);
 
 async function initialize() {
   updateAgeLabels();
