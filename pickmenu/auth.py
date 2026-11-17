@@ -144,7 +144,7 @@ def clean_profile(value: Any) -> dict[str, str]:
             raise AuthError("나이·키·몸무게의 입력 범위를 확인해 주세요.")
         if key == "age" and number != number.to_integral():
             raise AuthError("나이는 정수로 입력해 주세요.")
-    if profile["gender"] not in {"", "female", "male", "undisclosed"}:
+    if profile["gender"] not in {"", "female", "male", "other", "undisclosed"}:
         raise AuthError("성별은 목록에서 선택해 주세요.")
     profile["diet"] = profile["diet"] or "general"
     profile["goal"] = profile["goal"] or "balance"

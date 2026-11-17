@@ -18,7 +18,7 @@ from server import SESSION_COOKIE, Handler
 def registration(username, password="password1"):
     return {"username": username, "password": password, "profile": {
         "nickname": "검증닉네임", "age": "30", "height": "170", "weight": "65",
-        "gender": "undisclosed"}}
+        "gender": "other"}}
 
 
 class Quiet(Handler):
@@ -83,7 +83,7 @@ class AuthTest(unittest.TestCase):
         saved = auth.save_profile(user_id, {"nickname": "메뉴고민러", "diet": "vegan", "age": "30",
                                             "allergy": "땅콩"})
         self.assertEqual(saved["age"], "30")
-        self.assertEqual(saved["gender"], "undisclosed")
+        self.assertEqual(saved["gender"], "other")
         self.assertEqual(auth.current(token)[1]["profile"]["allergy"], "땅콩")
         with self.assertRaises(auth.AuthError):
             auth.save_profile(user_id, {"allergy": "가" * 101})
@@ -102,8 +102,11 @@ class AuthTest(unittest.TestCase):
             value["profile"][field] = item
             with self.subTest(field=field, item=item), self.assertRaises(auth.AuthError):
                 auth.signup(value)
-        _, account = auth.signup(registration("basics"))
+        value = registration("basics")
+        value["profile"]["allergy"] = "땅콩, 우유"
+        _, account = auth.signup(value)
         self.assertEqual(account["profile"]["goal"], "balance")
+        self.assertEqual(account["profile"]["allergy"], "땅콩, 우유")
 
     def test_plaintext_is_not_stored_and_ciphertext_is_bound_to_user(self):
         token, _ = auth.signup(registration("private_user"))
@@ -143,7 +146,8 @@ class AuthTest(unittest.TestCase):
                 "CREATE TABLE sessions(token_hash TEXT PRIMARY KEY,user_id INTEGER REFERENCES users(id) "
                 "ON DELETE CASCADE,expires_at INTEGER NOT NULL);")
             db.execute("INSERT INTO users VALUES(1,?,?,?,?)", ("legacy_user", password,
-                json.dumps({"nickname": "이전닉네임", "allergy": "땅콩"}, ensure_ascii=False), int(time.time())))
+                json.dumps({"nickname": "이전닉네임", "allergy": "땅콩", "gender": "undisclosed"},
+                           ensure_ascii=False), int(time.time())))
             db.execute("INSERT INTO sessions VALUES(?,?,?)", (auth._token_hash("old-session"), 1,
                                                             int(time.time()) + 1000))
         report = migrate(Path(self.temp.name) / "backups", Path(self.temp.name) / "key-backups")
@@ -155,6 +159,7 @@ class AuthTest(unittest.TestCase):
         current = auth.current("old-session")
         self.assertEqual(current[0], 1)
         self.assertEqual(current[1]["profile"]["allergy"], "땅콩")
+        self.assertEqual(current[1]["profile"]["gender"], "undisclosed")
         self.assertEqual(auth.login({"username": "legacy_user", "password": "legacy-password"})[1]
                          ["user"]["username"], "l***")
         with auth.connect() as db:

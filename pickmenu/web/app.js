@@ -280,7 +280,9 @@ async function pushProfile() {
 function adoptServerProfile(saved) {
   if (!saved || typeof saved !== "object") return false;
   for (const key of serverFields) {
-    if (typeof saved[key] === "string") profile[key] = saved[key];
+    if (typeof saved[key] === "string") {
+      profile[key] = key === "gender" && saved[key] === "undisclosed" ? "other" : saved[key];
+    }
   }
   hasProfile = true;
   document.querySelector("#resume").hidden = false;
