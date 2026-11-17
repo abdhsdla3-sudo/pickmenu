@@ -69,7 +69,8 @@ class RulesTest(unittest.TestCase):
                                          ("볶음짬뽕", "중식", ("hot", "no")), ("짬뽕밥", "중식", ("hot", "yes")),
                                          ("짜장면", "중식", ("", "no")), ("탕수육", "중식", ("", "no")),
                                          ("닭볶음탕", "고기", ("hot", "yes")), ("김밥+라면", "분식", ("", "yes")),
-                                         ("마라샹궈", "중식", ("hot", "no")), ("국물없는 라면", "면", ("", "no"))):
+                                         ("마라샹궈", "중식", ("hot", "no")), ("국물없는 라면", "면", ("", "no")),
+                                         ("고추잡채", "중식", ("", "")), ("짜장떡볶이", "분식", ("mild", "no"))):
             with self.subTest(name=name):
                 self.assertEqual(taste_tags(name, [name], category), expected)
         self.assertIsNone(reference({}, 1, {}, {}))
@@ -84,6 +85,19 @@ class RulesTest(unittest.TestCase):
         self.assertIn("맵기 정보 부족", result["items"][1]["reasons"])
         hot = recommend(menus, Profile.parse({"spice": "hot"}, []))
         self.assertEqual([m["standard_menu_id"] for m in hot["items"]], ["MN_1", "MN_3"])
+
+    def test_meat_and_seafood_names(self):
+        menus = [fixture("제육볶음", "MN_1"), fixture("탕수육", "MN_2"), fixture("삼계탕", "MN_3"),
+                 fixture("연어초밥", "MN_4"), fixture("물회", "MN_5"), fixture("야채비빔밥", "MN_6")]
+        result = recommend(menus, Profile.parse({"diet": "vegetarian"}, []))
+        self.assertEqual((result["excluded"], result["unverified"]), (5, 1))
+        self.assertEqual(result["check_only"][0]["name"], "야채비빔밥")
+        meat = recommend(menus, Profile.parse({"diet": "meat"}, []))
+        flags = {m["name"]: "육식 선호 일치" in m["reasons"] for m in meat["items"]}
+        self.assertEqual(flags, {"제육볶음": True, "탕수육": True, "삼계탕": True,
+                                 "연어초밥": False, "물회": False})
+        self.assertNotIn("육식 선호 일치",
+                         recommend([fixture("치킨무", "MN_7")], Profile.parse({"diet": "meat"}, []))["items"][0]["reasons"])
 
     def test_fill_tastes_from_store_menus(self):
         tastes = {"고추잡채": ("hot", "no"), "계란국": ("mild", "yes"), "꽃빵": ("mild", "no")}
