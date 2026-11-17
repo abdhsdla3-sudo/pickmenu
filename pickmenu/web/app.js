@@ -27,6 +27,7 @@ let sourceMode = "choice";
 let chatStage = 0;
 let chatConditions = {};
 let activeRecommendation = null;
+let lastResult = null;
 let storageNotice = "";
 let categoryTouched = false;
 // 기본정보·취향은 서버에 암호화해 저장하며 브라우저 저장소에는 남기지 않는다.
@@ -302,6 +303,11 @@ function render(data) {
     }
     return;
   }
+  lastResult = data;
+  if (data.families?.length) {
+    renderFamilies(data);
+    return;
+  }
   status.textContent = data.items.length < 3 ? `현재 조건에서 ${data.items.length}개를 찾았어요. 검색어와 지역은 직접 바꿀 수 있어요.` : "";
   results.replaceChildren();
   data.items.forEach((item, index) => {
@@ -320,6 +326,107 @@ function render(data) {
       node("p", "원재료·알레르기 정보 부족 · 주문 전 확인 필요", "muted"), button);
     results.append(card);
   });
+}
+
+// 1단계: 가게마다 다른 메뉴 이름을 표준 음식명(대표 메뉴)으로 묶어 고르게 한다.
+function renderFamilies(data) {
+  const count = data.families.length;
+  status.textContent = count < 3 ? `현재 조건에서 대표 메뉴 ${count}개를 찾았어요. 검색어와 지역은 직접 바꿀 수 있어요.`
+    : "먹고 싶은 메뉴를 고르면 실제 메뉴와 파는 가게를 보여 드려요.";
+  results.replaceChildren();
+  data.families.forEach((family, index) => {
+    const card = node("article", undefined, "card");
+    const head = node("div", undefined, "card-head");
+    const title = node("h3");
+    title.append(node("span", String(index + 1).padStart(2, "0"), "rank"), family.name);
+    head.append(title, node("span", family.category, "badge"));
+    const evidence = family.evidence
+      ? `${data.region} 리뷰 ${family.evidence.reviews.toLocaleString("ko-KR")}건 · 가게 ${family.evidence.stores.toLocaleString("ko-KR")}곳`
+      : family.best.reasons[0];
+    const reasons = [evidence, `가게별 메뉴 ${family.menu_count.toLocaleString("ko-KR")}종`, ...family.best.reasons.slice(1)];
+    const button = node("button", "이 메뉴 고르기", "detail-link");
+    button.type = "button";
+    button.setAttribute("aria-label", `${family.name} 고르고 파는 가게 보기`);
+    button.addEventListener("click", () => showFamily(family, data));
+    card.append(head);
+    addReasons(card, reasons);
+    // LLM 한 줄 설명(comment)이 오면 영양·알레르기 문구 대신 보여 준다. 알레르기 확인 안내는 상세에 남는다.
+    if (family.comment) card.append(node("p", family.comment, "menu-comment"), button);
+    else card.append(node("p", nutritionSummary(family.best), "muted"),
+      node("p", "원재료·알레르기 정보 부족 · 주문 전 확인 필요", "muted"), button);
+    results.append(card);
+  });
+  results.append(node("p", "가게마다 다른 메뉴 이름을 같은 음식으로 묶었어요 (자동 분류 · 사람 미검수).", "muted family-note"));
+}
+
+function familyStoreItem(store, family) {
+  const item = node("li", undefined, "family-store");
+  const text = node("div");
+  const name = node("p", undefined, "family-store-name");
+  name.append(node("strong", store.menu_name), node("span", ` – ${store.store_name || "가게 이름 확인 중"}`));
+  text.append(name, node("p", `${store.district} · 이 가게 리뷰 ${store.reviews.toLocaleString("ko-KR")}건`, "store-meta"));
+  if (store.comment) text.append(node("p", store.comment, "menu-comment"));
+  const button = node("button", "상세", "small-link");
+  button.type = "button";
+  button.setAttribute("aria-label", `${store.menu_name} 상세 보기`);
+  const member = family.members.find(m => m.standard_menu_id === store.standard_menu_id);
+  button.addEventListener("click", () => openDetail({standard_menu_id: store.standard_menu_id,
+    reasons: member ? member.reasons : []}, button));
+  item.append(text, button);
+  return item;
+}
+
+// 2단계: 고른 대표 메뉴의 실제 메뉴 이름과 판매 가게를 추천한다.
+async function showFamily(family, data) {
+  const back = node("button", "← 다른 메뉴 고르기", "secondary family-back");
+  back.type = "button";
+  back.addEventListener("click", () => {
+    render(lastResult);
+    scroller.scrollTop = 0;
+  });
+  const heading = node("h3", `${family.name} 파는 가게`, "family-title");
+  heading.tabIndex = -1;
+  results.replaceChildren(back, heading);
+  status.textContent = "가게를 찾고 있어요.";
+  scroller.scrollTop = 0;
+  heading.focus({preventScroll: true});
+  const district = data.region === "수원시" ? "" : data.region;
+  try {
+    const found = await request("/api/recommend/stores", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({menu_ids: family.members.map(m => m.standard_menu_id), district}),
+    });
+    if (!results.contains(heading)) return;
+    status.textContent = "";
+    if (!found.stores.length) {
+      results.append(node("p", "이 메뉴를 판 가게 리뷰 자료를 찾지 못했어요.", "muted"));
+      return;
+    }
+    const where = found.citywide ? `${district}에는 없어 수원 전체 기준` : (district || "수원 전체");
+    results.append(node("p", `${where} · 가게 ${found.store_count}곳 · 추천 순서는 메뉴 적합도, 그다음 가게 리뷰 수예요.`, "muted"));
+    const list = node("ul", undefined, "store-list family-stores");
+    found.stores.forEach((store, at) => {
+      const item = familyStoreItem(store, family);
+      item.hidden = at >= 10;
+      list.append(item);
+    });
+    results.append(list);
+    if (found.stores.length > 10) {
+      const more = node("button", `${found.stores.length - 10}개 더 보기`, "more-stores");
+      more.type = "button";
+      more.addEventListener("click", () => {
+        for (const item of list.children) item.hidden = false;
+        more.remove();
+      });
+      results.append(more);
+    }
+    if (!found.names_available) results.append(node("p", "가게 이름 자료를 지금 불러올 수 없어요. 잠시 뒤 다시 시도해 주세요.", "muted"));
+    results.append(node("p", "과거 리뷰에 등장한 메뉴와 가게예요. 현재 판매 여부·가격은 주문 전 확인해 주세요.", "muted"));
+  } catch (error) {
+    if (!results.contains(heading)) return;
+    status.textContent = "";
+    results.append(node("p", `가게 목록을 불러오지 못했어요. ${error.message}`, "muted"));
+  }
 }
 
 function persistLocal() {
@@ -651,7 +758,8 @@ async function recommendNow(conditions, mode) {
     if (controller.signal.aborted) return;
     render(data);
     if (mode === "chat") {
-      bubble(data.items.length ? `취향과 조건을 살펴 ${data.items.length}개 메뉴를 골랐어요. 추천 이유도 함께 확인해 보세요.`
+      const picked = data.families?.length || data.items.length;
+      bubble(data.items.length ? `취향과 조건을 살펴 ${picked}개 메뉴를 골랐어요. 메뉴를 고르면 파는 가게도 알려 드려요.`
         : "지금 조건으로 추천할 메뉴를 찾지 못했어요. 확인이 필요한 정보와 조건을 살펴보세요.");
       const button = node("button", data.items.length ? "추천 메뉴 보러 가기 →" : "결과와 확인 사항 보기 →", "chat-results-link");
       button.type = "button";

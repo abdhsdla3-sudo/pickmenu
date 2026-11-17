@@ -145,5 +145,25 @@ def recommend(menus: list[dict[str, Any]], profile: Profile) -> dict[str, Any]:
         else:
             seen.add(family)
             first_choices.append(menu)
-    return {"items": (first_choices + alternatives)[:5], "eligible": len(ranked), "excluded": excluded,
+    return {"items": (first_choices + alternatives)[:5], "families": families(ranked),
+            "eligible": len(ranked), "excluded": excluded,
             "unverified": unknown, "check_only": check[:3], "region": region}
+
+
+def families(ranked: list[dict[str, Any]], limit: int = 5, members: int = 30) -> list[dict[str, Any]]:
+    """정렬된 추천 메뉴를 대표 메뉴(표준 음식명 components[0])별로 묶는다.
+
+    가게마다 다른 메뉴 이름은 2차 보완 정규화의 표준 음식명이 같으면 하나의 대표 메뉴로 본다.
+    대표 메뉴의 순서는 속한 메뉴 중 가장 높은 점수(정렬된 첫 메뉴)를 따른다.
+    """
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for menu in ranked:
+        groups.setdefault(menu["components"][0], []).append(menu)
+    result = []
+    for name, group in list(groups.items())[:limit]:
+        best = group[0]
+        result.append({"name": name, "category": best["category"], "menu_count": len(group),
+                       "best": best, "members": [
+                           {"standard_menu_id": m["standard_menu_id"], "name": m["name"],
+                            "reasons": m["reasons"]} for m in group[:members]]})
+    return result

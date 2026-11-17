@@ -226,3 +226,13 @@ dialog h3 { font-size: 14px; margin-top: 20px; }
   .home-indicator { margin-bottom: max(7px, env(safe-area-inset-bottom)); }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+.family-back { margin: 0 0 14px; }
+.family-title { font-size: 17px; margin: 4px 0 2px; outline: none; }
+.family-note { margin-top: 12px; font-size: 10px; }
+.family-stores { background: var(--paper); border: 1px solid var(--line); border-radius: 15px; padding: 0 14px; }
+.family-stores li.family-store { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.family-stores li[hidden] { display: none; }
+.family-store-name { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.family-store-name span { color: var(--muted); }
+.small-link { flex: none; border: 0; background: #edf1e5; color: var(--green); font-size: 11px; font-weight: 700; padding: 8px 12px; border-radius: 10px; }
+.menu-comment { font-size: 12px; line-height: 1.6; color: var(--ink); margin-top: 10px; }

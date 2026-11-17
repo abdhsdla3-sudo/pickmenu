@@ -4,6 +4,7 @@ import argparse
 import hmac
 import json
 import os
+import re
 import sqlite3
 from collections.abc import Iterable
 from contextlib import closing
@@ -15,10 +16,12 @@ from urllib.parse import parse_qs, urlsplit
 
 import auth
 import menu_reco
+import menu_stores
 from raw import BASE, LOCAL
-from recommend import Profile, recommend
+from recommend import DISTRICTS, Profile, recommend
 
 CATALOG = LOCAL / "catalog.sqlite3"
+MENU_ID = re.compile(r"MN_[0-9a-f]{16}")
 SESSION_COOKIE = "pickmenu_session"
 INVALID = object()
 ASSETS = {
@@ -29,10 +32,14 @@ ASSETS = {
 }
 
 
+def catalog_path() -> Path:
+    configured = os.environ.get("PICKMENU_CATALOG_PATH")
+    return Path(configured).expanduser().resolve() if configured else CATALOG
+
+
 def catalog(path: Path | None = None) -> list[dict[str, Any]]:
     if path is None:
-        configured = os.environ.get("PICKMENU_CATALOG_PATH")
-        path = Path(configured).expanduser().resolve() if configured else CATALOG
+        path = catalog_path()
     with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as db:
         return [json.loads(value) for value, in db.execute("SELECT data FROM catalog ORDER BY id")]
 
@@ -231,7 +238,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.send_json(200, menu_reco.recommend(data, query))
             return
-        if path != "/api/recommend":
+        if path not in {"/api/recommend", "/api/recommend/stores"}:
             self.send_json(404, {"error": "페이지를 찾을 수 없어요."})
             return
         if not self.authorize_api():
@@ -242,6 +249,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if (menus := self.load()) is None:
             return
+        if path == "/api/recommend/stores":
+            self.menu_stores(payload, menus)
+            return
         try:
             profile = Profile.parse(payload, categories(menus))
         except ValueError as error:
@@ -249,7 +259,37 @@ class Handler(BaseHTTPRequestHandler):
             return
         result = recommend(menus, profile)
         result["items"] = [public_menu(menu) for menu in result["items"]]
+        result["families"] = [self.family(family, profile.district) for family in result["families"]]
         self.send_json(200, result)
+
+    def family(self, family: dict[str, Any], district: str) -> dict[str, Any]:
+        """대표 메뉴에 중복 없는 리뷰·매장 수를 붙인다. trace가 없으면 null로 둔다."""
+        ids = [member["standard_menu_id"] for member in family["members"]]
+        try:
+            evidence: dict[str, int] | None = menu_stores.evidence(catalog_path(), ids, district)
+        except sqlite3.Error as error:
+            self.log_error("대표 메뉴 집계 오류 %s", error)
+            evidence = None
+        return {**family, "best": public_menu(family["best"]), "evidence": evidence}
+
+    def menu_stores(self, payload: Any, menus: list[dict[str, Any]]) -> None:
+        """2단계: 고른 대표 메뉴의 실제 메뉴 이름과 판매 매장을 돌려준다."""
+        ids = payload.get("menu_ids") if isinstance(payload, dict) else None
+        district = payload.get("district", "") if isinstance(payload, dict) else None
+        if (not isinstance(ids, list) or not 0 < len(ids) <= 30 or district not in DISTRICTS
+                or not all(isinstance(mid, str) and MENU_ID.fullmatch(mid) for mid in ids)):
+            self.send_json(400, {"error": "메뉴와 지역을 확인해 주세요."})
+            return
+        by_id = {menu["standard_menu_id"]: menu for menu in menus}
+        selected = [by_id[mid] for mid in dict.fromkeys(ids) if mid in by_id]
+        if not selected:
+            self.send_json(404, {"error": "메뉴를 찾을 수 없어요."})
+            return
+        try:
+            self.send_json(200, menu_stores.stores(catalog_path(), selected, district))
+        except sqlite3.Error as error:
+            self.log_error("매장 집계 오류 %s", error)
+            self.send_json(503, {"error": "매장 자료를 열 수 없어요. 잠시 뒤 다시 시도해 주세요."})
 
     def do_PUT(self) -> None:
         self.profile_request()

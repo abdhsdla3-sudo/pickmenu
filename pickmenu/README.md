@@ -45,8 +45,9 @@ python -X utf8 -u prepare.py
 | 위치 | 역할 |
 | --- | --- |
 | `web/` | 반응형 화면, 브라우저 프로필 저장·수정·초기화, 추천과 상세 |
-| `server.py` | `GET /api/catalog`, `POST /api/recommend`, `GET /api/menus/{standard_menu_id}` |
-| `recommend.py` | 입력 검증, 제한 정책, 점수와 근거 문장 |
+| `server.py` | `GET /api/catalog`, `POST /api/recommend`, `POST /api/recommend/stores`, `GET /api/menus/{standard_menu_id}` |
+| `menu_stores.py` | 대표 메뉴의 리뷰·가게 수, 실제 메뉴별 판매 가게(`trace` + 참고자료 DB 가게 이름) |
+| `recommend.py` | 입력 검증, 제한 정책, 점수와 근거 문장, 대표 메뉴 묶기 |
 | `raw.py`, `drive_data.py`, `prepare.py` | 원본 감사, Drive 전수 검사, 카탈로그 생성 |
 | `local/catalog.sqlite3` | 추천용 `catalog`, 추적용 `trace`·`review` |
 | `local/*-audit.json` | 파일·시트별 행 수, 제외·실패·결측, 키 대조 결과 |
