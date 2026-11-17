@@ -342,6 +342,47 @@ def stores_for_foods(data: Data, foods: list[str], district: str = "", limit: in
             "store_count": len(ranked), "stores": [public_store(m, Query()) for m in ranked[:limit]]}
 
 
+TASTE_SHARE = 0.6
+_tastes: dict[str, Any] = {"data": None, "value": None}
+
+
+def _taste_label(counts: dict[str, float], first: str, second: str) -> str:
+    total = sum(counts.values())
+    for label in (first, second):
+        if total and counts.get(label, 0) / total >= TASTE_SHARE:
+            return label
+    return ""
+
+
+def food_tastes(data: Data) -> dict[str, tuple[str, str]]:
+    """음식 이름(세부음식, 없으면 상위음식)별 맵기(hot·mild)와 국물(yes·no).
+
+    가게 메뉴의 리뷰 수 가중 60% 이상이 같은 쪽일 때만 정하고, 섞여 있으면 빈 문자열로 둔다.
+    '일부 매운 옵션'·'애매'는 어느 쪽으로도 세지 않고 분모에만 넣는다.
+    """
+    with _lock:
+        if _tastes["data"] is data:
+            return _tastes["value"]
+    by_name: dict[str, dict[str, dict[str, float]]] = {}
+    for level in ("detail_food", "upper_food"):
+        counts: dict[str, dict[str, dict[str, float]]] = defaultdict(lambda: {"spice": {}, "soup": {}})
+        for menu in data.menus:
+            name = menu.get(level)
+            if not name or name in by_name or menu["spiciness"] == "명시 없음":
+                continue
+            weight = float(max(menu["review_count"] or 0, 1))
+            spice = "hot" if menu["spiciness"] in SPICY else "mild" if menu["spiciness"] == "안 매움" else "mixed"
+            soup = {"있음": "yes", "없음": "no"}.get(menu["broth"], "mixed")
+            for kind, value in (("spice", spice), ("soup", soup)):
+                counts[name][kind][value] = counts[name][kind].get(value, 0.0) + weight
+        by_name.update(counts)
+    tastes = {name: (_taste_label(c["spice"], "hot", "mild"), _taste_label(c["soup"], "yes", "no"))
+              for name, c in by_name.items()}
+    with _lock:
+        _tastes.update(data=data, value=tastes)
+    return tastes
+
+
 def public_groups(data: Data) -> list[dict[str, Any]]:
     return [{"name": g, "columns": sorted(data.group_columns.get(g, set()))} for g in data.visible_groups]
 

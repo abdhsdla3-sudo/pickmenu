@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sqlite3
+import time
 from collections.abc import Iterable
 from contextlib import closing
 from http.cookies import CookieError, SimpleCookie
@@ -18,7 +19,7 @@ import auth
 import menu_reco
 import menu_stores
 from raw import BASE, LOCAL
-from recommend import DISTRICTS, Profile, recommend
+from recommend import DISTRICTS, Profile, fill_tastes, recommend
 
 CATALOG = LOCAL / "catalog.sqlite3"
 MENU_ID = re.compile(r"MN_[0-9a-f]{16}")
@@ -42,6 +43,24 @@ def catalog(path: Path | None = None) -> list[dict[str, Any]]:
         path = catalog_path()
     with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as db:
         return [json.loads(value) for value, in db.execute("SELECT data FROM catalog ORDER BY id")]
+
+
+TASTE_RETRY_SECONDS = 60
+_taste_failed = {"at": float("-inf")}
+
+
+def reference_tastes() -> dict[str, tuple[str, str]] | None:
+    """가게 메뉴 자료의 음식별 맵기·국물. DB가 없으면 이름 규칙만 쓰도록 None을 돌려준다.
+
+    연결에 실패하면 1분 동안 다시 시도하지 않아 기존 추천이 연결 대기로 느려지지 않게 한다.
+    """
+    if time.monotonic() - _taste_failed["at"] < TASTE_RETRY_SECONDS:
+        return None
+    try:
+        return menu_reco.food_tastes(menu_reco.data())
+    except Exception:  # 드라이버 미설치·연결 실패에도 기존 추천은 동작해야 한다.
+        _taste_failed["at"] = time.monotonic()
+        return None
 
 
 def categories(menus: list[dict[str, Any]]) -> list[str]:
@@ -157,7 +176,7 @@ class Handler(BaseHTTPRequestHandler):
             menus = catalog()
             if not menus:
                 raise ValueError("빈 카탈로그")
-            return menus
+            return fill_tastes(menus, reference_tastes())
         except (OSError, sqlite3.Error, ValueError) as error:
             self.log_error("카탈로그 오류 %s", error)
             self.send_json(503, {"error": "추천 데이터를 열 수 없어요. 전처리를 완료한 뒤 다시 시도해 주세요."})

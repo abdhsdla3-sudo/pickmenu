@@ -15,7 +15,7 @@ from typing import Any
 
 from drive_data import DRIVE, NUTRIENTS, OFFICIAL, records, scan_drive
 from raw import FIELDS, LOCAL, key, ordered_menus, scan
-from recommend import compact
+from recommend import taste_tags
 
 CATALOG = LOCAL / "catalog.sqlite3"
 FULL = "01_수원시_전체리뷰.csv"
@@ -42,21 +42,6 @@ def number(value: str) -> float | None:
     except ValueError:
         return None
     return amount if math.isfinite(amount) and amount >= 0 else None
-
-
-def taste_tags(name: str, components: list[str], category: str) -> tuple[str, str]:
-    signal = compact(" ".join((name, *components)))
-    mild = re.search(r"안매운|맵지않|순한맛|간장맛", signal)
-    hot = re.search(r"매운|매콤|불닭|얼큰|핫스파이시|매운맛", signal)
-    spice = "mild" if mild else "hot" if hot else ""
-    soup = "yes" if (category in {"찌개·탕", "국밥·해장국"} or
-                     re.search(r"국밥|해장국|찌개|설렁탕|곰탕|갈비탕|우동|물냉면|짬뽕탕", signal)) else ""
-    if re.search(r"국물없|비빔|볶음우동|볶음짬뽕", signal):
-        soup = "no"
-    elif not soup and (category in {"피자", "치킨", "샐러드·건강식", "버거·샌드위치", "밥·덮밥"}
-                       or re.search(r"덮밥|볶음밥|김밥|주먹밥|돈까스|돈가스", signal)):
-        soup = "no"
-    return spice, soup
 
 
 def reference(row: dict[str, str], index: int, official: dict[str, dict[str, str]],
