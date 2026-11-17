@@ -6,6 +6,7 @@ import tempfile
 import threading
 import time
 import unittest
+from datetime import date
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
@@ -91,7 +92,7 @@ class AuthTest(unittest.TestCase):
         self.assertIsNone(auth.current(token)[1]["profile"])
 
     def test_signup_requires_basics_and_validates_ranges(self):
-        for field in ["nickname", "age", "height", "weight", "gender"]:
+        for field in ["age", "height", "weight", "gender"]:
             value = registration("basics")
             del value["profile"][field]
             with self.subTest(field=field), self.assertRaises(auth.AuthError):
@@ -107,6 +108,34 @@ class AuthTest(unittest.TestCase):
         _, account = auth.signup(value)
         self.assertEqual(account["profile"]["goal"], "balance")
         self.assertEqual(account["profile"]["allergy"], "땅콩, 우유")
+
+    def test_random_nickname_and_settings_preserve_other_fields(self):
+        value = registration("random_name")
+        del value["profile"]["nickname"]
+        value["profile"]["birth_date"] = "2000-11-19"
+        token, account = auth.signup(value)
+        self.assertTrue(account["profile"]["nickname"])
+        self.assertLessEqual(len(account["profile"]["nickname"]), 12)
+        user_id = auth.current(token)[0]
+        saved = auth.save_profile(user_id, {"nickname": "새닉네임"})
+        self.assertEqual(saved["nickname"], "새닉네임")
+        self.assertEqual(saved["birth_date"], "2000-11-19")
+        self.assertEqual(saved["height"], "170")
+        self.assertEqual(auth.login({"username": "random_name", "password": "password1"})[1]
+                         ["profile"]["nickname"], "새닉네임")
+        self.assertTrue(auth.save_profile(user_id, {"nickname": "  "})["nickname"])
+
+    def test_birth_date_calculates_age_at_birthday_and_rejects_invalid_dates(self):
+        today = date(2026, 11, 18)
+        self.assertEqual(auth.age_from_birth("2000-11-18", today), "26")
+        self.assertEqual(auth.age_from_birth("2000-11-19", today), "25")
+        self.assertEqual(auth.age_from_birth("2000-02-29", date(2025, 2, 28)), "24")
+        self.assertEqual(auth.age_from_birth("2000-02-29", date(2025, 3, 1)), "25")
+        for value in ["2000-02-30", "2027-01-01", "1800-01-01", "20001118"]:
+            with self.subTest(value=value), self.assertRaises(auth.AuthError):
+                auth.age_from_birth(value, today)
+        cleaned = auth.clean_profile({"birth_date": "2000-11-19", "age": "999"})
+        self.assertEqual(cleaned["age"], auth.age_from_birth("2000-11-19"))
 
     def test_plaintext_is_not_stored_and_ciphertext_is_bound_to_user(self):
         token, _ = auth.signup(registration("private_user"))

@@ -13,12 +13,12 @@ const chatInput = document.querySelector("#chat-input");
 const storageKey = "pickmenu.profile.v2";
 const legacyKey = "pickmenu.profile.v1";
 const preferenceFields = ["diet", "goal", "spice", "soup", "category", "exclude", "allergy"];
-const personalFields = ["nickname", "age", "height", "weight", "gender"];
+const personalFields = ["birth_date", "height", "weight", "gender"];
 const goalLabels = {balance: "균형 식사", protein: "단백질 중심", light: "가벼운 식사"};
 const dietLabels = {general: "일반식", vegetarian: "채식", vegan: "비건", meat: "육식 선호"};
 const labels = ["열량", "단백질", "탄수화물", "지방", "나트륨"];
 const units = ["kcal", "g", "g", "g", "mg"];
-const defaults = {nickname: "", age: "", height: "", weight: "", gender: "", diet: "general",
+const defaults = {nickname: "", age: "", birth_date: "", height: "", weight: "", gender: "", diet: "general",
   goal: "balance", spice: "", soup: "", category: "", exclude: "", allergy: ""};
 let profile = {...defaults};
 let hasProfile = false;
@@ -30,7 +30,7 @@ let activeRecommendation = null;
 let storageNotice = "";
 let categoryTouched = false;
 // 기본정보·취향은 서버에 암호화해 저장하며 브라우저 저장소에는 남기지 않는다.
-const serverFields = [...personalFields, ...preferenceFields];
+const serverFields = ["nickname", ...personalFields, ...preferenceFields];
 const authForm = document.querySelector("#auth-form");
 const authStatus = document.querySelector("#auth-status");
 let account = null;
@@ -72,7 +72,7 @@ function summary() {
 }
 
 function applyProfile() {
-  for (const key of [...personalFields, ...preferenceFields]) {
+  for (const key of ["nickname", ...personalFields, ...preferenceFields]) {
     const field = form.elements.namedItem(key);
     const value = profile[key];
     if (field instanceof RadioNodeList) {
@@ -83,6 +83,28 @@ function applyProfile() {
       field.value = value;
     }
   }
+  updateAgeLabels();
+}
+
+function updateAgeLabels() {
+  const parts = new Intl.DateTimeFormat("en", {timeZone: "Asia/Seoul", year: "numeric",
+    month: "2-digit", day: "2-digit"}).formatToParts(new Date());
+  const part = type => parts.find(value => value.type === type).value;
+  const today = `${part("year")}-${part("month")}-${part("day")}`;
+  for (const [id, label] of [["signup-birth-date", "signup-age"], ["profile-birth-date", "profile-age"]]) {
+    const input = document.getElementById(id);
+    input.max = today;
+    let message = "생년월일을 선택하면 만 나이를 계산해요.";
+    if (input.value) {
+      const age = Number(today.slice(0, 4)) - Number(input.value.slice(0, 4))
+        - Number(today.slice(5) < input.value.slice(5));
+      message = input.value <= today && age >= 0 && age <= 120 ? `만 ${age}세` : "생년월일을 확인해 주세요.";
+    }
+    document.getElementById(label).textContent = message;
+  }
+}
+for (const input of document.querySelectorAll("input[name=birth_date]")) {
+  input.addEventListener("input", updateAgeLabels);
 }
 
 function updateStep() {
@@ -111,6 +133,7 @@ function startOnboarding() {
 
 function openModes() {
   if (!account) return openAccount();
+  updateAccountUI();
   if (!personalFields.every(key => profile[key])) return startOnboarding();
   cancelRecommendation();
   document.querySelector("#greeting-name").textContent = profile.nickname || "메뉴고민러";
@@ -269,8 +292,10 @@ function serverPayload() {
 async function pushProfile() {
   if (!account) return;
   try {
-    await request("/api/profile", {method: "PUT", headers: {"Content-Type": "application/json"},
+    const data = await request("/api/profile", {method: "PUT", headers: {"Content-Type": "application/json"},
       body: JSON.stringify(serverPayload())});
+    if (adoptServerProfile(data.profile)) applyProfile();
+    updateAccountUI();
     syncNotice = "";
   } catch (error) {
     syncNotice = `서버 저장 실패: ${error.message} 현재 화면에만 유지돼요. 다시 저장해 주세요.`;
@@ -279,7 +304,7 @@ async function pushProfile() {
 
 function adoptServerProfile(saved) {
   if (!saved || typeof saved !== "object") return false;
-  for (const key of serverFields) {
+  for (const key of [...serverFields, "age"]) {
     if (typeof saved[key] === "string") {
       profile[key] = key === "gender" && saved[key] === "undisclosed" ? "other" : saved[key];
     }
@@ -291,8 +316,8 @@ function adoptServerProfile(saved) {
 
 function updateAccountUI() {
   const button = document.querySelector("#account-open");
-  button.textContent = account ? account.username : "로그인";
-  button.setAttribute("aria-label", account ? `${account.username} 계정 보기` : "로그인");
+  button.textContent = account ? profile.nickname || account.username : "로그인";
+  button.setAttribute("aria-label", account ? "계정 설정" : "로그인");
   for (const id of ["welcome-login", "welcome-signup", "signup-open"]) {
     document.getElementById(id).hidden = Boolean(account);
   }
@@ -314,7 +339,9 @@ function openAccount(mode = "login") {
     setAuthMode();
   }
   if (account) {
-    document.querySelector("#account-name").textContent = account.username;
+    document.querySelector("#account-name").textContent = profile.nickname || account.username;
+    document.querySelector("#account-settings").elements.namedItem("nickname").value = profile.nickname;
+    document.querySelector("#settings-status").textContent = "";
     document.querySelector("#account-sync").textContent = syncNotice
       || (hasProfile ? "내 식사 프로필이 계정에 저장되어 있어요." : "프로필을 만들면 계정에 자동으로 저장돼요.");
   }
@@ -409,6 +436,30 @@ document.querySelector("#welcome-login").addEventListener("click", openAccount);
 document.querySelector("#welcome-signup").addEventListener("click", () => openAccount("signup"));
 document.querySelector("#signup-open").addEventListener("click", () => openAccount("signup"));
 document.querySelector("#nav-account").addEventListener("click", openAccount);
+document.querySelector("#account-edit-profile").addEventListener("click", startOnboarding);
+document.querySelector("#account-settings").addEventListener("submit", async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector("button");
+  const feedback = document.querySelector("#settings-status");
+  if (!form.reportValidity()) return;
+  button.disabled = true;
+  feedback.textContent = "";
+  try {
+    const data = await request("/api/profile", {method: "PUT", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({nickname: form.elements.namedItem("nickname").value.trim()})});
+    adoptServerProfile(data.profile);
+    applyProfile();
+    updateAccountUI();
+    document.querySelector("#account-name").textContent = profile.nickname;
+    form.elements.namedItem("nickname").value = profile.nickname;
+    feedback.textContent = "닉네임을 변경했어요.";
+  } catch (error) {
+    feedback.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
 document.querySelector("#account-back").addEventListener("click", () => {
   if (accountReturn === "onboarding") startOnboarding();
   else if (accountReturn === "welcome" || !hasProfile) showScreen("welcome");
@@ -453,7 +504,7 @@ form.addEventListener("submit", async event => {
     return;
   }
   const values = Object.fromEntries(new FormData(form));
-  for (const key of personalFields) values[key] = values[key].trim();
+  for (const key of ["nickname", ...personalFields]) values[key] = values[key].trim();
   for (const key of ["allergy", "exclude"]) {
     if (values[key].trim() && !/[^,;/\s]/u.test(values[key])) {
       profileStatus.textContent = "알레르기와 기피 재료의 이름을 입력해 주세요.";
@@ -484,7 +535,7 @@ document.querySelector("#step-back").addEventListener("click", () => {
 });
 document.querySelector("#skip-body").addEventListener("click", async () => {
   if (step === 0) return;
-  for (const key of personalFields) profile[key] = form.elements.namedItem(key).value.trim();
+  for (const key of ["nickname", ...personalFields]) profile[key] = form.elements.namedItem(key).value.trim();
   hasProfile = true;
   await pushProfile();
   openModes();
@@ -675,6 +726,7 @@ document.querySelector("#chat-form").addEventListener("submit", event => {
 });
 
 async function initialize() {
+  updateAgeLabels();
   persistLocal();
   try {
     // 로그인 세션이 있으면 계정에 저장된 취향을 우선 적용한다.

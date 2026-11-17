@@ -11,9 +11,11 @@ import sqlite3
 import threading
 import time
 from contextlib import closing
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import account_crypto as privacy
 from raw import LOCAL
@@ -26,7 +28,7 @@ PASSWORD_MIN, PASSWORD_MAX = 8, 64
 # 기본정보와 선택 취향은 암호화해 계정에 저장한다.
 PROFILE_FIELDS = {"nickname": 12, "diet": 20, "goal": 20, "spice": 10, "soup": 10,
                   "category": 40, "exclude": 100, "allergy": 100,
-                  "age": 3, "height": 5, "weight": 5, "gender": 12}
+                  "age": 3, "birth_date": 10, "height": 5, "weight": 5, "gender": 12}
 LOCK_FAILURES, LOCK_SECONDS = 5, 5 * 60
 SCRYPT = {"n": 2 ** 14, "r": 8, "p": 1}
 
@@ -124,6 +126,26 @@ def credentials(payload: Any) -> tuple[str, str]:
     return username.strip().lower(), password
 
 
+def random_nickname() -> str:
+    return (secrets.choice(("든든한", "즐거운", "따뜻한", "행복한", "산뜻한"))
+            + secrets.choice(("두부", "주먹밥", "고구마", "김밥", "감자"))
+            + f"{secrets.randbelow(10000):04d}")
+
+
+def age_from_birth(birth: str, today: date | None = None) -> str:
+    try:
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", birth):
+            raise ValueError
+        born = date.fromisoformat(birth)
+    except ValueError:
+        raise AuthError("생년월일을 올바르게 선택해 주세요.") from None
+    today = today or datetime.now(ZoneInfo("Asia/Seoul")).date()
+    years = today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+    if born > today or not 0 <= years <= 120:
+        raise AuthError("생년월일의 입력 범위를 확인해 주세요.")
+    return str(years)
+
+
 def clean_profile(value: Any) -> dict[str, str]:
     if not isinstance(value, dict):
         raise AuthError("프로필 형식을 확인해 주세요.")
@@ -133,7 +155,10 @@ def clean_profile(value: Any) -> dict[str, str]:
         if not isinstance(item, str) or len(item) > limit:
             raise AuthError("프로필 값의 형식 또는 길이를 확인해 주세요.")
         profile[key] = item.strip()
-    for key, minimum, maximum in [("age", 1, 120), ("height", 50, 250), ("weight", 10, 350)]:
+    profile["nickname"] = profile["nickname"] or random_nickname()
+    if profile["birth_date"]:
+        profile["age"] = age_from_birth(profile["birth_date"])
+    for key, minimum, maximum in [("age", 0, 120), ("height", 50, 250), ("weight", 10, 350)]:
         if not profile[key]:
             continue
         try:
@@ -170,7 +195,10 @@ def _token_hash(token: str) -> str:
 
 
 def _account(owner: str, masked: str, profile: str | None) -> dict[str, Any]:
-    return {"user": {"username": masked}, "profile": privacy.decrypt(profile, owner, users_path())}
+    saved = privacy.decrypt(profile, owner, users_path())
+    if saved and saved.get("birth_date"):
+        saved["age"] = age_from_birth(saved["birth_date"])
+    return {"user": {"username": masked}, "profile": saved}
 
 
 def signup(payload: Any) -> tuple[str, dict[str, Any]]:
@@ -180,8 +208,8 @@ def signup(payload: Any) -> tuple[str, dict[str, Any]]:
     if not PASSWORD_MIN <= len(password) <= PASSWORD_MAX:
         raise AuthError(f"비밀번호는 {PASSWORD_MIN}~{PASSWORD_MAX}자로 정해 주세요.")
     profile = clean_profile(payload.get("profile"))
-    if any(not profile[key] for key in ("nickname", "age", "height", "weight", "gender")):
-        raise AuthError("닉네임·나이·키·몸무게·성별을 입력해 주세요.")
+    if any(not profile[key] for key in ("age", "height", "weight", "gender")):
+        raise AuthError("생년월일·키·몸무게·성별을 입력해 주세요.")
     password_hash = hash_password(password)
     with closing(connect()) as db, db:
         owner = privacy.lookup(username, users_path())

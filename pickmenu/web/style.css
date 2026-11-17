@@ -77,7 +77,7 @@ input, select { font-size: 16px; }
 .field input::placeholder { color: #9ba38e; font-size: 12px; }
 .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
 .field-grid .field:first-child { grid-column: 1 / -1; }
-.signup-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.signup-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .signup-grid input { min-width: 0; padding: 12px 8px; }
 .gender-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .gender-option { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; min-height: 82px; padding: 12px 8px; border: 1px solid #dfe4d5; border-radius: 12px; background: #fffef9; cursor: pointer; font-size: 12px; font-weight: 650; }
