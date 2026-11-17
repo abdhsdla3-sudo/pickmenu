@@ -333,6 +333,8 @@ function openAccount(mode = "login") {
   if (current && current !== "account") accountReturn = current;
   document.querySelector("#account-guest").hidden = Boolean(account);
   document.querySelector("#account-member").hidden = !account;
+  document.querySelector('[data-screen="account"]').setAttribute("aria-labelledby",
+    account ? "account-member-title" : "account-title");
   if (!account) {
     authForm.elements.namedItem("mode").value = mode === "signup" ? "signup" : "login";
     authForm.elements.namedItem("password").value = "";
