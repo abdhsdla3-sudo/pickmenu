@@ -7,6 +7,7 @@
 | `pickmenu/web/` | 화면 원본. Codex로 수정하고 Sites 배포본에서 재사용 |
 | `pickmenu/server.py`, `pickmenu/recommend.py` | 메뉴 API와 추천 로직 |
 | `pickmenu/auth.py` | 회원가입·로그인 세션과 계정 프로필 저장 |
+| `pickmenu/menu_reco.py` | 추천 기준표 v1.3 음식·가게 추천(`/api/v2`, PostgreSQL 참고자료) |
 | `pickmenu/prepare.py` | 리뷰와 영양 데이터 전처리 |
 | `pickmenu-share/` | Sites Worker, 메뉴 API 연결, 공개용 카탈로그 내보내기 |
 | `docs/` | 클라우드 이전, 기기 간 개발, LLM 연결, 버전 관리 |
@@ -18,6 +19,7 @@
 - [모바일 앱형 데모 흐름](docs/mobile-demo.md)
 - [회원 계정과 로그인](docs/accounts.md)
 - [가입 기본정보·암호화·마스킹](docs/account-privacy.md)
+- [가게까지 추천 (추천 기준표 v1.3)](docs/menu-recommend.md)
 - [2026-11-14 자료 수정 반영과 재실행](docs/data-update-20261114.md)
 - [데이터와 추천 기준](pickmenu/DATA.md)
 

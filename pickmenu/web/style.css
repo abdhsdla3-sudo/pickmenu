@@ -134,6 +134,28 @@ legend { font-size: 12px; font-weight: 650; margin-bottom: 10px; }
 .mini-conversation i:first-child { align-self: flex-end; background: #d8e3c5; color: #5e744b; }
 .mini-picks { display: flex; gap: 5px; margin-top: 17px; }
 .mini-picks i { font-style: normal; font-size: 9px; border: 1px solid #dfcbb5; color: #8a6949; border-radius: 7px; padding: 5px 8px; }
+.detail-stores { background: #f3f6eb; border-radius: 14px; padding: 4px 14px 12px; margin: 14px 0; }
+.detail-stores h3 { margin-top: 12px; }
+.store-mode { background: #e6ece9; margin-top: 13px; }
+.store-mode .mode-icon { color: #4f7268; }
+.store-mode small, .store-mode .mode-text > span { color: #4f7268; }
+.legend-note { font-weight: 400; color: var(--muted); font-size: 10px; margin-left: 4px; }
+#pick-form .pill input[type=checkbox]:checked + span { border-color: #819568; background: #edf2e5; color: #53654a; font-weight: 700; }
+.pick-card .card-head { align-items: center; }
+.tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.tag { font-size: 9px; border-radius: 6px; padding: 3px 7px; background: #eef1e7; color: #6c7f55; }
+.tag.warn { background: #f5eddf; color: #94704e; }
+.score-line { font-size: 10px; color: #7e896e; margin-top: 8px; line-height: 1.8; }
+.store-list { list-style: none; margin: 12px 0 0; padding: 0; border-top: 1px solid var(--line); }
+.store-list li { padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 11px; }
+.store-list li:last-child { border-bottom: 0; }
+.store-name { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; font-size: 12px; }
+.store-name .star { color: var(--rust); white-space: nowrap; }
+.store-meta { color: #7e896e; font-size: 10px; line-height: 1.8; margin-top: 2px; }
+.more-stores { border: 0; background: transparent; color: var(--green); font-size: 11px; font-weight: 700; padding: 8px 0 0; }
+.expand-box { border: 1px dashed #c9b48f; background: #fbf6ec; border-radius: 15px; padding: 14px; margin-top: 16px; font-size: 11px; color: #7a6243; }
+.expand-box ul { margin: 8px 0 10px; padding-left: 16px; line-height: 1.8; }
+.expand-box button { width: 100%; border: 0; border-radius: 11px; background: #a77b45; color: white; padding: 10px; font-size: 12px; font-weight: 700; }
 .profile-peek { margin-top: 23px; padding: 15px 0; border-top: 1px solid var(--line); font-size: 11px; }
 .profile-peek > span { font-weight: 700; }
 .profile-peek p { color: #7f896f; font-size: 10px; margin: 5px 0; }
