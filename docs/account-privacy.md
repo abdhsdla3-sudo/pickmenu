@@ -1,0 +1,43 @@
+# 가입 기본정보와 계정 DB 보호 (1.0.1)
+
+## 입력과 저장
+
+회원가입에 아이디·비밀번호·비밀번호 확인과 닉네임·나이·키·몸무게·성별을 입력한다. 1.0.1부터 성별은 남성(♂)·여성(♀)·그 외 버튼으로 선택한다. 예전 응답하지 않음 값은 화면에서 그 외로 표시하며 기존 저장값도 허용한다. 식사 선호·주의사항은 선택 입력이며 알레르기·기피 식재료도 여기에서 입력한다. 생략해도 일반식·균형 식사 기본값으로 가입할 수 있다. 실명·전화번호·이메일·생년월일은 수집하지 않는다. 나이·키·몸무게·성별을 현재 메뉴 추천 점수에 사용하지 않는다.
+
+`POST /api/auth/signup`은 `profile` 객체에 닉네임·나이·키·몸무게·성별을 요구한다. 예전 아이디·비밀번호만 보내는 가입 호출은 수정해야 하므로 계약 버전을 1.0.0으로 올렸다. 로그인 요청의 아이디·비밀번호는 동일하고, 로그인 응답의 `user.username`은 마스킹 표시값이다. 본인 프로필은 인증된 세션에서만 복호화해 돌려준다.
+
+| 저장 항목 | 방식 |
+| --- | --- |
+| 비밀번호 | 기존 scrypt·개별 난수 salt. 평문·복호화 가능한 비밀번호 저장 없음 |
+| 아이디 | 정규화한 아이디의 HMAC-SHA256 검색값. 원문 대신 마스킹 표시값 별도 저장 |
+| 닉네임·나이·키·몸무게·성별·취향 | `users.profile`에 Fernet 인증 암호화. 계정 검색값도 암호문 내부에서 검증해 다른 회원의 암호문 교체를 거부 |
+| 운영 조회 | `account_overview` 뷰에 마스킹 아이디·닉네임·생성 시각·프로필 존재 여부만 표시 |
+| 세션 | 기존 SHA-256 토큰 해시·만료 시각 유지 |
+| 브라우저 | 로그인 중 메모리에 표시. 기본정보·취향을 localStorage에 새로 저장하지 않고 이전 캐시 삭제 |
+
+`account_crypto.py`가 [cryptography의 Fernet](https://cryptography.io/en/latest/fernet/)을 사용한다. 런타임 의존성은 `requirements-runtime.txt`에 고정했다. 마스킹만으로 원본을 보호한다고 간주하지 않는다.
+
+## 키와 권한
+
+Ubuntu 서비스의 `PICKMENU_ACCOUNT_KEY_PATH`는 `/home/ubuntu/.config/pickmenu/account-keys.json`이다. 키 파일은 계정 DB·공용 폴더·Git과 분리하고 600 권한을 사용한다. 환경변수에는 키 값이 아닌 파일 경로만 넣는다. 개발 기본값은 회원 DB 옆의 `.key` 파일이며 Git 무시 대상이다. 암호화된 회원이 있는데 키가 없거나 암호문이 변조되면 새 키로 덮지 않고 요청을 실패시킨다.
+
+키가 유출되면 프로필을 복호화할 수 있고, 키를 잃으면 복구할 수 없다. 별도 개인 백업 경로에 키 복구본을 유지한다. 키·인증 파일·암호화 전 DB를 팀 공유 폴더나 Git에 복사하지 않는다. 키 교체는 새 키 적용 전에 기존 암호문과 백업의 복호화·재암호화 계획이 필요하며 자동으로 하지 않는다.
+
+현재 `rkdeh`는 참고 PostgreSQL DB의 SELECT 권한만 가지고, 회원 SQLite 파일·키는 `ubuntu` 소유자 전용이다. 다만 OS의 sudo 권한자는 이 제한을 우회할 수 있다. DB 파일만 복사된 상황을 보호하는 조치이며, 서버 관리자 권한이 탈취된 상황까지 차단하는 구조는 아니다. 운영 전환 시에는 관리자 권한 분리와 별도 키 관리가 필요하다.
+
+## 기존 계정 이전과 복구
+
+Ubuntu에서 웹 서비스를 중지하고 해당 서비스의 회원 DB·키 경로를 명시한 상태로 실행한다. 먼저 런타임 의존성을 설치한다.
+
+```sh
+python -m pip install -r requirements-runtime.txt
+PICKMENU_USERS_PATH=/home/ubuntu/.local/share/pickmenu/users.sqlite3 \
+PICKMENU_ACCOUNT_KEY_PATH=/home/ubuntu/.config/pickmenu/account-keys.json \
+python migrate_accounts.py \
+  --backup-dir /home/ubuntu/.local/share/pickmenu/backups \
+  --key-backup-dir /home/ubuntu/.config/pickmenu/backups
+```
+
+SQLite backup API로 일관된 복구본을 메모리에 만든 뒤 DB 복구본 자체도 암호화해 저장한다. 기존 회원 ID·scrypt 해시·세션을 유지하며 평문 아이디·프로필만 변환한다. secure_delete와 VACUUM 후 DB 무결성을 검사한다. 기존 회원은 로그인 후 누락된 기본정보를 보완한다.
+
+롤백할 때는 서비스를 중지하고, 복구본을 만든 당시 키의 encryption 값으로 `.sqlite.fernet` 파일을 복호화해 격리된 비공개 경로에서 검증한 후 DB를 복원한다. 그 뒤 해당 복구본과 호환되는 코드·키·설정을 함께 되돌린다. 코드만 예전 버전으로 바꾸면 새 회원 DB를 읽을 수 없다. 백업을 평문으로 외부 전송하지 않는다.

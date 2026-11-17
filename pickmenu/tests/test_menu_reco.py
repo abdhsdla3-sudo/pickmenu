@@ -79,6 +79,12 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(mild["unavailable"], ["떡볶이"])
         city = recommend(data, Query(groups=("분식",), mild=True))
         self.assertEqual(city["unavailable"], [])
+        stores = menu_reco.stores_for_foods(data, ["김밥", "없는음식"], "권선구")
+        self.assertEqual((stores["store_count"], stores["citywide"]), (4, False))
+        self.assertEqual(stores["stores"][0]["store_id"], "B3")
+        far = menu_reco.stores_for_foods(data, ["떡볶이"], "팔달구")
+        self.assertEqual((far["citywide"], far["store_count"]), (True, 3))
+        self.assertEqual(menu_reco.stores_for_foods(data, ["부대찌개"])["stores"], [])
         broth = recommend(data, Query(broth="yes"))
         self.assertEqual([i["column"] for i in broth["items"]], ["국밥"])
 
@@ -121,6 +127,16 @@ class ApiTest(unittest.TestCase):
                     self.assertIn("store_repeat_ratio", result["items"][0]["stores"][0])
                     self.assertNotIn("rating", result["items"][0]["stores"][0])
                     self.assertEqual(call("POST", "/api/v2/recommend", {"diet": "vegan"})[0], 400)
+                    status, found = call("GET", "/api/v2/stores?food=%EA%B9%80%EB%B0%A5&district=%EA%B6%8C%EC%84%A0%EA%B5%AC")
+                    self.assertEqual((status, found["store_count"]), (200, 4))
+                    self.assertEqual(call("GET", "/api/v2/stores")[0], 400)
+                    self.assertEqual(call("GET", "/api/v2/stores?food=x&district=seoul")[0], 400)
+                    import tempfile
+
+                    with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {
+                            "PICKMENU_REQUIRE_LOGIN": "1", "PICKMENU_USERS_PATH": os.path.join(temp, "users.sqlite3")}):
+                        self.assertEqual(call("GET", "/api/v2/stores?food=x")[0], 401)
+                        self.assertEqual(call("POST", "/api/v2/recommend", {})[0], 401)
 
                 def broken():
                     raise OSError("no db")

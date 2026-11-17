@@ -323,6 +323,23 @@ def expansion(data: Data, query: Query, rows: dict[str, dict[str, Any]], items: 
     return result
 
 
+def stores_for_foods(data: Data, foods: list[str], district: str = "", limit: int = 10) -> dict[str, Any]:
+    """기존 카탈로그 메뉴의 구성 음식 이름으로 가게를 찾는다.
+
+    두 자료 사이에 검증된 ID 변환표가 없어서 세부음식(없으면 상위음식) 이름이 정확히 같을 때만
+    연결한다. 비슷한 이름을 추측해 붙이지 않는다. 가게 순서는 ② 컬럼 안 가게 순위 규칙을 따른다.
+    """
+    wanted = {f.strip() for f in foods if f.strip()}
+    matched = [m for m in data.menus if m["detail_food"] in wanted]
+    if not matched:
+        matched = [m for m in data.menus if m.get("upper_food") in wanted]
+    local = [m for m in matched if not district or m["district"] == district]
+    citywide = bool(district) and not local and bool(matched)
+    ranked = store_ranking(matched if citywide else local, Query(district=district))
+    return {"foods": sorted(wanted), "district": district, "citywide": citywide,
+            "store_count": len(ranked), "stores": [public_store(m, Query()) for m in ranked[:limit]]}
+
+
 def public_groups(data: Data) -> list[dict[str, Any]]:
     return [{"name": g, "columns": sorted(data.group_columns.get(g, set()))} for g in data.visible_groups]
 
@@ -346,7 +363,7 @@ def load_from_db(conninfo: str | None = None) -> Data:
         db.read_only = True
         batch = db.execute("SELECT batch_id FROM pickmenu_data.active_dataset LIMIT 1").fetchone()
         menus = db.execute("""
-            SELECT integrated_store_id, store_name, district, column_name, detail_food, display_name,
+            SELECT integrated_store_id, store_name, district, column_name, upper_food, detail_food, display_name,
                    rating_display, rating, review_count, few_reviews, disappointing_reviews,
                    store_repeat_ratio, recommendation_score, spiciness, broth, balance_score,
                    protein_score, rice_included, portion_g

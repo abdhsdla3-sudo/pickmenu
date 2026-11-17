@@ -7,6 +7,8 @@ node_modules/
 .env.*
 *.sqlite*
 *.db
+*.key
+*.fernet
 *.csv
 *.xlsx
 *.zip

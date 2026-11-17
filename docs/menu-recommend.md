@@ -1,6 +1,6 @@
 # 가게까지 추천 (추천 기준표 v1.3)
 
-0.6.0부터 앱의 세 번째 추천 방식 **가게까지 추천받기**가 PostgreSQL `pickmenu_data`의 추천 v1.3 자료로 음식(컬럼) 5개 안팎과 음식별 가게 순위를 보여 준다. 기준은 DB `source_files`의 `추천기준표.md`와 웹 전달 README를 따른다. 기존 선택지형·대화형 추천(`/api/recommend`, SQLite 카탈로그)은 그대로다.
+1.1.0부터 앱의 세 번째 추천 방식 **가게까지 추천받기**가 PostgreSQL `pickmenu_data`의 추천 v1.3 자료로 음식(컬럼) 5개 안팎과 음식별 가게 순위를 보여 준다. 기준은 DB `source_files`의 `추천기준표.md`와 웹 전달 README를 따른다. 기존 선택지형·대화형 추천(`/api/recommend`, SQLite 카탈로그)은 그대로다.
 
 ## 구성
 
@@ -13,7 +13,8 @@
 
 ## 실행 설정
 
-- 서버 가상환경에 `pip install -r pickmenu/requirements-server.txt`로 `psycopg`를 설치한다.
+- 서버 가상환경에 `pip install -r pickmenu/requirements-runtime.txt`로 `psycopg`를 설치한다.
+- `PICKMENU_REQUIRE_LOGIN=1`이면 `/api/v2` 경로도 로그인 세션을 요구한다.
 - `PICKMENU_REFERENCE_DSN`에 접속 정보를 둔다. 없으면 `service=pickmenu`(서버 실행 계정의 `~/.pg_service.conf`와 `~/.pgpass`)를 쓴다. 읽기 권한만 있으면 된다.
 - DB에 연결할 수 없으면 두 경로가 503을 반환하고, 화면의 다른 추천 방식은 계속 동작한다. 활성 배치는 5분마다 다시 읽는다.
 
@@ -31,6 +32,10 @@
 | `broth` | `yes`는 국물 있음만, `no`는 국물 있음 제외 |
 
 응답의 `items`는 음식 카드다. 칸: `column`, `grade`(`full`·`weak`), `store_count`, `review_count`, `nutrition_score`, `rating_level`, `column_score`, `notes`(약함·선호 밖·목표 점수 낮음), `stores`(가게당 대표 메뉴 1개, 최대 10곳). 가게에는 `rating_display`, `review_count`, `disappointing_reviews`, `store_repeat_ratio`를 주고 계산용 `rating`은 주지 않는다. `expand`, `expand_reason`, `expand_hints`, `unavailable`은 넓히기 안내다.
+
+## 메뉴 상세의 가게 목록
+
+선택지형·대화형 추천에서 `이 메뉴 선택`을 누르면 상세 창에 `이 메뉴를 파는 가게`를 보여 준다. `GET /api/v2/stores?food=<구성 음식>&district=<구>`가 기존 카탈로그 메뉴의 `components`와 `current_menu_scores.detail_food`(일치가 없으면 `upper_food`)가 **정확히 같은** 메뉴만 모아 가게 순위 규칙으로 정렬한다. 검증된 `standard_menu_id` 변환표가 없어 비슷한 이름은 연결하지 않는다. 2026-11-18 공개 데모 메뉴의 구성 음식 167개 중 151개가 일치했고, 부대찌개·순두부찌개 등 16개는 가게 리뷰 자료가 없다고 표시한다. 고른 구에 가게가 없으면 수원 전체 기준임을 밝혀 보여 준다.
 
 ## 규칙 요약
 

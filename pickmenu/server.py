@@ -11,7 +11,7 @@ from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import auth
 import menu_reco
@@ -156,6 +156,18 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(503, {"error": "추천 데이터를 열 수 없어요. 전처리를 완료한 뒤 다시 시도해 주세요."})
             return None
 
+    def require_session(self) -> bool:
+        if os.environ.get("PICKMENU_REQUIRE_LOGIN") != "1":
+            return True
+        try:
+            if auth.current(self.session_token()) is not None:
+                return True
+        except sqlite3.Error:
+            self.send_json(503, {"error": "로그인 상태를 확인할 수 없어요. 잠시 뒤 다시 시도해 주세요."})
+            return False
+        self.send_json(401, {"error": "로그인하고 메뉴를 추천받아 주세요."})
+        return False
+
     def do_GET(self) -> None:
         path = urlsplit(self.path).path
         if path.startswith("/api/") and not self.authorize_api():
@@ -165,7 +177,19 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(200, content_type, (BASE / "web" / filename).read_bytes())
         elif path == "/api/auth/me":
             self.handle_auth(path)
+        elif path == "/api/v2/stores":
+            if not self.require_session():
+                return
+            params = parse_qs(urlsplit(self.path).query)
+            foods = [f for f in params.get("food", []) if f.strip()][:5]
+            district = (params.get("district") or [""])[0]
+            if not foods or any(len(f) > 40 for f in foods) or district not in ("", *menu_reco.DISTRICTS):
+                self.send_json(400, {"error": "가게를 찾을 메뉴 이름과 지역을 확인해 주세요."})
+            elif (data := self.reference()) is not None:
+                self.send_json(200, menu_reco.stores_for_foods(data, foods, district))
         elif path == "/api/v2/options":
+            if not self.require_session():
+                return
             if (data := self.reference()) is not None:
                 self.send_json(200, {"districts": list(menu_reco.DISTRICTS),
                                      "groups": menu_reco.public_groups(data), "batch_id": data.batch_id})
@@ -174,6 +198,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, {"categories": categories(menus), "menu_count": len(menus),
                                      "period": "2026년 7~9월"})
         elif path.startswith("/api/menus/"):
+            if not self.require_session():
+                return
             if (menus := self.load()) is not None:
                 mid = path.removeprefix("/api/menus/")
                 selected = next((menu for menu in menus if menu["standard_menu_id"] == mid), None)
@@ -191,7 +217,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.handle_auth(path)
             return
         if path == "/api/v2/recommend":
-            if not self.authorize_api() or (payload := self.read_json()) is INVALID:
+            if not self.authorize_api() or not self.require_session():
+                return
+            if (payload := self.read_json()) is INVALID:
                 return
             if (data := self.reference()) is None:
                 return
@@ -207,6 +235,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(404, {"error": "페이지를 찾을 수 없어요."})
             return
         if not self.authorize_api():
+            return
+        if not self.require_session():
             return
         if (payload := self.read_json()) is INVALID:
             return
