@@ -1,5 +1,11 @@
 # 변경 이력
 
+## 0.5.0 (2026-11-17)
+
+- 추천 v1.3 CSV 5개·설명 MD 2개·지도 조사 XLSX를 PostgreSQL `pickmenu_data`에 적재하는 `import_reference.py`를 추가했다. 원본·해시·배치를 보존하며 같은 자료를 재실행해도 중복 적재하지 않는다.
+- 메뉴 점수·음식 컬럼·영양·선호·검증 예시·매장 조사·근거·API 점검을 역할별로 구분하고 현재 배치 조회 뷰를 제공한다. 누락 영양과 좌표는 NULL로 유지하며 원본 매장 ID와 통합 ID를 임의 병합하지 않는다.
+- PostgreSQL DB 적재와 기존 추천 API의 전환을 분리했다. 실행 중인 SQLite 회원 DB와 추천 카탈로그는 유지한다. pgAdmin 조회와 재적재 방법은 `docs/reference-database.md`에 기록했다.
+
 ## 0.4.0 (2026-11-17)
 
 - 아이디·비밀번호 회원가입, 로그인, 로그아웃을 추가했다. 계정은 `auth.py`가 SQLite(`PICKMENU_USERS_PATH`, 기본 `pickmenu/local/users.sqlite3`)에 저장하며 비밀번호는 scrypt 해시로만 보관한다.
