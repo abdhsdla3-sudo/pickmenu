@@ -5,16 +5,21 @@ import hmac
 import json
 import os
 import sqlite3
+from collections.abc import Iterable
 from contextlib import closing
+from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+import auth
 from raw import BASE, LOCAL
 from recommend import Profile, recommend
 
 CATALOG = LOCAL / "catalog.sqlite3"
+SESSION_COOKIE = "pickmenu_session"
+INVALID = object()
 ASSETS = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/style.css": ("style.css", "text/css; charset=utf-8"),
@@ -39,9 +44,21 @@ def public_menu(menu: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in menu.items() if key not in {"regions", "mapping_note"}}
 
 
+def session_cookie(token: str | None) -> str:
+    """로그인 세션 쿠키. 토큰이 없으면 쿠키를 지운다."""
+    parts = [f"{SESSION_COOKIE}={token or ''}", "Path=/", "HttpOnly", "SameSite=Lax",
+             f"Max-Age={auth.SESSION_SECONDS if token else 0}"]
+    if os.environ.get("PICKMENU_COOKIE_SECURE") == "1":
+        parts.append("Secure")
+    return "; ".join(parts)
+
+
 class Handler(BaseHTTPRequestHandler):
-    def reply(self, status: int, kind: str, body: bytes) -> None:
+    def reply(self, status: int, kind: str, body: bytes,
+              headers: Iterable[tuple[str, str]] = ()) -> None:
         self.send_response(status)
+        for name, value in headers:
+            self.send_header(name, value)
         self.send_header("Content-Type", kind)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
@@ -50,9 +67,63 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def send_json(self, status: int, value: Any) -> None:
+    def send_json(self, status: int, value: Any,
+                  headers: Iterable[tuple[str, str]] = ()) -> None:
         self.reply(status, "application/json; charset=utf-8",
-                   json.dumps(value, ensure_ascii=False).encode("utf-8"))
+                   json.dumps(value, ensure_ascii=False).encode("utf-8"), headers)
+
+    def read_json(self) -> Any:
+        """JSON 본문을 읽는다. 실패하면 오류 응답을 보내고 INVALID를 돌려준다."""
+        if self.headers.get_content_type() != "application/json":
+            self.send_json(415, {"error": "입력 형식을 확인해 주세요."})
+            return INVALID
+        try:
+            size = int(self.headers.get("Content-Length", "0"))
+            if not 0 < size <= 4096:
+                raise ValueError
+            return json.loads(self.rfile.read(size).decode("utf-8"))
+        except ValueError:
+            self.send_json(400, {"error": "입력 형식 또는 길이를 확인해 주세요."})
+            return INVALID
+
+    def session_token(self) -> str | None:
+        try:
+            cookie = SimpleCookie(self.headers.get("Cookie", ""))
+        except CookieError:
+            return None
+        morsel = cookie.get(SESSION_COOKIE)
+        return morsel.value if morsel and morsel.value else None
+
+    def handle_auth(self, path: str) -> None:
+        """회원가입, 로그인, 로그아웃과 서버 저장 프로필 요청을 처리한다."""
+        try:
+            if path in {"/api/auth/signup", "/api/auth/login"}:
+                if (payload := self.read_json()) is INVALID:
+                    return
+                action = auth.signup if path.endswith("signup") else auth.login
+                token, account = action(payload)
+                self.send_json(201 if path.endswith("signup") else 200, account,
+                               [("Set-Cookie", session_cookie(token))])
+            elif path == "/api/auth/logout":
+                auth.logout(self.session_token())
+                self.send_json(200, {"user": None}, [("Set-Cookie", session_cookie(None))])
+            elif path == "/api/auth/me":
+                found = auth.current(self.session_token())
+                self.send_json(200, found[1] if found else {"user": None, "profile": None})
+            elif path == "/api/profile":
+                if (found := auth.current(self.session_token())) is None:
+                    self.send_json(401, {"error": "로그인이 필요해요."})
+                    return
+                if self.command == "DELETE":
+                    payload = None
+                elif (payload := self.read_json()) is INVALID:
+                    return
+                self.send_json(200, {"profile": auth.save_profile(found[0], payload)})
+        except auth.AuthError as error:
+            self.send_json(error.status, {"error": str(error)})
+        except sqlite3.Error as error:
+            self.log_error("회원 DB 오류 %s", error)
+            self.send_json(503, {"error": "계정 정보를 처리할 수 없어요. 잠시 뒤 다시 시도해 주세요."})
 
     def authorize_api(self) -> bool:
         token = os.environ.get("PICKMENU_API_TOKEN")
@@ -82,6 +153,8 @@ class Handler(BaseHTTPRequestHandler):
         if path in ASSETS:
             filename, content_type = ASSETS[path]
             self.reply(200, content_type, (BASE / "web" / filename).read_bytes())
+        elif path == "/api/auth/me":
+            self.handle_auth(path)
         elif path == "/api/catalog":
             if (menus := self.load()) is not None:
                 self.send_json(200, {"categories": categories(menus), "menu_count": len(menus),
@@ -98,21 +171,17 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(404, {"error": "페이지를 찾을 수 없어요."})
 
     def do_POST(self) -> None:
-        if self.path != "/api/recommend":
+        path = urlsplit(self.path).path
+        if path in {"/api/auth/signup", "/api/auth/login", "/api/auth/logout"}:
+            if self.authorize_api():
+                self.handle_auth(path)
+            return
+        if path != "/api/recommend":
             self.send_json(404, {"error": "페이지를 찾을 수 없어요."})
             return
         if not self.authorize_api():
             return
-        if self.headers.get_content_type() != "application/json":
-            self.send_json(415, {"error": "입력 형식을 확인해 주세요."})
-            return
-        try:
-            size = int(self.headers.get("Content-Length", "0"))
-            if not 0 < size <= 4096:
-                raise ValueError
-            payload = json.loads(self.rfile.read(size).decode("utf-8"))
-        except ValueError:
-            self.send_json(400, {"error": "입력 형식 또는 길이를 확인해 주세요."})
+        if (payload := self.read_json()) is INVALID:
             return
         if (menus := self.load()) is None:
             return
@@ -124,6 +193,19 @@ class Handler(BaseHTTPRequestHandler):
         result = recommend(menus, profile)
         result["items"] = [public_menu(menu) for menu in result["items"]]
         self.send_json(200, result)
+
+    def do_PUT(self) -> None:
+        self.profile_request()
+
+    def do_DELETE(self) -> None:
+        self.profile_request()
+
+    def profile_request(self) -> None:
+        path = urlsplit(self.path).path
+        if path != "/api/profile":
+            self.send_json(404, {"error": "페이지를 찾을 수 없어요."})
+        elif self.authorize_api():
+            self.handle_auth(path)
 
 
 if __name__ == "__main__":

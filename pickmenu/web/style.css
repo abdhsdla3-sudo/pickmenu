@@ -39,6 +39,10 @@ input, select { font-size: 16px; }
 .small img { width: 29px; }
 .demo-label { font-size: 8px; letter-spacing: 1px; font-weight: 700; color: #9ca28e; margin-left: 3px; }
 .location { font-size: 11px; color: #7a826e; }
+.header-right { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.account-button { border: 1px solid #d9dfc9; background: #fffdf5; color: var(--green); border-radius: 20px; padding: 5px 11px; font-size: 11px; font-weight: 700; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.auth-tabs .pill { flex: 1; text-align: center; }
+.account-note { margin-top: 16px; }
 .app-scroll { overflow-y: auto; overflow-x: hidden; flex: 1; min-height: 0; scrollbar-width: thin; scrollbar-color: #d6dccb transparent; }
 .screen { padding: 26px 25px 30px; min-height: 100%; animation: arrive .22s ease-out; }
 .screen h2 { font-size: 29px; line-height: 1.4; letter-spacing: -1.5px; font-weight: 800; outline: none; }
@@ -121,7 +125,7 @@ legend { font-size: 12px; font-weight: 650; margin-bottom: 10px; }
 .profile-peek > span { font-weight: 700; }
 .profile-peek p { color: #7f896f; font-size: 10px; margin: 5px 0; }
 .danger { color: #a98070; float: right; }
-.bottom-nav { display: flex; justify-content: center; gap: 80px; border-top: 1px solid #e8ebdf; background: var(--paper); padding: 10px 12px 4px; flex-shrink: 0; }
+.bottom-nav { display: flex; justify-content: center; gap: 56px; border-top: 1px solid #e8ebdf; background: var(--paper); padding: 10px 12px 4px; flex-shrink: 0; }
 .bottom-nav button { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 9px; color: #728261; border: 0; background: transparent; }
 .bottom-nav button span { font-size: 20px; line-height: 1.2; }
 .home-indicator { width: 93px; height: 4px; border-radius: 5px; background: #dce1d2; margin: 9px auto 7px; flex-shrink: 0; }

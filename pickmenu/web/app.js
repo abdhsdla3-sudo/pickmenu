@@ -29,13 +29,21 @@ let chatConditions = {};
 let activeRecommendation = null;
 let storageNotice = "";
 let categoryTouched = false;
+// 로그인 상태. 서버에는 닉네임과 취향 항목만 저장하고 신체정보는 브라우저에만 둔다.
+const serverFields = ["nickname", ...preferenceFields];
+const authForm = document.querySelector("#auth-form");
+const authStatus = document.querySelector("#auth-status");
+let account = null;
+let accountReturn = "welcome";
+let syncNotice = "";
 document.querySelector("#category").addEventListener("change", () => { categoryTouched = true; });
 
 function showScreen(name) {
   for (const screen of document.querySelectorAll("[data-screen]")) {
     screen.hidden = screen.dataset.screen !== name;
   }
-  document.querySelector(".bottom-nav").hidden = ["welcome", "onboarding"].includes(name);
+  document.querySelector(".bottom-nav").hidden = ["welcome", "onboarding"].includes(name)
+    || (name === "account" && !hasProfile);
   scroller.scrollTop = 0;
   const title = document.querySelector(`[data-screen="${name}"] h2`);
   if (title) title.focus({preventScroll: true});
@@ -98,7 +106,7 @@ function startOnboarding() {
 function openModes() {
   cancelRecommendation();
   document.querySelector("#greeting-name").textContent = profile.nickname || "메뉴고민러";
-  document.querySelector("#profile-summary").textContent = [summary(), storageNotice].filter(Boolean).join(" · ");
+  document.querySelector("#profile-summary").textContent = [summary(), storageNotice, syncNotice].filter(Boolean).join(" · ");
   showScreen("modes");
 }
 
@@ -226,7 +234,167 @@ function render(data) {
   });
 }
 
-form.addEventListener("submit", event => {
+function persistLocal() {
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(profile));
+    localStorage.removeItem(legacyKey);
+    storageNotice = "";
+  } catch {
+    storageNotice = "저장소를 사용할 수 없어 이번 이용 중에만 프로필을 기억해요.";
+  }
+}
+
+function serverPayload() {
+  return Object.fromEntries(serverFields.map(key => [key, profile[key] || ""]));
+}
+
+async function pushProfile() {
+  if (!account) return;
+  try {
+    await request("/api/profile", {method: "PUT", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(serverPayload())});
+    syncNotice = "";
+  } catch (error) {
+    syncNotice = `서버 저장 실패: ${error.message} 이 브라우저에는 저장했어요.`;
+  }
+}
+
+function adoptServerProfile(saved) {
+  if (!saved || typeof saved !== "object") return false;
+  for (const key of serverFields) {
+    if (typeof saved[key] === "string") profile[key] = saved[key];
+  }
+  hasProfile = true;
+  document.querySelector("#resume").hidden = false;
+  return true;
+}
+
+function updateAccountUI() {
+  const button = document.querySelector("#account-open");
+  button.textContent = account ? account.username : "로그인";
+  button.setAttribute("aria-label", account ? `${account.username} 계정 보기` : "로그인 또는 회원가입");
+  document.querySelector("#welcome-login").hidden = Boolean(account);
+}
+
+function openAccount() {
+  cancelRecommendation();
+  const current = document.querySelector("[data-screen]:not([hidden])")?.dataset.screen;
+  if (current && current !== "account") accountReturn = current;
+  document.querySelector("#account-guest").hidden = Boolean(account);
+  document.querySelector("#account-member").hidden = !account;
+  if (account) {
+    document.querySelector("#account-name").textContent = account.username;
+    document.querySelector("#account-sync").textContent = syncNotice
+      || (hasProfile ? "내 식사 프로필이 계정에 저장되어 있어요." : "프로필을 만들면 계정에 자동으로 저장돼요.");
+  }
+  authStatus.textContent = "";
+  showScreen("account");
+  document.querySelector(account ? "#account-member-title" : "#account-title").focus({preventScroll: true});
+}
+
+function setAuthMode() {
+  const signup = authForm.elements.namedItem("mode").value === "signup";
+  document.querySelector("#auth-submit").replaceChildren(
+    document.createTextNode(signup ? "가입하고 시작하기" : "로그인"), node("span", "→"));
+  authForm.elements.namedItem("password").autocomplete = signup ? "new-password" : "current-password";
+  authStatus.textContent = "";
+}
+
+function clearLocalProfile() {
+  try {
+    localStorage.removeItem(storageKey);
+    localStorage.removeItem(legacyKey);
+  } catch {
+    return false;
+  }
+  cancelRecommendation();
+  profile = {...defaults};
+  storageNotice = "";
+  hasProfile = false;
+  form.reset();
+  document.querySelector("#meal").reset();
+  chatLog.replaceChildren();
+  chatChips.replaceChildren();
+  results.replaceChildren();
+  document.querySelector("#resume").hidden = true;
+  return true;
+}
+
+authForm.addEventListener("change", event => {
+  if (event.target.name === "mode") setAuthMode();
+});
+
+authForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  for (const field of authForm.querySelectorAll("input[name=username],input[name=password]")) {
+    if (!field.checkValidity()) {
+      field.reportValidity();
+      return;
+    }
+  }
+  const values = Object.fromEntries(new FormData(authForm));
+  const submit = document.querySelector("#auth-submit");
+  submit.disabled = true;
+  authStatus.textContent = "";
+  try {
+    const data = await request(`/api/auth/${values.mode === "signup" ? "signup" : "login"}`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({username: values.username, password: values.password}),
+    });
+    account = data.user;
+    authForm.elements.namedItem("password").value = "";
+    updateAccountUI();
+    syncNotice = "";
+    if (adoptServerProfile(data.profile)) {
+      persistLocal();
+      applyProfile();
+      openModes();
+    } else if (hasProfile) {
+      // 로그인 전에 만든 프로필을 계정에 옮긴다.
+      await pushProfile();
+      openModes();
+    } else {
+      startOnboarding();
+    }
+  } catch (error) {
+    authStatus.textContent = error.message;
+  } finally {
+    submit.disabled = false;
+  }
+});
+
+document.querySelector("#account-open").addEventListener("click", openAccount);
+document.querySelector("#welcome-login").addEventListener("click", openAccount);
+document.querySelector("#nav-account").addEventListener("click", openAccount);
+document.querySelector("#account-back").addEventListener("click", () => {
+  if (accountReturn === "onboarding") startOnboarding();
+  else if (accountReturn === "welcome" || !hasProfile) showScreen("welcome");
+  else if (["choice", "chat", "results"].includes(accountReturn)) showScreen(accountReturn);
+  else openModes();
+});
+document.querySelector("#account-continue").addEventListener("click", () => {
+  if (hasProfile) openModes();
+  else startOnboarding();
+});
+document.querySelector("#logout").addEventListener("click", async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    await request("/api/auth/logout", {method: "POST"});
+  } catch {
+    // 서버 연결이 실패해도 이 브라우저의 로그인 표시는 지운다.
+  }
+  button.disabled = false;
+  account = null;
+  syncNotice = "";
+  clearLocalProfile();
+  updateAccountUI();
+  authForm.reset();
+  setAuthMode();
+  showScreen("welcome");
+});
+
+form.addEventListener("submit", async event => {
   event.preventDefault();
   const slide = document.querySelector(`[data-step="${step}"]`);
   for (const field of slide.querySelectorAll("input,select")) {
@@ -250,14 +418,12 @@ form.addEventListener("submit", event => {
   }
   profile = values;
   hasProfile = true;
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(profile));
-    localStorage.removeItem(legacyKey);
-    storageNotice = "";
-    profileStatus.textContent = "";
-  } catch {
-    storageNotice = "저장소를 사용할 수 없어 이번 이용 중에만 프로필을 기억해요.";
-  }
+  persistLocal();
+  profileStatus.textContent = "";
+  const next = document.querySelector("#step-next");
+  next.disabled = true;
+  await pushProfile();
+  next.disabled = false;
   openModes();
 });
 
@@ -284,24 +450,21 @@ for (const button of document.querySelectorAll("[data-action]")) {
   });
 }
 
-document.querySelector("#delete-profile").addEventListener("click", () => {
-  try {
-    localStorage.removeItem(storageKey);
-    localStorage.removeItem(legacyKey);
-  } catch {
-    document.querySelector("#profile-summary").textContent = "저장소에 접근할 수 없어 삭제하지 못했어요. 브라우저 설정을 확인해 주세요.";
+document.querySelector("#delete-profile").addEventListener("click", async () => {
+  const peek = document.querySelector("#profile-summary");
+  if (account) {
+    try {
+      await request("/api/profile", {method: "DELETE"});
+    } catch (error) {
+      peek.textContent = `계정에 저장된 프로필을 지우지 못했어요. ${error.message}`;
+      return;
+    }
+  }
+  if (!clearLocalProfile()) {
+    peek.textContent = "저장소에 접근할 수 없어 삭제하지 못했어요. 브라우저 설정을 확인해 주세요.";
     return;
   }
-  cancelRecommendation();
-  profile = {...defaults};
-  storageNotice = "";
-  hasProfile = false;
-  form.reset();
-  document.querySelector("#meal").reset();
-  chatLog.replaceChildren();
-  chatChips.replaceChildren();
-  results.replaceChildren();
-  document.querySelector("#resume").hidden = true;
+  syncNotice = "";
   showScreen("welcome");
 });
 
@@ -481,6 +644,17 @@ async function initialize() {
   } catch {
     // 저장값이 손상됐을 때 새 프로필로 시작한다.
   }
+  try {
+    // 로그인 세션이 있으면 계정에 저장된 취향을 우선 적용한다.
+    const me = await request("/api/auth/me");
+    if (me.user) {
+      account = me.user;
+      if (adoptServerProfile(me.profile)) persistLocal();
+    }
+  } catch {
+    // 계정 서버에 연결하지 못해도 브라우저 프로필로 계속 이용한다.
+  }
+  updateAccountUI();
   applyProfile();
   // 목록으로 정해진 저장값은 화면에 적용된 값을 기준으로 복원한다.
   for (const key of preferenceFields.filter(key => key !== "category")) {
