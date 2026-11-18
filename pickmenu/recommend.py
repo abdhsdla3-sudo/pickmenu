@@ -4,10 +4,13 @@ import math
 import re
 import unicodedata
 from collections import Counter, defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-WEIGHTS = {"nutrition": 0.50, "preference": 0.35, "evidence": 0.15}
+# 추천점수 = 100 × (영양 0.40 + 취향 0.30 + 리뷰 근거 0.10 + 리뷰 만족도 0.12 + 단골 주문 0.08) − 감점
+# 자세한 기준과 바뀐 이유는 docs/score-1.6.md.
+WEIGHTS = {"nutrition": 0.40, "preference": 0.30, "evidence": 0.10, "satisfaction": 0.12, "reorder": 0.08}
 GOALS = {"balance": "균형 식사", "protein": "단백질 중심", "light": "가벼운 식사"}
 DISTRICTS = {"", "권선구", "영통구", "장안구", "팔달구"}
 MEAT = re.compile(r"소고기|쇠고기|우삼겹|돼지|삼겹|닭|오리|족발|보쌈|스테이크|돈까스|돈가스|치킨|베이컨|소시지|곱창|막창|갈비|육회|불고기")
@@ -96,6 +99,15 @@ PREFERRED_FIRST = 1
 # 있는데 그 밖의 음식이면 한 번 깎는다. 화면 순서는 감점까지 반영한 추천점수 순서와 같다.
 UNKNOWN_TASTE_PENALTY = 15
 OUTSIDE_PREFERRED_PENALTY = 25
+# 같은 조건이면 늘 같은 5개가 나오지 않게, 최근 추천(브라우저가 보낸 최근 3번)에 나온 음식은
+# 나온 횟수만큼(최대 2번) 깎는다. 선호 음식군 밖 감점(25점)보다 작아 선호 음식군 안에서 먼저 바뀐다.
+RECENT_PENALTY = 10
+RECENT_MAX = 2
+# 리뷰 만족도(별점)와 단골 주문 비율의 0~1 환산 범위. 별점 범위는 추천 기준표(menu_reco)와 같다.
+RATING_LOW, RATING_HIGH = 4.38, 4.83
+REPEAT_LOW, REPEAT_HIGH = 0.30, 0.65
+# 구 단위 만족도는 리뷰가 이만큼 있을 때만 쓰고, 적으면 수원시 전체 값을 쓴다.
+MIN_QUALITY_REVIEWS = 30
 # 이름 끝이 국물 요리인 음식(매운탕·어묵탕·만둣국·김치찌개·순대전골·뼈해장국 등)은 국물 있음으로 본다.
 SOUP_NAME = re.compile(r"(탕|국|찌개|전골|국밥)$")
 # 이름 끝이 구이·볶음·튀김 등인 음식(삼겹살·목살·제육볶음·치킨·돈가스·덮밥 등)은 국물 없음으로 본다.
@@ -126,10 +138,40 @@ def column_spice(rows: list[dict[str, Any]]) -> dict[str, str]:
     return result
 
 
+def column_quality(rows: list[dict[str, Any]]) -> dict[str, dict[str, dict[str, float | None]]]:
+    """컬럼별 리뷰 만족도(별점)와 단골 주문 비율. 매장 메뉴 행을 리뷰 수로 가중평균한다.
+
+    결과: {컬럼: {"": 수원시 전체, "권선구": 구별, ...}}, 값은 {"rating", "repeat", "reviews"}.
+    """
+    sums: dict[tuple[str, str], list[float]] = defaultdict(lambda: [0.0, 0.0, 0.0, 0.0])
+    for row in rows:
+        column, reviews = row.get("column_name"), row.get("review_count") or 0
+        if not column or not reviews:
+            continue
+        for area in ("", row.get("district") or ""):
+            if area == "" or area in DISTRICTS:
+                total = sums[(column, area)]
+                if row.get("rating") is not None:
+                    total[0] += float(row["rating"]) * reviews
+                    total[1] += reviews
+                if row.get("repeat_ratio") is not None:
+                    total[2] += float(row["repeat_ratio"]) * reviews
+                    total[3] += reviews
+    result: dict[str, dict[str, dict[str, float | None]]] = defaultdict(dict)
+    for (column, area), (rating, rated, repeat, repeated) in sums.items():
+        if area and rated < MIN_QUALITY_REVIEWS:
+            continue
+        result[column][area] = {"rating": rating / rated if rated else None,
+                                "repeat": repeat / repeated if repeated else None, "reviews": rated}
+    return dict(result)
+
+
 def reference_tags(columns: dict[str, dict[str, Any]], rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """컬럼별 맵기·국물·선호음식군. 맵기는 매장 메뉴 판정을 먼저 쓰고 없으면 컬럼표 `보통 매움`을 쓴다."""
+    """컬럼별 맵기·국물·선호음식군·리뷰 만족도. 맵기는 매장 메뉴 판정을 먼저 쓰고 없으면 컬럼표 `보통 매움`을 쓴다."""
     spice = column_spice(rows)
+    quality = column_quality(rows)
     return {name: {"spice": spice.get(name) or SPICE_TABLE.get(column.get("spiciness") or "", ""),
+                   "quality": quality.get(name, {}),
                    "soup": SOUP.get(column.get("broth") or "", ""),
                    # 컬럼표에서 식사가 아니거나 곁들임인 음식(만두·튀김·핫도그·주먹밥 등)
                    "side": column.get("is_meal") is False or bool(column.get("is_side")),
@@ -177,6 +219,7 @@ def apply_reference(menus: list[dict[str, Any]], tags: dict[str, dict[str, Any]]
         tag = tags[name]
         result.append({**menu, "spice": menu["spice"] or (tag["spice"] if exact else ""),
                        "soup": soup or tag["soup"], "reference_column": name, "side": tag.get("side", False),
+                       "quality": tag.get("quality", {}),
                        "groups": list(dict.fromkeys([menu["category"], *tag["groups"]]))})
     return food_tags(result, tags, found)
 
@@ -207,7 +250,32 @@ def food_tags(menus: list[dict[str, Any]], tags: dict[str, dict[str, Any]],
              "family_soup": decided[menu["components"][0]]["soup"]} for menu in menus]
 
 
-def recommend(menus: list[dict[str, Any]], profile: Profile) -> dict[str, Any]:
+def quality_parts(menu: dict[str, Any], district: str) -> tuple[float | None, float | None, str]:
+    """리뷰 만족도·단골 주문 점수(0~1)와 화면 설명. 구 값이 없으면 수원시 전체 값을 쓴다."""
+    quality = menu.get("quality") or {}
+    found = quality.get(district) or quality.get("") or {}
+    rating, repeat = found.get("rating"), found.get("repeat")
+    s = clip((rating - RATING_LOW) / (RATING_HIGH - RATING_LOW)) if rating is not None else None
+    r = clip((repeat - REPEAT_LOW) / (REPEAT_HIGH - REPEAT_LOW)) if repeat is not None else None
+    if rating is None and repeat is None:
+        return None, None, "리뷰 만족도 자료 없음 · 후보 중앙값으로 계산"
+    text = " · ".join(part for part in (
+        f"리뷰 만족도 {rating:.2f}점" if rating is not None else "",
+        f"단골 주문 {round(repeat * 100)}%" if repeat is not None else "") if part)
+    return s, r, text + (f" ({district})" if district and district in quality else "")
+
+
+def median(values: list[float], default: float = 0.5) -> float:
+    ordered = sorted(values)
+    if not ordered:
+        return default
+    middle = len(ordered) // 2
+    return ordered[middle] if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2
+
+
+def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[str] = ()) -> dict[str, Any]:
+    """`recent`: 최근 추천에서 본 대표 음식 이름(중복은 본 횟수). 본 만큼 조금 뒤로 보낸다."""
+    seen_count = Counter(compact(name) for name in recent)
     ranked: list[dict[str, Any]] = []
     check: list[dict[str, Any]] = []
     excluded = unknown = mismatched = 0
@@ -262,29 +330,35 @@ def recommend(menus: list[dict[str, Any]], profile: Profile) -> dict[str, Any]:
         t = sum(preferences) / len(preferences) if preferences else 0.5
         e = (0.7 * clip(math.log1p(evidence["reviews"]) / math.log1p(150))
              + 0.3 * clip(math.log1p(evidence["stores"]) / math.log1p(10)))
+        s, r, quality_text = quality_parts(menu, profile.district)
         reasons = [f"{region} 리뷰 {evidence['reviews']:,}건 · 매장 {evidence['stores']:,}곳",
                    f"{GOALS[profile.goal]} 적합도 {round(n * 100)}점 (일반음식 참고값)"
-                   if n is not None else "비교할 참고 영양값 부족", *matches]
+                   if n is not None else "비교할 참고 영양값 부족", quality_text, *matches]
         ranked.append({**menu, "region": region, "evidence": evidence, "reasons": reasons,
-                       "_parts": (n, t, e), "_preferred": bool(profile.category) and profile.category in groups,
+                       "_parts": (n, t, e, s, r), "_preferred": bool(profile.category) and profile.category in groups,
                        "_unknown_taste": sum(1 for value, actual in (
                            (profile.spice, menu.get("family_spice", menu["spice"])),
                            (profile.soup, menu.get("family_soup", menu["soup"]))) if value and not actual)})
     # 영양 자료가 없는 메뉴는 감점하지 않고 이번 후보들의 영양 점수 중앙값을 쓴다.
-    known = sorted(menu["_parts"][0] for menu in ranked if menu["_parts"][0] is not None)
-    middle = (known[len(known) // 2] if len(known) % 2 else (known[len(known) // 2 - 1] + known[len(known) // 2]) / 2) \
-        if known else 0.5
+    middle = median([menu["_parts"][0] for menu in ranked if menu["_parts"][0] is not None])
+    # 만족도·단골 주문 자료가 없는 음식도 같은 방식으로 후보 중앙값을 쓴다.
+    middle_s = median([menu["_parts"][3] for menu in ranked if menu["_parts"][3] is not None])
+    middle_r = median([menu["_parts"][4] for menu in ranked if menu["_parts"][4] is not None])
     # 선호 음식군에 맞는 음식이 하나라도 있으면 그 밖의 음식은 감점한다.
     preferred_foods = len({compact(menu["components"][0]) for menu in ranked if menu["_preferred"]})
     preferred_first = preferred_foods >= PREFERRED_FIRST
     for menu in ranked:
-        n, t, e = menu.pop("_parts")
+        n, t, e, s, r = menu.pop("_parts")
         score = 100 * (WEIGHTS["nutrition"] * (n if n is not None else middle)
-                       + WEIGHTS["preference"] * t + WEIGHTS["evidence"] * e)
+                       + WEIGHTS["preference"] * t + WEIGHTS["evidence"] * e
+                       + WEIGHTS["satisfaction"] * (s if s is not None else middle_s)
+                       + WEIGHTS["reorder"] * (r if r is not None else middle_r))
         unknown_taste = menu.pop("_unknown_taste")
         outside = preferred_first and not menu.pop("_preferred")
         menu.pop("_preferred", None)
-        penalty = UNKNOWN_TASTE_PENALTY * unknown_taste + (OUTSIDE_PREFERRED_PENALTY if outside else 0)
+        times = min(RECENT_MAX, seen_count[compact(menu["components"][0])])
+        penalty = (UNKNOWN_TASTE_PENALTY * unknown_taste + (OUTSIDE_PREFERRED_PENALTY if outside else 0)
+                   + RECENT_PENALTY * times)
         menu["score"] = round(max(0.0, score - penalty), 3)
         # 메뉴 상세에서 감점 이유를 볼 수 있게 남긴다.
         if n is None:
@@ -293,6 +367,8 @@ def recommend(menus: list[dict[str, Any]], profile: Profile) -> dict[str, Any]:
             menu["reasons"].append(f"고른 맵기·국물을 확인할 수 없어 {UNKNOWN_TASTE_PENALTY * unknown_taste}점 감점")
         if outside:
             menu["reasons"].append(f"선호 음식군 밖이라 {OUTSIDE_PREFERRED_PENALTY}점 감점")
+        if times:
+            menu["reasons"].append(f"최근 추천에 {times}번 나와 {RECENT_PENALTY * times}점 감점 (다른 메뉴도 보여 드려요)")
         menu["_unknown_nutrition"] = n is None
     # 점수가 같으면 영양 자료가 있는 메뉴를 앞에 둔다.
     ranked.sort(key=lambda x: (-x["score"], x["_unknown_nutrition"], -x["evidence"]["reviews"], x["standard_menu_id"]))
@@ -312,6 +388,7 @@ def recommend(menus: list[dict[str, Any]], profile: Profile) -> dict[str, Any]:
     return {"items": (first_choices + alternatives)[:5], "families": families(ranked),
             "eligible": len(ranked), "excluded": excluded, "mismatched": mismatched,
             "category": profile.category, "preferred_foods": preferred_foods,
+            "recent_applied": sum(1 for food in {compact(m["components"][0]) for m in ranked} if seen_count[food]),
             "unverified": unknown, "check_only": check[:3], "region": region}
 
 

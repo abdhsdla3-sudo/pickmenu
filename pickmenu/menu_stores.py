@@ -5,6 +5,9 @@ PostgreSQL의 매장 자료에서 같은 매장 ID(`SW_…`)로 붙인다. 매�
 메뉴와 리뷰 수만 돌려준다.
 """
 
+import csv
+import math
+import os
 import sqlite3
 import threading
 import time
@@ -18,6 +21,63 @@ CACHE_SECONDS = 300
 RETRY_SECONDS = 60
 _lock = threading.Lock()
 _names: dict[str, Any] = {"value": None, "checked": float("-inf")}
+
+
+# 가게 점수 = 100 × (리뷰 0.6 + 거리 0.4). 위치를 고르지 않으면 지금처럼 리뷰 수 순서다.
+# 거리 점수는 1km 이내 1, 5km 이상 0, 그 사이는 직선으로 줄인다(배달 가능 거리를 생각한 값).
+# 좌표가 없는 가게는 거리 점수 0.5(중간)로 두고 '거리 정보 없음'으로 보여 준다.
+STORE_WEIGHTS = {"reviews": 0.6, "distance": 0.4}
+NEAR_KM, FAR_KM = 1.0, 5.0
+UNKNOWN_DISTANCE = 0.5
+REVIEW_FULL = 200
+_coords: dict[str, Any] = {"key": None, "value": {}, "address": {}}
+
+
+def store_locations() -> dict[str, tuple[float, float]]:
+    """PICKMENU_STORE_COORDS(geocode_stores.py 결과 CSV)의 매장ID → (위도, 경도). 파일이 바뀌면 다시 읽는다."""
+    configured = os.environ.get("PICKMENU_STORE_COORDS")
+    if not configured:
+        return {}
+    path = Path(configured).expanduser()
+    try:
+        key = (str(path), path.stat().st_mtime_ns)
+    except OSError:
+        return {}
+    with _lock:
+        if _coords["key"] == key:
+            return _coords["value"]
+    value: dict[str, tuple[float, float]] = {}
+    address: dict[str, str] = {}
+    with path.open(encoding="utf-8-sig", newline="") as handle:
+        for row in csv.DictReader(handle):
+            try:
+                lat, lng = float(row["latitude"]), float(row["longitude"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if row.get("status", "").startswith("OK") and 33 <= lat <= 39 and 124 <= lng <= 132:
+                value[row["store_id"]] = (lat, lng)
+                address[row["store_id"]] = row.get("road_address") or row.get("address_used") or ""
+    with _lock:
+        _coords.update(key=key, value=value, address=address)
+    return value
+
+
+def store_address(store_id: str) -> str:
+    """좌표 CSV의 도로명 주소(store_locations()를 먼저 부른 뒤 쓴다)."""
+    return _coords["address"].get(store_id, "")
+
+
+def distance_km(a: tuple[float, float], b: tuple[float, float]) -> float:
+    """두 (위도, 경도) 사이 직선 거리(km, 하버사인)."""
+    lat1, lng1, lat2, lng2 = map(math.radians, (*a, *b))
+    h = math.sin((lat2 - lat1) / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin((lng2 - lng1) / 2) ** 2
+    return 2 * 6371.0 * math.asin(math.sqrt(h))
+
+
+def store_score(reviews: int, km: float | None) -> float:
+    review = min(1.0, math.log1p(reviews) / math.log1p(REVIEW_FULL))
+    distance = UNKNOWN_DISTANCE if km is None else max(0.0, min(1.0, (FAR_KM - km) / (FAR_KM - NEAR_KM)))
+    return 100 * (STORE_WEIGHTS["reviews"] * review + STORE_WEIGHTS["distance"] * distance)
 
 
 def connect(path: Path) -> sqlite3.Connection:
@@ -83,19 +143,37 @@ def store_names() -> dict[str, str] | None:
         return _names["value"]
 
 
-def stores(path: Path, menus: list[dict[str, Any]], district: str, limit: int = 50) -> dict[str, Any]:
-    """고른 순서의 실제 메뉴별 판매 매장. 고른 구에 없으면 수원 전체로 넓힌다."""
+def stores(path: Path, menus: list[dict[str, Any]], district: str, limit: int = 50,
+           origin: tuple[float, float] | None = None) -> dict[str, Any]:
+    """고른 순서의 실제 메뉴별 판매 매장. 고른 구에 없으면 수원 전체로 넓힌다.
+
+    `origin`(위도, 경도)이 있으면 메뉴 안에서 가게 점수(리뷰 0.6 + 거리 0.4) 순서로 정렬하고 거리를 붙인다.
+    위치는 이 요청 계산에만 쓰고 저장하지 않는다.
+    """
     ids = [menu["standard_menu_id"] for menu in menus]
     rows = store_rows(path, ids, district)
     citywide = bool(district) and not rows
     if citywide:
         rows = store_rows(path, ids, "")
     order = {mid: at for at, mid in enumerate(ids)}
-    rows.sort(key=lambda row: (order[row[0]], -row[3], row[1]))
+    places = store_locations()
+    km = {row[1]: distance_km(origin, places[row[1]]) for row in rows if origin and row[1] in places}
+    scores = {(row[0], row[1]): store_score(row[3], km.get(row[1])) for row in rows} if origin else {}
+    rows.sort(key=lambda row: (order[row[0]], -scores.get((row[0], row[1]), 0), -row[3], row[1]))
     names = store_names()
     by_id = {menu["standard_menu_id"]: menu for menu in menus}
-    return {"district": district, "citywide": citywide, "names_available": names is not None,
-            "store_count": len({row[1] for row in rows}), "total": len(rows),
-            "stores": [{"standard_menu_id": mid, "menu_name": by_id[mid]["name"],
-                        "store_name": (names or {}).get(store_id), "district": where, "reviews": count}
-                       for mid, store_id, where, count in rows[:limit]]}
+    result: dict[str, Any] = {
+        "district": district, "citywide": citywide, "names_available": names is not None,
+        "store_count": len({row[1] for row in rows}), "total": len(rows),
+        "location_used": origin is not None, "located": len(km),
+        "stores": [{"standard_menu_id": mid, "menu_name": by_id[mid]["name"],
+                    "store_name": (names or {}).get(store_id), "district": where, "reviews": count}
+                   for mid, store_id, where, count in rows[:limit]]}
+    for store, row in zip(result["stores"], rows[:limit], strict=True):
+        # 지도 표시용 가게 위치(도로명 주소를 바꾼 공개 좌표). 없으면 지도에서 빠진다.
+        store["location"] = list(places[row[1]]) if row[1] in places else None
+        store["address"] = store_address(row[1]) or None
+        if origin:
+            store["distance_km"] = round(km[row[1]], 1) if row[1] in km else None
+            store["store_score"] = round(scores[(row[0], row[1])])
+    return result

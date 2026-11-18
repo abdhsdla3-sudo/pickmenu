@@ -73,11 +73,11 @@ class ReferenceTagTest(unittest.TestCase):
     def test_preference_groups_match_any_reference_group(self):
         menus = apply_reference([menu("짬뽕")], TAGS)
         result = recommend(menus, Profile.parse({"category": "면", "soup": "yes", "spice": "hot"}, ["면", "중식"]))
-        self.assertEqual(result["items"][0]["reasons"][2:], ["음식군 일치", "맵기 일치", "국물 일치"])
+        self.assertEqual(result["items"][0]["reasons"][3:], ["음식군 일치", "맵기 일치", "국물 일치"])
         chosen = recommend(menus, Profile.parse({"meal_category": "면"}, ["면", "중식"]))
         self.assertEqual(chosen["eligible"], 1)
         plain = recommend([menu("짬뽕")], Profile.parse({"category": "면"}, ["면", "중식"]))
-        self.assertEqual(plain["items"][0]["reasons"][2], "음식군 불일치")
+        self.assertEqual(plain["items"][0]["reasons"][3], "음식군 불일치")
 
     def test_food_level_tag_beats_one_spicy_variant(self):
         menus = apply_reference([menu("매콤한 감자피자", "피자", spice="hot", menu_id="MN_1", food="피자"),

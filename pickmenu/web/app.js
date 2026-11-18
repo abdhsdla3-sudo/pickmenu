@@ -28,6 +28,27 @@ let chatMessages = [];
 let chatConditions = {};
 let activeRecommendation = null;
 let lastResult = null;
+let lastRequest = null;
+// 최근 추천 3번의 대표 음식. 서버가 이 음식들을 조금 뒤로 보내 같은 조건에서도 다른 메뉴가 올라온다.
+// 이 브라우저에만 12시간 동안 저장한다.
+const recentKey = "pickmenu.recentFoods";
+function recentFoods() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(recentKey) || "[]");
+    const fresh = saved.filter(entry => Date.now() - entry.at < 12 * 60 * 60 * 1000).slice(-3);
+    return fresh.flatMap(entry => entry.foods).filter(name => typeof name === "string").slice(0, 30);
+  } catch {
+    return [];
+  }
+}
+function rememberFoods(foods) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(recentKey) || "[]");
+    localStorage.setItem(recentKey, JSON.stringify([...saved, {at: Date.now(), foods: foods.slice(0, 5)}].slice(-3)));
+  } catch {
+    // 저장할 수 없으면 다양화 없이 추천한다.
+  }
+}
 let storageNotice = "";
 let categoryTouched = false;
 // 기본정보·취향은 서버에 암호화해 저장하며 브라우저 저장소에는 남기지 않는다.
@@ -407,6 +428,7 @@ function renderFamilies(data) {
     data.category && data.preferred_foods === 0
       ? `선호 음식군 ${data.category}에는 지금 조건에 맞는 메뉴가 없어 다른 음식군에서 골랐어요.` : "",
     top < 40 ? "조건에 꼭 맞는 메뉴가 적어 점수가 낮아요. 맵기·국물 조건을 '상관없음'으로 바꾸면 더 넓게 찾아요." : "",
+    data.recent_applied ? "최근에 본 메뉴는 조금 뒤로 보내고 다른 메뉴도 올렸어요." : "",
     count < 3 ? `현재 조건에서 대표 메뉴 ${count}개를 찾았어요. 검색어와 지역은 직접 바꿀 수 있어요.`
       : "먹고 싶은 메뉴를 고르면 실제 메뉴와 파는 가게를 보여 드려요.",
   ].filter(Boolean).join(" ");
@@ -430,7 +452,233 @@ function renderFamilies(data) {
       : node("p", nutritionSummary(family.best), "muted"));
     results.append(card);
   });
+  if (count && lastRequest) {
+    // 같은 조건으로 다시 찾는다. 방금 본 메뉴가 최근 목록에 들어가 있어 다른 메뉴가 올라온다.
+    const more = node("button", "다른 메뉴 보기 ↻", "secondary more-menus");
+    more.type = "button";
+    more.addEventListener("click", () => recommendNow(lastRequest.conditions, lastRequest.mode));
+    results.append(more);
+  }
   results.append(node("p", "가게마다 다른 메뉴 이름을 같은 음식으로 묶었어요 (자동 분류 · 사람 미검수).", "muted family-note"));
+}
+
+// 지도에서 고른 배달 받을 위치. 이 브라우저에만 저장하고, 가게 추천 요청 때만 서버로 보낸다.
+const locationKey = "pickmenu.location";
+const SUWON = [37.2636, 127.0286];
+const LEAFLET = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/";
+function savedLocation() {
+  try {
+    const value = JSON.parse(localStorage.getItem(locationKey) || "null");
+    return value && Number.isFinite(value.lat) && Number.isFinite(value.lng) ? value : null;
+  } catch {
+    return null;
+  }
+}
+function saveLocation(value) {
+  try {
+    if (value) localStorage.setItem(locationKey, JSON.stringify(value));
+    else localStorage.removeItem(locationKey);
+  } catch {
+    // 저장할 수 없으면 이번 화면에서만 쓴다.
+  }
+  sessionLocation = value;
+}
+let sessionLocation = savedLocation();
+document.querySelector("#open-location")?.addEventListener("click", () => pickLocation(() => {
+  updateLocationSummary();
+  // 주소에 구가 있으면 '어디에서 드세요?'도 그 구로 맞춘다(바꿀 수 있어요).
+  const district = districtFrom(sessionLocation?.address);
+  const select = document.querySelector("#meal [name=district]");
+  if (district && select) select.value = district;
+}));
+updateLocationSummary();
+let leafletReady = null;
+function loadLeaflet() {
+  // 지도를 처음 열 때만 불러온다. 버전과 무결성 해시를 고정한다.
+  leafletReady ??= new Promise((resolve, reject) => {
+    const css = document.createElement("link");
+    css.rel = "stylesheet";
+    css.href = `${LEAFLET}leaflet.min.css`;
+    css.integrity = "sha512-h9FcoyWjHcOcmEVkxOfTLnmZFWIH0iZhZT1H2TbOq55xssQGEJHEaIm+PgoUaZbRvQTNTluNOEfb1ZRy6D3BOw==";
+    css.crossOrigin = "anonymous";
+    const script = document.createElement("script");
+    script.src = `${LEAFLET}leaflet.min.js`;
+    script.integrity = "sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g==";
+    script.crossOrigin = "anonymous";
+    script.onload = () => resolve(window.L);
+    script.onerror = () => { leafletReady = null; reject(new Error("지도를 불러오지 못했어요.")); };
+    document.head.append(css, script);
+  });
+  return leafletReady;
+}
+let addressSearch = null;
+function locationText(value) {
+  if (!value) return "고르지 않음 · 가게는 리뷰 수 순서로 보여 줘요";
+  return value.address || `지도에서 고른 위치 (${value.lat.toFixed(4)}, ${value.lng.toFixed(4)})`;
+}
+function updateLocationSummary() {
+  const summary = document.querySelector("#location-summary");
+  if (summary) summary.textContent = locationText(sessionLocation);
+  const open = document.querySelector("#open-location");
+  if (open) open.textContent = sessionLocation ? "위치 바꾸기" : "지도·주소로 고르기";
+}
+function districtFrom(address) {
+  return (address || "").match(/(권선구|영통구|장안구|팔달구)/)?.[1] || "";
+}
+async function pickLocation(onDone) {
+  const dialog = document.querySelector("#location-dialog");
+  const help = dialog.querySelector(".location-help");
+  const holder = dialog.querySelector("#location-map");
+  const addressLine = dialog.querySelector("#location-address");
+  const search = dialog.querySelector("#location-search");
+  const found = dialog.querySelector("#location-results");
+  let picked = sessionLocation;
+  help.textContent = "주소로 찾거나 지도를 눌러 배달 받을 위치를 찍어 주세요.";
+  found.replaceChildren();
+  dialog.showModal();
+  if (addressSearch === null) {
+    try {
+      addressSearch = (await request("/api/location/status")).address_search;
+    } catch {
+      addressSearch = false;
+    }
+  }
+  search.hidden = !addressSearch;
+  if (!addressSearch) help.textContent = "지도를 눌러 배달 받을 위치를 찍어 주세요.";
+  let L;
+  try {
+    L = await loadLeaflet();
+  } catch (error) {
+    help.textContent = `${error.message} '현재 위치 사용'은 지도 없이도 쓸 수 있어요.`;
+  }
+  let marker = null;
+  let map = null;
+  let lookup = 0;
+  const mark = value => {
+    picked = value;
+    dialog.querySelector(".location-save").disabled = !value;
+    addressLine.textContent = value ? `📍 ${locationText(value)}` : "";
+    // 지도에서 찍은 위치는 주소를 찾아 함께 보여 준다(주소 검색을 쓸 수 있을 때).
+    if (value && !value.address && addressSearch) {
+      const ticket = ++lookup;
+      request(`/api/location/address?lat=${value.lat}&lng=${value.lng}`).then(data => {
+        if (ticket !== lookup || picked !== value || !data.address) return;
+        value.address = data.address;
+        addressLine.textContent = `📍 ${data.address}`;
+      }).catch(() => {});
+    }
+    if (!map || !value) return;
+    if (marker) marker.setLatLng([value.lat, value.lng]);
+    else marker = L.marker([value.lat, value.lng]).addTo(map);
+    map.setView([value.lat, value.lng], Math.max(map.getZoom(), 14));
+  };
+  if (L) {
+    holder.replaceChildren();
+    map = L.map(holder).setView(picked ? [picked.lat, picked.lng] : SUWON, picked ? 15 : 12);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19, attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(map);
+    map.on("click", event => mark({lat: +event.latlng.lat.toFixed(5), lng: +event.latlng.lng.toFixed(5)}));
+    setTimeout(() => map.invalidateSize(), 50);
+  }
+  mark(picked);
+  search.onsubmit = async event => {
+    event.preventDefault();
+    const query = dialog.querySelector("#location-query").value.trim();
+    if (query.length < 2) return;
+    help.textContent = "주소를 찾고 있어요.";
+    found.replaceChildren();
+    try {
+      const data = await request(`/api/location/search?query=${encodeURIComponent(query)}`);
+      if (!data.results.length) {
+        help.textContent = "주소를 찾지 못했어요. 도로명과 건물번호를 확인하거나 지도에서 찍어 주세요.";
+        return;
+      }
+      help.textContent = data.results.length > 1 ? "맞는 주소를 골라 주세요." : "주소를 찾았어요. 맞으면 '이 위치로 정하기'를 눌러 주세요.";
+      for (const result of data.results) {
+        const item = node("li");
+        const choose = node("button", result.address, "location-result");
+        choose.type = "button";
+        choose.addEventListener("click", () => {
+          mark({lat: result.lat, lng: result.lng, address: result.address});
+          found.replaceChildren();
+        });
+        item.append(choose);
+        found.append(item);
+      }
+      if (data.results.length === 1) mark({...data.results[0]});
+    } catch (error) {
+      help.textContent = error.message;
+    }
+  };
+  const here = dialog.querySelector(".location-here");
+  here.onclick = () => {
+    if (!navigator.geolocation) {
+      help.textContent = "이 브라우저는 현재 위치를 지원하지 않아요.";
+      return;
+    }
+    help.textContent = "현재 위치를 확인하고 있어요.";
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        mark({lat: +position.coords.latitude.toFixed(5), lng: +position.coords.longitude.toFixed(5)});
+        help.textContent = "현재 위치를 찍었어요. 맞으면 '이 위치로 정하기'를 눌러 주세요.";
+      },
+      () => { help.textContent = "현재 위치를 가져오지 못했어요. 지도에서 직접 찍어 주세요."; },
+      {enableHighAccuracy: false, timeout: 8000, maximumAge: 300000},
+    );
+  };
+  dialog.querySelector(".location-save").onclick = () => {
+    saveLocation(picked);
+    dialog.close();
+    onDone();
+  };
+  dialog.querySelector(".location-clear").onclick = () => {
+    saveLocation(null);
+    dialog.close();
+    onDone();
+  };
+  dialog.addEventListener("close", () => map?.remove(), {once: true});
+}
+
+// 가게 목록 지도: 보이는 가게를 순번 표시로, 고른 위치를 원으로 찍는다.
+async function storeMap(holder, stores) {
+  const placed = stores.map((store, at) => ({store, at})).filter(({store}) => store.location);
+  if (!placed.length) {
+    holder.remove();
+    return;
+  }
+  let L;
+  try {
+    L = await loadLeaflet();
+  } catch {
+    holder.replaceChildren(node("p", "지도를 불러오지 못했어요. 목록은 그대로 볼 수 있어요.", "muted"));
+    return;
+  }
+  if (!holder.isConnected) return;
+  const map = L.map(holder, {scrollWheelZoom: false});
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: "&copy; OpenStreetMap contributors",
+  }).addTo(map);
+  const points = [];
+  for (const {store, at} of placed) {
+    // 표시 내용은 순번 숫자뿐이라 html에 그대로 넣는다.
+    const icon = L.divIcon({className: "store-pin", html: String(at + 1), iconSize: [26, 26]});
+    const marker = L.marker(store.location, {icon, title: `${at + 1}. ${store.store_name || store.menu_name}`}).addTo(map);
+    const popup = node("div", undefined, "map-popup");
+    popup.append(node("strong", `${at + 1}. ${store.store_name || "가게 이름 확인 중"}`),
+      node("span", `${store.menu_name} · 리뷰 ${store.reviews.toLocaleString("ko-KR")}건`
+        + (store.distance_km != null ? ` · 약 ${store.distance_km}km` : "")));
+    if (store.address) popup.append(node("span", store.address));
+    marker.bindPopup(popup);
+    points.push(store.location);
+  }
+  if (sessionLocation) {
+    L.circleMarker([sessionLocation.lat, sessionLocation.lng], {radius: 9, weight: 3, color: "#b5532f", fillOpacity: 0.35})
+      .bindTooltip(sessionLocation.address ? `고른 위치 · ${sessionLocation.address}` : "고른 위치").addTo(map);
+    points.push([sessionLocation.lat, sessionLocation.lng]);
+  }
+  map.fitBounds(points, {padding: [28, 28], maxZoom: 15});
+  setTimeout(() => map.invalidateSize(), 50);
 }
 
 function familyStoreItem(store, family) {
@@ -438,7 +686,11 @@ function familyStoreItem(store, family) {
   const text = node("div");
   const name = node("p", undefined, "family-store-name");
   name.append(node("strong", store.menu_name), node("span", ` – ${store.store_name || "가게 이름 확인 중"}`));
-  text.append(name, node("p", `${store.district} · 이 가게 리뷰 ${store.reviews.toLocaleString("ko-KR")}건`, "store-meta"));
+  const distance = store.distance_km === undefined ? ""
+    : store.distance_km === null ? " · 거리 정보 없음" : ` · 약 ${store.distance_km}km`;
+  text.append(name, node("p", `${store.district} · 이 가게 리뷰 ${store.reviews.toLocaleString("ko-KR")}건${distance}`,
+    "store-meta"));
+  if (store.address) text.append(node("p", store.address, "store-address"));
   if (store.comment) {
     const reason = node("p", undefined, "menu-comment store-reason");
     reason.append(node("strong", "추천이유"), node("span", store.comment));
@@ -472,7 +724,8 @@ async function showFamily(family, data) {
   try {
     const found = await request("/api/recommend/stores", {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({menu_ids: family.members.map(m => m.standard_menu_id), district}),
+      body: JSON.stringify({menu_ids: family.members.map(m => m.standard_menu_id), district,
+        ...(sessionLocation ? {location: sessionLocation} : {})}),
     });
     if (!results.contains(heading)) return;
     status.textContent = "";
@@ -481,14 +734,35 @@ async function showFamily(family, data) {
       return;
     }
     const where = found.citywide ? `${district}에는 없어 수원 전체 기준` : (district || "수원 전체");
-    results.append(node("p", `${where} · 가게 ${found.store_count}곳 · 추천 순서는 메뉴 적합도, 그다음 가게 리뷰 수예요.`, "muted"));
+    const order = found.location_used ? "메뉴 적합도, 그다음 가게 점수(리뷰 수 60% · 고른 위치와의 거리 40%)"
+      : "메뉴 적합도, 그다음 가게 리뷰 수";
+    results.append(node("p", `${where} · 가게 ${found.store_count}곳 · 추천 순서는 ${order}예요.`, "muted"));
+    const place = node("div", undefined, "location-bar");
+    place.append(node("span", found.location_used
+      ? (found.located ? `📍 ${locationText(sessionLocation)}에서 가까운 가게를 앞에 두었어요.`
+        : "📍 위치는 골랐지만 가게 좌표 자료가 아직 없어요.")
+      : "📍 배달 받을 위치를 고르면 가까운 가게를 앞에 둬요."));
+    const pick = node("button", found.location_used ? "위치 바꾸기" : "지도에서 위치 고르기", "small-link");
+    pick.type = "button";
+    pick.addEventListener("click", () => pickLocation(() => {
+      updateLocationSummary();
+      showFamily(family, data);
+    }));
+    place.append(pick);
+    results.append(place);
+    const mapHolder = node("div", undefined, "store-map");
+    mapHolder.setAttribute("role", "region");
+    mapHolder.setAttribute("aria-label", "가게 위치 지도. 번호는 아래 목록 순서예요.");
+    results.append(mapHolder);
     const list = node("ul", undefined, "store-list family-stores");
     found.stores.forEach((store, at) => {
       const item = familyStoreItem(store, family);
       item.hidden = at >= 10;
+      item.prepend(node("span", String(at + 1), "store-rank"));
       list.append(item);
     });
     results.append(list);
+    storeMap(mapHolder, found.stores.slice(0, 10));
     if (found.stores.length > 10) {
       const more = node("button", `${found.stores.length - 10}개 더 보기`, "more-stores");
       more.type = "button";
@@ -843,6 +1117,8 @@ async function recommendNow(conditions, mode) {
   }
   const payload = {...profilePayload(), ...conditions};
   showPicked(payload);
+  lastRequest = {conditions, mode};
+  payload.recent = recentFoods();
   try {
     const data = await request("/api/recommend", {
       method: "POST", headers: {"Content-Type": "application/json"},
@@ -850,6 +1126,7 @@ async function recommendNow(conditions, mode) {
     });
     if (controller.signal.aborted) return;
     render(data);
+    if (data.families?.length) rememberFoods(data.families.map(family => family.name));
     if (mode === "chat") {
       const picked = data.families?.length || data.items.length;
       bubble(data.items.length ? `취향과 조건을 살펴 ${picked}개 메뉴를 골랐어요. 메뉴를 고르면 파는 가게도 알려 드려요.`

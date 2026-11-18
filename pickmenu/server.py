@@ -19,6 +19,7 @@ import auth
 import llm
 import menu_reco
 import menu_stores
+import naver_maps
 from raw import BASE, LOCAL
 from recommend import DISTRICTS, Profile, apply_reference, recommend, reference_tags
 
@@ -77,6 +78,30 @@ def prepared_menus() -> list[dict[str, Any]]:
     return prepared
 
 
+def user_location(payload: Any) -> tuple[float, float] | None:
+    """지도에서 고른 위치 {"lat", "lng"}. 없으면 None, 형식·범위(대한민국)가 틀리면 ValueError."""
+    value = payload.get("location") if isinstance(payload, dict) else None
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("위치 형식을 확인해 주세요.")
+    lat, lng = value.get("lat"), value.get("lng")
+    if (not isinstance(lat, (int, float)) or not isinstance(lng, (int, float))
+            or isinstance(lat, bool) or isinstance(lng, bool)
+            or not (33 <= lat <= 39 and 124 <= lng <= 132)):
+        raise ValueError("지도에서 국내 위치를 골라 주세요.")
+    return float(lat), float(lng)
+
+
+def recent_foods(payload: Any) -> list[str]:
+    """브라우저가 보낸 최근 추천 음식 이름(최근 3번 × 5개). 형식이 틀리면 ValueError."""
+    value = payload.get("recent", []) if isinstance(payload, dict) else []
+    if (not isinstance(value, list) or len(value) > 30
+            or not all(isinstance(name, str) and 0 < len(name) <= 40 for name in value)):
+        raise ValueError("최근 추천 목록 형식을 확인해 주세요.")
+    return value
+
+
 def categories(menus: list[dict[str, Any]]) -> list[str]:
     return sorted({menu["category"] for menu in menus})
 
@@ -108,7 +133,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Content-Security-Policy",
-                         "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+                         "default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; "
+                         "style-src 'self' https://cdnjs.cloudflare.com; "
+                         "img-src 'self' data: https://cdnjs.cloudflare.com https://tile.openstreetmap.org; "
+                         "frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
         self.end_headers()
         self.wfile.write(body)
 
@@ -229,6 +257,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": "가게를 찾을 메뉴 이름과 지역을 확인해 주세요."})
             elif (data := self.reference()) is not None:
                 self.send_json(200, menu_reco.stores_for_foods(data, foods, district))
+        elif path.startswith("/api/location/"):
+            if self.require_session():
+                self.location_request(path)
         elif path == "/api/v2/options":
             if not self.require_session():
                 return
@@ -306,13 +337,15 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             profile = Profile.parse(payload, categories(menus))
+            recent = recent_foods(payload)
         except ValueError as error:
             self.send_json(400, {"error": str(error)})
             return
-        self.send_json(200, self.recommendation(menus, profile))
+        self.send_json(200, self.recommendation(menus, profile, recent))
 
-    def recommendation(self, menus: list[dict[str, Any]], profile: Profile) -> dict[str, Any]:
-        result = recommend(menus, profile)
+    def recommendation(self, menus: list[dict[str, Any]], profile: Profile,
+                       recent: list[str] | None = None) -> dict[str, Any]:
+        result = recommend(menus, profile, recent or [])
         result["items"] = [public_menu(menu) for menu in result["items"]]
         result["families"] = [self.family(family, profile.district) for family in result["families"]]
         return result
@@ -335,18 +368,56 @@ class Handler(BaseHTTPRequestHandler):
                 or not all(isinstance(mid, str) and MENU_ID.fullmatch(mid) for mid in ids)):
             self.send_json(400, {"error": "메뉴와 지역을 확인해 주세요."})
             return
+        try:
+            origin = user_location(payload)
+        except ValueError as error:
+            self.send_json(400, {"error": str(error)})
+            return
         by_id = {menu["standard_menu_id"]: menu for menu in menus}
         selected = [by_id[mid] for mid in dict.fromkeys(ids) if mid in by_id]
         if not selected:
             self.send_json(404, {"error": "메뉴를 찾을 수 없어요."})
             return
         try:
-            result = menu_stores.stores(catalog_path(), selected, district)
+            result = menu_stores.stores(catalog_path(), selected, district, origin=origin)
             llm.store_comments(result)
             self.send_json(200, result)
         except sqlite3.Error as error:
             self.log_error("매장 집계 오류 %s", error)
             self.send_json(503, {"error": "매장 자료를 열 수 없어요. 잠시 뒤 다시 시도해 주세요."})
+
+    def location_request(self, path: str) -> None:
+        """배달 위치: 주소 검색 가능 여부, 주소 → 좌표 후보, 좌표 → 주소. 입력값은 저장·로그하지 않는다."""
+        params = parse_qs(urlsplit(self.path).query)
+        if path == "/api/location/status":
+            self.send_json(200, {"address_search": naver_maps.available()})
+            return
+        try:
+            if path == "/api/location/search":
+                query = (params.get("query") or [""])[0].strip()
+                if not 2 <= len(query) <= 80 or any(ord(c) < 32 for c in query):
+                    self.send_json(400, {"error": "찾을 주소를 2~80자로 입력해 주세요."})
+                    return
+                self.send_json(200, {"results": naver_maps.geocode(query)})
+            elif path == "/api/location/address":
+                try:
+                    lat, lng = float(params["lat"][0]), float(params["lng"][0])
+                    origin = user_location({"location": {"lat": lat, "lng": lng}})
+                except (KeyError, ValueError):
+                    self.send_json(400, {"error": "위치를 확인해 주세요."})
+                    return
+                assert origin is not None
+                self.send_json(200, {"address": naver_maps.reverse(*origin)})
+            else:
+                self.send_json(404, {"error": "페이지를 찾을 수 없어요."})
+        except naver_maps.Unavailable as error:
+            self.send_json(503, {"error": str(error)})
+
+    def log_message(self, format: str, *args: Any) -> None:
+        # 주소·좌표 질의 문자열은 로그에 남기지 않는다.
+        if args and isinstance(args[0], str) and "/api/location/" in args[0]:
+            args = (args[0].split("?")[0], *args[1:])
+        super().log_message(format, *args)
 
     def do_PUT(self) -> None:
         self.profile_request()

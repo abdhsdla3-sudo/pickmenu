@@ -369,7 +369,7 @@ def load_from_db(conninfo: str | None = None) -> Data:
         menus = db.execute("""
             SELECT integrated_store_id, store_name, district, column_name, upper_food, detail_food, display_name,
                    rating_display, rating, review_count, few_reviews, disappointing_reviews,
-                   store_repeat_ratio, recommendation_score, spiciness, broth, balance_score,
+                   repeat_ratio, store_repeat_ratio, recommendation_score, spiciness, broth, balance_score,
                    protein_score, rice_included, portion_g
             FROM pickmenu_data.current_menu_scores""").fetchall()
         columns = db.execute("""
@@ -381,7 +381,7 @@ def load_from_db(conninfo: str | None = None) -> Data:
             ORDER BY row_number""").fetchall()
         pairs = db.execute("SELECT group_name, column_name FROM pickmenu_data.current_preference_candidates").fetchall()
     for menu in menus:
-        for key in ("rating", "balance_score", "protein_score", "recommendation_score"):
+        for key in ("rating", "balance_score", "protein_score", "recommendation_score", "repeat_ratio"):
             if menu[key] is not None:
                 menu[key] = float(menu[key])
     group_columns: dict[str, set[str]] = defaultdict(set)
