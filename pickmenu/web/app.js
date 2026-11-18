@@ -493,6 +493,10 @@ document.querySelector("#open-location")?.addEventListener("click", () => pickLo
 }));
 updateLocationSummary();
 let leafletReady = null;
+// 위치 고르기 창의 지도. 창을 열 때마다 이전 지도를 한 번만 지우고 새로 만든다.
+// 창을 빠르게 두 번 열면 마지막으로 연 것만 지도를 만든다.
+let pickerMap = null;
+let pickerTicket = 0;
 function loadLeaflet() {
   // 지도를 처음 열 때만 불러온다. 버전과 무결성 해시를 고정한다.
   leafletReady ??= new Promise((resolve, reject) => {
@@ -526,6 +530,7 @@ function districtFrom(address) {
   return (address || "").match(/(권선구|영통구|장안구|팔달구)/)?.[1] || "";
 }
 async function pickLocation(onDone) {
+  const ticket = ++pickerTicket;
   const dialog = document.querySelector("#location-dialog");
   const help = dialog.querySelector(".location-help");
   const holder = dialog.querySelector("#location-map");
@@ -551,6 +556,7 @@ async function pickLocation(onDone) {
   } catch (error) {
     help.textContent = `${error.message} '현재 위치 사용'은 지도 없이도 쓸 수 있어요.`;
   }
+  if (ticket !== pickerTicket) return;
   let marker = null;
   let map = null;
   let lookup = 0;
@@ -573,8 +579,10 @@ async function pickLocation(onDone) {
     map.setView([value.lat, value.lng], Math.max(map.getZoom(), 14));
   };
   if (L) {
+    pickerMap?.remove();
+    pickerMap = null;
     holder.replaceChildren();
-    map = L.map(holder).setView(picked ? [picked.lat, picked.lng] : SUWON, picked ? 15 : 12);
+    map = pickerMap = L.map(holder).setView(picked ? [picked.lat, picked.lng] : SUWON, picked ? 15 : 12);
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19, attribution: "&copy; OpenStreetMap contributors",
     }).addTo(map);
@@ -637,7 +645,6 @@ async function pickLocation(onDone) {
     dialog.close();
     onDone();
   };
-  dialog.addEventListener("close", () => map?.remove(), {once: true});
 }
 
 // 가게 목록 지도: 보이는 가게를 순번 표시로, 고른 위치를 원으로 찍는다.
