@@ -462,28 +462,15 @@ function renderFamilies(data) {
   results.append(node("p", "가게마다 다른 메뉴 이름을 같은 음식으로 묶었어요 (자동 분류 · 사람 미검수).", "muted family-note"));
 }
 
-// 지도에서 고른 배달 받을 위치. 이 브라우저에만 저장하고, 가게 추천 요청 때만 서버로 보낸다.
-const locationKey = "pickmenu.location";
+// 배달 위치는 이 페이지의 현재 로그인에서만 사용한다.
 const SUWON = [37.2636, 127.0286];
 const LEAFLET = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/";
-function savedLocation() {
-  try {
-    const value = JSON.parse(localStorage.getItem(locationKey) || "null");
-    return value && Number.isFinite(value.lat) && Number.isFinite(value.lng) ? value : null;
-  } catch {
-    return null;
-  }
+try {
+  localStorage.removeItem("pickmenu.location");
+} catch {
+  // 브라우저에서 저장소 접근을 차단할 수 있다.
 }
-function saveLocation(value) {
-  try {
-    if (value) localStorage.setItem(locationKey, JSON.stringify(value));
-    else localStorage.removeItem(locationKey);
-  } catch {
-    // 저장할 수 없으면 이번 화면에서만 쓴다.
-  }
-  sessionLocation = value;
-}
-let sessionLocation = savedLocation();
+let sessionLocation = null;
 document.querySelector("#open-location")?.addEventListener("click", () => pickLocation(() => {
   updateLocationSummary();
   // 주소에 구가 있으면 '어디에서 드세요?'도 그 구로 맞춘다(바꿀 수 있어요).
@@ -545,7 +532,11 @@ async function pickLocation(onDone) {
   const addressLine = dialog.querySelector("#location-address");
   const search = dialog.querySelector("#location-search");
   const found = dialog.querySelector("#location-results");
+  const isCurrent = () => ticket === pickerTicket && dialog.open;
   let picked = sessionLocation;
+  const queryInput = dialog.querySelector("#location-query");
+  queryInput.value = "";
+  addressLine.textContent = "";
   help.textContent = "주소로 찾거나 지도를 눌러 배달 받을 위치를 찍어 주세요.";
   found.replaceChildren();
   dialog.showModal();
@@ -556,27 +547,32 @@ async function pickLocation(onDone) {
       addressSearch = false;
     }
   }
+  if (!isCurrent()) return;
   search.hidden = !addressSearch;
   if (!addressSearch) help.textContent = "지도를 눌러 배달 받을 위치를 찍어 주세요.";
   let L;
   try {
     L = await loadLeaflet();
   } catch (error) {
-    help.textContent = `${error.message} '현재 위치 사용'은 지도 없이도 쓸 수 있어요.`;
+    if (isCurrent()) help.textContent = `${error.message} '현재 위치 사용'은 지도 없이도 쓸 수 있어요.`;
   }
-  if (ticket !== pickerTicket) return;
+  if (!isCurrent()) return;
   let marker = null;
   let map = null;
   let lookup = 0;
   const mark = value => {
+    if (!isCurrent()) return;
     picked = value;
     dialog.querySelector(".location-save").disabled = !value;
     addressLine.textContent = value ? `📍 ${locationText(value)}` : "";
     // 지도에서 찍은 위치는 주소를 찾아 함께 보여 준다(주소 검색을 쓸 수 있을 때).
     if (value && !value.address && addressSearch) {
-      const ticket = ++lookup;
-      request(`/api/location/address?lat=${value.lat}&lng=${value.lng}`).then(data => {
-        if (ticket !== lookup || picked !== value || !data.address) return;
+      const lookupId = ++lookup;
+      request("/api/location/address", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({lat: value.lat, lng: value.lng}),
+      }).then(data => {
+        if (!isCurrent() || lookupId !== lookup || picked !== value || !data.address) return;
         value.address = data.address;
         addressLine.textContent = `📍 ${data.address}`;
       }).catch(() => {});
@@ -593,20 +589,23 @@ async function pickLocation(onDone) {
     map = pickerMap = L.map(holder).setView(picked ? [picked.lat, picked.lng] : SUWON, picked ? 15 : 12);
     const tiles = osmTiles(L).addTo(map);
     tiles.once("tileerror", () => {
-      if (ticket === pickerTicket) help.textContent = "지도 그림을 불러오지 못했어요. 주소 검색이나 '현재 위치 사용'을 써 주세요.";
+      if (isCurrent()) help.textContent = "지도 그림을 불러오지 못했어요. 주소 검색이나 '현재 위치 사용'을 써 주세요.";
     });
     map.on("click", event => mark({lat: +event.latlng.lat.toFixed(5), lng: +event.latlng.lng.toFixed(5)}));
-    setTimeout(() => map.invalidateSize(), 50);
+    setTimeout(() => { if (isCurrent()) map.invalidateSize(); }, 50);
   }
   mark(picked);
   search.onsubmit = async event => {
     event.preventDefault();
-    const query = dialog.querySelector("#location-query").value.trim();
+    const query = queryInput.value.trim();
     if (query.length < 2) return;
     help.textContent = "주소를 찾고 있어요.";
     found.replaceChildren();
     try {
-      const data = await request(`/api/location/search?query=${encodeURIComponent(query)}`);
+      const data = await request("/api/location/search", {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({query}),
+      });
+      if (!isCurrent()) return;
       if (!data.results.length) {
         help.textContent = "주소를 찾지 못했어요. 도로명과 건물번호를 확인하거나 지도에서 찍어 주세요.";
         return;
@@ -625,7 +624,7 @@ async function pickLocation(onDone) {
       }
       if (data.results.length === 1) mark({...data.results[0]});
     } catch (error) {
-      help.textContent = error.message;
+      if (isCurrent()) help.textContent = error.message;
     }
   };
   const here = dialog.querySelector(".location-here");
@@ -637,20 +636,23 @@ async function pickLocation(onDone) {
     help.textContent = "현재 위치를 확인하고 있어요.";
     navigator.geolocation.getCurrentPosition(
       position => {
+        if (!isCurrent()) return;
         mark({lat: +position.coords.latitude.toFixed(5), lng: +position.coords.longitude.toFixed(5)});
         help.textContent = "현재 위치를 찍었어요. 맞으면 '이 위치로 정하기'를 눌러 주세요.";
       },
-      () => { help.textContent = "현재 위치를 가져오지 못했어요. 지도에서 직접 찍어 주세요."; },
+      () => { if (isCurrent()) help.textContent = "현재 위치를 가져오지 못했어요. 지도에서 직접 찍어 주세요."; },
       {enableHighAccuracy: false, timeout: 8000, maximumAge: 300000},
     );
   };
   dialog.querySelector(".location-save").onclick = () => {
-    saveLocation(picked);
+    if (!isCurrent()) return;
+    sessionLocation = picked;
     dialog.close();
     onDone();
   };
   dialog.querySelector(".location-clear").onclick = () => {
-    saveLocation(null);
+    if (!isCurrent()) return;
+    sessionLocation = null;
     dialog.close();
     onDone();
   };
@@ -688,7 +690,7 @@ async function storeMap(holder, stores) {
   }
   if (sessionLocation) {
     L.circleMarker([sessionLocation.lat, sessionLocation.lng], {radius: 9, weight: 3, color: "#b5532f", fillOpacity: 0.35})
-      .bindTooltip(sessionLocation.address ? `고른 위치 · ${sessionLocation.address}` : "고른 위치").addTo(map);
+      .bindTooltip(node("span", sessionLocation.address ? `고른 위치 · ${sessionLocation.address}` : "고른 위치")).addTo(map);
     points.push([sessionLocation.lat, sessionLocation.lng]);
   }
   map.fitBounds(points, {padding: [28, 28], maxZoom: 15});
@@ -739,7 +741,7 @@ async function showFamily(family, data) {
     const found = await request("/api/recommend/stores", {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({menu_ids: family.members.map(m => m.standard_menu_id), district,
-        ...(sessionLocation ? {location: sessionLocation} : {})}),
+        ...(sessionLocation ? {location: {lat: sessionLocation.lat, lng: sessionLocation.lng}} : {})}),
     });
     if (!results.contains(heading)) return;
     status.textContent = "";
@@ -888,6 +890,16 @@ function setAuthMode() {
 }
 
 function clearLocalProfile() {
+  sessionLocation = null;
+  pickerTicket++;
+  const locationDialog = document.querySelector("#location-dialog");
+  if (locationDialog.open) locationDialog.close();
+  locationDialog.querySelector("#location-query").value = "";
+  locationDialog.querySelector("#location-address").textContent = "";
+  locationDialog.querySelector("#location-results").replaceChildren();
+  pickerMap?.remove();
+  pickerMap = null;
+  updateLocationSummary();
   try {
     localStorage.removeItem(storageKey);
     localStorage.removeItem(legacyKey);

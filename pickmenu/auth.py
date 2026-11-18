@@ -68,7 +68,18 @@ def users_path() -> Path:
 
 def connect() -> sqlite3.Connection:
     path = users_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if os.name == "posix":
+            try:
+                descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            except FileExistsError:
+                if path.stat().st_mode & 0o077:
+                    path.chmod(0o600)
+            else:
+                os.close(descriptor)
+    except OSError as error:
+        raise sqlite3.OperationalError("회원 DB 파일 권한을 설정할 수 없어요.") from error
     db = sqlite3.connect(path, timeout=10)
     db.execute("PRAGMA foreign_keys = ON")
     db.execute("PRAGMA secure_delete = ON")

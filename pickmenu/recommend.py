@@ -282,12 +282,15 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
     terms = ingredient_terms(profile.allergy) | ingredient_terms(profile.exclude)
     plant = profile.diet in {"vegan", "vegetarian"}
     region = profile.district or "수원시"
+    query = compact(profile.query)
     for menu in menus:
         evidence = menu["regions"].get(region)
         groups = menu.get("groups") or [menu["category"]]
+        if not evidence or (profile.meal_category and profile.meal_category not in groups):
+            continue
         signal = " ".join((menu["name"], menu["category"], *menu["components"]))
-        if (not evidence or compact(profile.query) not in compact(signal)
-                or (profile.meal_category and profile.meal_category not in groups)):
+        normalized_signal = compact(signal) if query or terms else ""
+        if query and query not in normalized_signal:
             continue
         # 컬럼표에서 식사가 아니거나 곁들임인 음식은 검색어로 직접 찾을 때만 보여 준다.
         if menu.get("side") and not profile.query:
@@ -302,7 +305,7 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
             mismatched += 1
             continue
         meat = bool(MEAT.search(signal))
-        conflict = any(term in compact(signal) for term in terms) or (
+        conflict = any(term in normalized_signal for term in terms) or (
             plant and (meat or ANIMAL.search(signal) or
                        (profile.diet == "vegan" and VEGAN_EXCLUDE.search(signal))))
         if conflict:

@@ -8,7 +8,7 @@ from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-from recommend import Profile
+from recommend import ALIASES, DISTRICTS, Profile
 
 _slot = threading.BoundedSemaphore(1)
 
@@ -87,8 +87,17 @@ def conditions(payload: Any, categories: list[str]) -> tuple[Profile, list[str]]
     if category in categories and any(word in text for word in category_words(category)):
         values["meal_category"] = category
     allergy, exclude = ingredients(text, result.get("allergy", ""), result.get("exclude", ""))
-    values["allergy"] = ",".join(filter(None, (values["allergy"], allergy)))
-    values["exclude"] = ",".join(filter(None, (values["exclude"], exclude)))
+    for field, model_terms in (("allergy", allergy), ("exclude", exclude)):
+        terms = [term.strip() for term in re.split(r"[,;/]", f"{values[field]},{model_terms}") if term.strip()]
+        terms.extend(match.group(1) for message in history for match in EXPLICIT_INGREDIENT[field].finditer(message))
+        values[field] = ",".join(dict.fromkeys(terms))
+    for message in history:
+        if EXPLICIT_VEGAN.search(message):
+            values["diet"] = "vegan"
+        elif values["diet"] != "vegan" and EXPLICIT_VEGETARIAN.search(message):
+            values["diet"] = "vegetarian"
+        for match in EXPLICIT_DISTRICT.finditer(message):
+            values["district"] = match.group(1)
     try:
         return Profile.parse(values, categories), history
     except ValueError as error:
@@ -104,7 +113,7 @@ SUPPORT = {
               "hot": r"매콤|매운|맵게|얼큰|칼칼|화끈"},
     # 부정은 국물 바로 뒤(조사·한두 단어 안)만 본다. "국물 요리로, 피자, 파 싫어"의 '싫어'는 파에 걸린다.
     "soup": {"yes": r"국물|탕(?!수)|국밥|수프",
-             "no": r"국물\s*(?:요리)?" + NEGATIVE + r"|국물\s*(?:은|는)?\s*안|(?:탕|국)\s*말고"},
+             "no": r"국물\s*(?:요리)?" + NEGATIVE + r"|국물\s*(?:은|는)?\s*(?:안|필요\s*없)|(?:탕|국)\s*말고"},
 }
 CATEGORY_WORDS = {"국밥·해장국": ("국밥", "해장국", "해장"), "닭요리": ("닭",), "밥·덮밥": ("밥", "덮밥"),
                   "샐러드·건강식": ("샐러드", "건강식", "포케"), "아시안": ("아시안", "동남아", "쌀국수", "베트남", "태국", "인도"),
@@ -112,7 +121,18 @@ CATEGORY_WORDS = {"국밥·해장국": ("국밥", "해장국", "해장"), "닭�
                   "해산물": ("해산물", "해물", "생선"), "전·부침": ("부침", "전 ", "전요리", "파전", "전을"),
                   "찌개·탕": ("찌개", "탕"), "면": ("면", "국수"), "죽": ("죽",)}
 ALLERGY_CUE = r"알레르기|알러지|앨러지"
-EXCLUDE_CUE = r"싫|빼|말고|안\s*들어|못\s*먹|안\s*먹|별로|제외|없이|넣지"
+EXCLUDE_CUE = r"싫|빼|말고|안\s*들어|못\s*먹|안\s*먹|별로|제외|없이|넣지|피하고\s*싶"
+# 모델이 명시적인 제한을 누락해도 이전 대화에서 확인한 제한은 이어간다.
+KNOWN_INGREDIENTS = "|".join(sorted({word for aliases in ALIASES for word in aliases} | {"해물", "해산물"},
+                                    key=lambda word: (-len(word), word)))
+EXPLICIT_INGREDIENT = {
+    "allergy": re.compile(rf"(?<![가-힣])({KNOWN_INGREDIENTS})(?:에|은|는|이|가)?\s*(?:{ALLERGY_CUE})"),
+    "exclude": re.compile(rf"(?<![가-힣])({KNOWN_INGREDIENTS})(?:은|는|이|가|을|를|도)?\s*"
+                          r"(?:못\s*먹|빼\s*줘|제외해|피하고\s*싶)"),
+}
+EXPLICIT_VEGAN = re.compile(r"(?<![가-힣])비건(?:주의자)?(?:이야|이에요|입니다)(?=$|\s|[,.!?])")
+EXPLICIT_VEGETARIAN = re.compile(r"(?<![가-힣])채식주의자(?:야|예요|입니다)(?=$|\s|[,.!?])")
+EXPLICIT_DISTRICT = re.compile(rf"({'|'.join(sorted(DISTRICTS - {''}))})\s*(?:에서|근처|쪽에서)")
 
 
 # 검색어는 메뉴 이름만 받는다. "시원한 거", "야식으로 먹을 만한 거", "싸고 양 많은 거" 같은 말은

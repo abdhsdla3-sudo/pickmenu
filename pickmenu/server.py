@@ -257,9 +257,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": "가게를 찾을 메뉴 이름과 지역을 확인해 주세요."})
             elif (data := self.reference()) is not None:
                 self.send_json(200, menu_reco.stores_for_foods(data, foods, district))
-        elif path.startswith("/api/location/"):
+        elif path == "/api/location/status":
             if self.require_session():
-                self.location_request(path)
+                self.send_json(200, {"address_search": naver_maps.available()})
         elif path == "/api/v2/options":
             if not self.require_session():
                 return
@@ -285,6 +285,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlsplit(self.path).path
+        if path in {"/api/location/search", "/api/location/address"}:
+            if not self.authorize_api() or not self.require_session():
+                return
+            if (payload := self.read_json()) is not INVALID:
+                self.location_request(path, payload)
+            return
         if path == "/api/chat":
             if not self.authorize_api() or not self.require_session():
                 return
@@ -386,30 +392,23 @@ class Handler(BaseHTTPRequestHandler):
             self.log_error("매장 집계 오류 %s", error)
             self.send_json(503, {"error": "매장 자료를 열 수 없어요. 잠시 뒤 다시 시도해 주세요."})
 
-    def location_request(self, path: str) -> None:
-        """배달 위치: 주소 검색 가능 여부, 주소 → 좌표 후보, 좌표 → 주소. 입력값은 저장·로그하지 않는다."""
-        params = parse_qs(urlsplit(self.path).query)
-        if path == "/api/location/status":
-            self.send_json(200, {"address_search": naver_maps.available()})
-            return
+    def location_request(self, path: str, payload: Any) -> None:
+        """주소와 좌표는 JSON 본문으로 받고 저장하거나 로그에 남기지 않는다."""
         try:
             if path == "/api/location/search":
-                query = (params.get("query") or [""])[0].strip()
+                value = payload.get("query") if isinstance(payload, dict) else None
+                query = value.strip() if isinstance(value, str) else ""
                 if not 2 <= len(query) <= 80 or any(ord(c) < 32 for c in query):
                     self.send_json(400, {"error": "찾을 주소를 2~80자로 입력해 주세요."})
                     return
                 self.send_json(200, {"results": naver_maps.geocode(query)})
-            elif path == "/api/location/address":
-                try:
-                    lat, lng = float(params["lat"][0]), float(params["lng"][0])
-                    origin = user_location({"location": {"lat": lat, "lng": lng}})
-                except (KeyError, ValueError):
-                    self.send_json(400, {"error": "위치를 확인해 주세요."})
-                    return
-                assert origin is not None
-                self.send_json(200, {"address": naver_maps.reverse(*origin)})
             else:
-                self.send_json(404, {"error": "페이지를 찾을 수 없어요."})
+                origin = user_location({"location": payload})
+                if origin is None:
+                    raise ValueError("위치를 확인해 주세요.")
+                self.send_json(200, {"address": naver_maps.reverse(*origin)})
+        except ValueError as error:
+            self.send_json(400, {"error": str(error)})
         except naver_maps.Unavailable as error:
             self.send_json(503, {"error": str(error)})
 

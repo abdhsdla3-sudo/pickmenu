@@ -76,6 +76,14 @@ class LLMTest(unittest.TestCase):
                 profile, _ = llm.conditions({"messages": [text], "profile": {}}, [])
                 self.assertEqual((profile.allergy, profile.exclude), (allergy, exclude))
 
+    def test_explicit_restrictions_survive_empty_model_output(self):
+        with patch.object(llm, "generate", return_value={}):
+            profile, _ = llm.conditions({"messages": ["오늘은 비건이야", "영통구에서 국물은 필요 없어",
+                                                      "새우는 못 먹어", "해물은 피하고 싶어요", "우유 알레르기 있어"],
+                                         "profile": {}}, [])
+        self.assertEqual((profile.diet, profile.district, profile.soup), ("vegan", "영통구", "no"))
+        self.assertEqual((profile.exclude, profile.allergy), ("새우,해물", "우유"))
+
     def test_query_only_menu_names(self):
         for text, query, want in [("짬뽕 먹고 싶어", "짬뽕", "짬뽕"), ("시원한 거", "시원한 거", ""),
                                   ("야식으로 먹을 만한 거", "야식으로 먹을 만한 거", ""),

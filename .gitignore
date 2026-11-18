@@ -9,6 +9,9 @@ node_modules/
 *.db
 *.key
 *.fernet
+account-keys.json
+.pgpass
+pgpass.conf
 *.csv
 *.xlsx
 *.zip
