@@ -493,6 +493,14 @@ document.querySelector("#open-location")?.addEventListener("click", () => pickLo
 }));
 updateLocationSummary();
 let leafletReady = null;
+// OpenStreetMap 타일 서버는 Referer가 없는 요청을 막는다(타일 이용 정책).
+// 사이트 전체는 no-referrer지만, 지도 타일 요청에만 사이트 주소(경로 없이 origin)를 보낸다.
+function osmTiles(L) {
+  return L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: "&copy; OpenStreetMap contributors",
+    referrerPolicy: "strict-origin",
+  });
+}
 // 위치 고르기 창의 지도. 창을 열 때마다 이전 지도를 한 번만 지우고 새로 만든다.
 // 창을 빠르게 두 번 열면 마지막으로 연 것만 지도를 만든다.
 let pickerMap = null;
@@ -583,9 +591,10 @@ async function pickLocation(onDone) {
     pickerMap = null;
     holder.replaceChildren();
     map = pickerMap = L.map(holder).setView(picked ? [picked.lat, picked.lng] : SUWON, picked ? 15 : 12);
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19, attribution: "&copy; OpenStreetMap contributors",
-    }).addTo(map);
+    const tiles = osmTiles(L).addTo(map);
+    tiles.once("tileerror", () => {
+      if (ticket === pickerTicket) help.textContent = "지도 그림을 불러오지 못했어요. 주소 검색이나 '현재 위치 사용'을 써 주세요.";
+    });
     map.on("click", event => mark({lat: +event.latlng.lat.toFixed(5), lng: +event.latlng.lng.toFixed(5)}));
     setTimeout(() => map.invalidateSize(), 50);
   }
@@ -663,9 +672,7 @@ async function storeMap(holder, stores) {
   }
   if (!holder.isConnected) return;
   const map = L.map(holder, {scrollWheelZoom: false});
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19, attribution: "&copy; OpenStreetMap contributors",
-  }).addTo(map);
+  osmTiles(L).addTo(map);
   const points = [];
   for (const {store, at} of placed) {
     // 표시 내용은 순번 숫자뿐이라 html에 그대로 넣는다.
