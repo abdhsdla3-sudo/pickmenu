@@ -1,5 +1,6 @@
 /* global MENUS, ASSETS */
 
+const REVIEW_PERIOD = "2026년 7~9월"; // 로컬 서버의 PICKMENU_REVIEW_PERIOD와 같게 둔다.
 const goals = { balance: "균형 식사", protein: "단백질 중심", light: "가벼운 식사" };
 const categories = [...new Set(MENUS.map(menu => menu.category))].sort();
 const byId = new Map(MENUS.map(menu => [menu.standard_menu_id, menu]));
@@ -149,9 +150,16 @@ function recommend(profile) {
 
 const headers = {
   "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
-  "Content-Security-Policy": "default-src 'self'; frame-ancestors 'none'",
+  "Content-Security-Policy": "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+  "Referrer-Policy": "no-referrer",
   "X-Robots-Tag": "noindex, nofollow",
 };
+// 사진 base64는 요청마다 풀지 않고 처음 한 번만 풀어 둔다.
+const binaries = new Map();
+function decoded(path, content) {
+  if (!binaries.has(path)) binaries.set(path, Uint8Array.from(atob(content), c => c.charCodeAt(0)));
+  return binaries.get(path);
+}
 const json = (value, status = 200) => new Response(JSON.stringify(value), {
   status, headers: { ...headers, "Content-Type": "application/json; charset=utf-8" },
 });
@@ -231,13 +239,13 @@ export default {
     if (request.method === "GET" || request.method === "HEAD") {
       if (Object.hasOwn(ASSETS, path)) {
         const [type, content, binary] = ASSETS[path];
-        const body = request.method === "HEAD" ? null
-          : binary ? Uint8Array.from(atob(content), c => c.charCodeAt(0)) : content;
-        return new Response(body,
-          { headers: { ...headers, "Content-Type": type } });
+        const body = request.method === "HEAD" ? null : binary ? decoded(path, content) : content;
+        return new Response(body, { headers: {
+          ...headers, "Content-Type": type, ...(binary ? { "Cache-Control": "public, max-age=86400" } : {}),
+        } });
       }
       if (path === "/api/catalog") {
-        return json({ categories, menu_count: MENUS.length, period: "2026년 7~9월" });
+        return json({ categories, menu_count: MENUS.length, period: REVIEW_PERIOD });
       }
       if (path.startsWith("/api/menus/")) {
         const item = byId.get(path.slice("/api/menus/".length));

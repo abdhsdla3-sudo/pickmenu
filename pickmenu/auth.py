@@ -33,6 +33,7 @@ SCRYPT = {"n": 2 ** 14, "r": 8, "p": 1}
 
 _failures: dict[str, tuple[int, float]] = {}
 _failures_lock = threading.Lock()
+_migrated: set[tuple[str, int]] = set()
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -72,6 +73,9 @@ def connect() -> sqlite3.Connection:
     db.execute("PRAGMA foreign_keys = ON")
     db.execute("PRAGMA secure_delete = ON")
     db.executescript(SCHEMA)
+    marker = (str(path), path.stat().st_ino)
+    if marker in _migrated:
+        return db
     try:
         with db:
             db.execute("BEGIN IMMEDIATE")
@@ -93,6 +97,7 @@ def connect() -> sqlite3.Connection:
     except Exception:
         db.close()
         raise
+    _migrated.add(marker)
     return db
 
 
@@ -234,6 +239,11 @@ def _check_lock(username: str) -> None:
 
 def _record_failure(username: str) -> None:
     with _failures_lock:
+        now = time.monotonic()
+        if len(_failures) > 10_000:  # 없는 아이디를 바꿔 가며 시도해도 메모리가 계속 늘지 않게 한다.
+            for name, (_, since) in list(_failures.items()):
+                if now - since >= LOCK_SECONDS:
+                    del _failures[name]
         count, since = _failures.get(username, (0, 0.0))
         if time.monotonic() - since >= LOCK_SECONDS:
             count, since = 0, time.monotonic()

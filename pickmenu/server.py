@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sqlite3
+import threading
 from collections.abc import Iterable
 from contextlib import closing
 from http.cookies import CookieError, SimpleCookie
@@ -30,10 +31,14 @@ ASSETS = {
     "/style.css": ("style.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/mark.svg": ("mark.svg", "image/svg+xml"),
-    "/menu-photos.webp": ("menu-photos.webp", "image/webp"),
 }
-ASSETS.update({f"/{path.name}": (path.name, "image/webp")
-               for path in (BASE / "web").glob("menu-photos-*.webp")})
+ASSETS.update({f"/menu-photos/{path.name}": (f"menu-photos/{path.name}", "image/webp")
+               for path in (BASE / "web" / "menu-photos").glob("[0-9][0-9][0-9].webp")})
+PHOTO_CACHE = "public, max-age=86400"
+# 리뷰 수집 기간. 카탈로그를 새 기간으로 갱신하면 PICKMENU_REVIEW_PERIOD로 바꾼다.
+REVIEW_PERIOD = os.environ.get("PICKMENU_REVIEW_PERIOD", "2026년 7~9월")
+_loaded: dict[str, Any] = {"key": None, "reference": None, "menus": None}
+_loaded_lock = threading.Lock()
 
 
 def catalog_path() -> Path:
@@ -46,6 +51,30 @@ def catalog(path: Path | None = None) -> list[dict[str, Any]]:
         path = catalog_path()
     with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as db:
         return [json.loads(value) for value, in db.execute("SELECT data FROM catalog ORDER BY id")]
+
+
+def prepared_menus() -> list[dict[str, Any]]:
+    """참고자료를 붙인 카탈로그. 카탈로그 파일과 참고자료가 바뀌지 않았으면 이전 결과를 쓴다.
+
+    돌려준 목록과 메뉴 딕셔너리는 여러 요청이 함께 쓰므로 고치지 않는다(recommend는 복사해 쓴다).
+    """
+    path = catalog_path()
+    reference = menu_reco.reference_data()
+    try:
+        key: tuple[str, int] | None = (str(path), path.stat().st_mtime_ns)
+    except OSError:
+        key = None  # 파일을 확인할 수 없으면 캐시하지 않고 catalog()가 오류를 알리게 한다.
+    with _loaded_lock:
+        if key is not None and _loaded["key"] == key and _loaded["reference"] is reference:
+            return _loaded["menus"]
+    menus = catalog(path)
+    if not menus:
+        raise ValueError("빈 카탈로그")
+    prepared = apply_reference(menus, reference_tags(reference.columns, reference.menus) if reference else None)
+    if key is not None:
+        with _loaded_lock:
+            _loaded.update(key=key, reference=reference, menus=prepared)
+    return prepared
 
 
 def categories(menus: list[dict[str, Any]]) -> list[str]:
@@ -66,16 +95,20 @@ def session_cookie(token: str | None) -> str:
 
 
 class Handler(BaseHTTPRequestHandler):
+    timeout = 30  # 느린 연결(slowloris)이 스레드를 오래 붙잡지 않게 한다.
+
     def reply(self, status: int, kind: str, body: bytes,
-              headers: Iterable[tuple[str, str]] = ()) -> None:
+              headers: Iterable[tuple[str, str]] = (), cache: str = "no-store") -> None:
         self.send_response(status)
         for name, value in headers:
             self.send_header(name, value)
         self.send_header("Content-Type", kind)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache)
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy",
+                         "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
         self.end_headers()
         self.wfile.write(body)
 
@@ -158,11 +191,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def load(self) -> list[dict[str, Any]] | None:
         try:
-            menus = catalog()
-            if not menus:
-                raise ValueError("빈 카탈로그")
-            reference = menu_reco.reference_data()
-            return apply_reference(menus, reference_tags(reference.columns, reference.menus) if reference else None)
+            return prepared_menus()
         except (OSError, sqlite3.Error, ValueError) as error:
             self.log_error("카탈로그 오류 %s", error)
             self.send_json(503, {"error": "추천 데이터를 열 수 없어요. 전처리를 완료한 뒤 다시 시도해 주세요."})
@@ -186,7 +215,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path in ASSETS:
             filename, content_type = ASSETS[path]
-            self.reply(200, content_type, (BASE / "web" / filename).read_bytes())
+            self.reply(200, content_type, (BASE / "web" / filename).read_bytes(),
+                       cache=PHOTO_CACHE if content_type == "image/webp" else "no-store")
         elif path == "/api/auth/me":
             self.handle_auth(path)
         elif path == "/api/v2/stores":
@@ -208,7 +238,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/catalog":
             if (menus := self.load()) is not None:
                 self.send_json(200, {"categories": categories(menus), "menu_count": len(menus),
-                                     "period": "2026년 7~9월"})
+                                     "period": REVIEW_PERIOD})
         elif path.startswith("/api/menus/"):
             if not self.require_session():
                 return

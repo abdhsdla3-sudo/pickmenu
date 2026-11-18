@@ -11,12 +11,12 @@ const assets = {};
 for (const [url, [name, type]] of Object.entries(urls)) {
   assets[url] = [type, await read(`web/${name}`)];
 }
-const photos = (await readdir(new URL("web/", import.meta.url)))
-  .filter(name => /^menu-photos(?:-\d+)?\.webp$/.test(name))
+const photos = (await readdir(new URL("web/menu-photos/", import.meta.url)))
+  .filter(name => /^\d{3}\.webp$/.test(name))
   .sort();
 for (const name of photos) {
-  assets[`/${name}`] = ["image/webp", await readFile(
-    new URL(`web/${name}`, import.meta.url), "base64"), true];
+  assets[`/menu-photos/${name}`] = ["image/webp", await readFile(
+    new URL(`web/menu-photos/${name}`, import.meta.url), "base64"), true];
 }
 const catalog = JSON.parse(await read("catalog.json"));
 const worker = await read("worker.js");
