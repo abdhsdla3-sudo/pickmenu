@@ -90,6 +90,8 @@ def nutrition_score(nutrition: dict[str, Any] | None, goal: str) -> float | None
 
 SOUP = {"있음": "yes", "없음": "no"}
 SPICE_TABLE = {"보통 매움": "hot"}
+MIN_SPICE_ROWS = 3
+PREFERRED_FIRST = 3
 # 이름 끝이 국물 요리인 음식(매운탕·어묵탕·만둣국·김치찌개·순대전골·뼈해장국 등)은 국물 있음으로 본다.
 SOUP_NAME = re.compile(r"(탕|국|찌개|전골|국밥)$")
 
@@ -97,8 +99,8 @@ SOUP_NAME = re.compile(r"(탕|국|찌개|전골|국밥)$")
 def column_spice(rows: list[dict[str, Any]]) -> dict[str, str]:
     """참고자료 매장 메뉴 행의 맵기(안 매움·약간 매움·매움·일부 매운 옵션)를 컬럼별로 모은다.
 
-    판정이 있는 행 중 `안 매움`이 80% 이상이면 mild, `매움`·`약간 매움`이 절반 이상이면 hot,
-    섞여 있으면(일부 매운 옵션 포함) 정하지 않는다. `명시 없음`은 세지 않는다.
+    판정이 있는 행이 3건 이상일 때만 정한다. `안 매움`이 80% 이상이면 mild, `매움`·`약간 매움`이
+    절반 이상이면 hot, 섞여 있으면(일부 매운 옵션 포함) 정하지 않는다. `명시 없음`은 세지 않는다.
     """
     counts: dict[str, Counter[str]] = defaultdict(Counter)
     for row in rows:
@@ -108,6 +110,8 @@ def column_spice(rows: list[dict[str, Any]]) -> dict[str, str]:
     result: dict[str, str] = {}
     for column, count in counts.items():
         total = sum(count.values())
+        if total < MIN_SPICE_ROWS:
+            continue
         if count["안 매움"] >= 0.8 * total:
             result[column] = "mild"
         elif count["매움"] + count["약간 매움"] >= 0.5 * total:
@@ -151,7 +155,7 @@ def apply_reference(menus: list[dict[str, Any]], tags: dict[str, dict[str, Any]]
     tags = tags or {}
     names = sorted(tags)
     found: dict[str, tuple[str | None, bool]] = {}
-    result = []
+    result: list[dict[str, Any]] = []
     for menu in menus:
         food = menu["components"][0]
         if food not in found:
@@ -165,7 +169,33 @@ def apply_reference(menus: list[dict[str, Any]], tags: dict[str, dict[str, Any]]
         result.append({**menu, "spice": menu["spice"] or (tag["spice"] if exact else ""),
                        "soup": soup or tag["soup"], "reference_column": name,
                        "groups": list(dict.fromkeys([menu["category"], *tag["groups"]]))})
-    return result
+    return food_tags(result, tags, found)
+
+
+def food_tags(menus: list[dict[str, Any]], tags: dict[str, dict[str, Any]],
+              found: dict[str, tuple[str | None, bool]]) -> list[dict[str, Any]]:
+    """표준 음식(대표 메뉴) 자체의 맵기·국물을 `family_spice`·`family_soup`로 붙인다.
+
+    이름이 정확히 맞는 참고자료 컬럼 값이 있으면 그것을 쓴다. 없으면 같은 음식 메뉴의 절반 넘게
+    같은 값일 때만 그 값을 쓴다. `매콤한 감자피자` 하나 때문에 피자 전체가 매운 음식이 되지 않게 한다.
+    """
+    members: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for menu in menus:
+        members[menu["components"][0]].append(menu)
+    decided: dict[str, dict[str, str]] = {}
+    for food, group in members.items():
+        name, exact = found.get(food, (None, False))
+        values: dict[str, str] = {}
+        for key in ("spice", "soup"):
+            value = tags[name][key] if name and exact else ""
+            if not value:
+                top, count = Counter(menu[key] for menu in group if menu[key]).most_common(1)[0] \
+                    if any(menu[key] for menu in group) else ("", 0)
+                value = top if count * 2 > len(group) else ""
+            values[key] = value
+        decided[food] = values
+    return [{**menu, "family_spice": decided[menu["components"][0]]["spice"],
+             "family_soup": decided[menu["components"][0]]["soup"]} for menu in menus]
 
 
 def recommend(menus: list[dict[str, Any]], profile: Profile) -> dict[str, Any]:
@@ -182,9 +212,13 @@ def recommend(menus: list[dict[str, Any]], profile: Profile) -> dict[str, Any]:
         if (not evidence or compact(profile.query) not in compact(signal)
                 or (profile.meal_category and profile.meal_category not in groups)):
             continue
-        # 고른 맵기·국물과 반대로 확인된 메뉴는 뺀다. 정보가 없는 메뉴는 남기고 점수만 낮춘다.
+        # 고른 맵기·국물과 반대로 확인된 메뉴는 뺀다. 메뉴 이름의 단서뿐 아니라 음식 자체의 값도 본다
+        # (예: 매운 쪽을 골랐을 때 '매콤한 감자피자'가 있어도 안 매운 음식인 피자는 뺀다).
+        # 정보가 없는 메뉴는 남기고 점수만 낮춘다.
         if any(value and actual and value != actual
-               for value, actual in ((profile.spice, menu["spice"]), (profile.soup, menu["soup"]))):
+               for value, actual in ((profile.spice, menu["spice"]), (profile.soup, menu["soup"]),
+                                     (profile.spice, menu.get("family_spice", "")),
+                                     (profile.soup, menu.get("family_soup", "")))):
             mismatched += 1
             continue
         meat = bool(MEAT.search(signal))
@@ -203,8 +237,10 @@ def recommend(menus: list[dict[str, Any]], profile: Profile) -> dict[str, Any]:
         preferences: list[float] = []
         category = profile.category if profile.category in groups else menu["category"]
         for label, value, actual in (("음식군", profile.category, category),
-                                     ("맵기", profile.spice, menu["spice"]),
-                                     ("국물", profile.soup, menu["soup"]),
+                                     # 맵기·국물 점수는 음식 자체의 값으로 매긴다. 매운오뎅김밥 하나로
+                                     # 김밥이 매운 음식 1위가 되지 않게, 음식 값이 미정이면 정보 부족으로 본다.
+                                     ("맵기", profile.spice, menu.get("family_spice", menu["spice"])),
+                                     ("국물", profile.soup, menu.get("family_soup", menu["soup"])),
                                      ("육식 선호", "yes" if profile.diet == "meat" else "",
                                       "yes" if meat else "")):
             if value:
@@ -214,14 +250,28 @@ def recommend(menus: list[dict[str, Any]], profile: Profile) -> dict[str, Any]:
         t = sum(preferences) / len(preferences) if preferences else 0.5
         e = (0.7 * clip(math.log1p(evidence["reviews"]) / math.log1p(150))
              + 0.3 * clip(math.log1p(evidence["stores"]) / math.log1p(10)))
-        score = WEIGHTS["nutrition"] * (n if n is not None else 0.30) + (
-            WEIGHTS["preference"] * t + WEIGHTS["evidence"] * e)
         reasons = [f"{region} 리뷰 {evidence['reviews']:,}건 · 매장 {evidence['stores']:,}곳",
                    f"{GOALS[profile.goal]} 적합도 {round(n * 100)}점 (일반음식 참고값)"
                    if n is not None else "비교할 참고 영양값 부족", *matches]
         ranked.append({**menu, "region": region, "evidence": evidence, "reasons": reasons,
-                       "score": round(score * 100, 3)})
-    ranked.sort(key=lambda x: (-x["score"], -x["evidence"]["reviews"], x["standard_menu_id"]))
+                       "_parts": (n, t, e), "_preferred": bool(profile.category) and profile.category in groups})
+    # 영양 자료가 없는 메뉴는 감점하지 않고 이번 후보들의 영양 점수 중앙값을 쓴다.
+    known = sorted(menu["_parts"][0] for menu in ranked if menu["_parts"][0] is not None)
+    middle = (known[len(known) // 2] if len(known) % 2 else (known[len(known) // 2 - 1] + known[len(known) // 2]) / 2) \
+        if known else 0.5
+    for menu in ranked:
+        n, t, e = menu.pop("_parts")
+        score = WEIGHTS["nutrition"] * (n if n is not None else middle) + (
+            WEIGHTS["preference"] * t + WEIGHTS["evidence"] * e)
+        menu["score"] = round(score * 100, 3)
+        menu["_unknown_nutrition"] = n is None
+    # 선호 음식군에 맞는 음식이 3가지 이상이면 그 음식들을 먼저 보여 준다.
+    preferred_first = len({compact(menu["components"][0]) for menu in ranked if menu["_preferred"]}) >= PREFERRED_FIRST
+    # 점수가 같으면 영양 자료가 있는 메뉴를 앞에 둔다.
+    ranked.sort(key=lambda x: (preferred_first and not x["_preferred"], -x["score"], x["_unknown_nutrition"],
+                               -x["evidence"]["reviews"], x["standard_menu_id"]))
+    for menu in ranked:
+        del menu["_preferred"], menu["_unknown_nutrition"]
     check.sort(key=lambda x: (-x["review_count"], x["standard_menu_id"]))
     first_choices: list[dict[str, Any]] = []
     alternatives: list[dict[str, Any]] = []

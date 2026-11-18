@@ -27,7 +27,8 @@ COLUMNS = {"짬뽕": {"groups": "중식;면", "broth": "있음", "spiciness": "�
            "어묵": {"groups": "분식", "broth": "없음", "spiciness": "-"}}
 ROWS = ([{"column_name": "피자", "spiciness": "안 매움"}] * 9 + [{"column_name": "피자", "spiciness": "약간 매움"}]
         + [{"column_name": "탕수육", "spiciness": "안 매움"}, {"column_name": "탕수육", "spiciness": "일부 매운 옵션"}]
-        + [{"column_name": "짬뽕", "spiciness": "매움"}, {"column_name": "짬뽕", "spiciness": "명시 없음"}])
+        + [{"column_name": "짬뽕", "spiciness": "매움"}] * 3 + [{"column_name": "짬뽕", "spiciness": "명시 없음"}]
+        + [{"column_name": "떡볶이", "spiciness": "안 매움"}] * 2)  # 판정 2건은 정하지 않는다
 TAGS = reference_tags(COLUMNS, ROWS)
 
 
@@ -75,6 +76,36 @@ class ReferenceTagTest(unittest.TestCase):
         self.assertEqual(chosen["eligible"], 1)
         plain = recommend([menu("짬뽕")], Profile.parse({"category": "면"}, ["면", "중식"]))
         self.assertEqual(plain["items"][0]["reasons"][2], "음식군 불일치")
+
+    def test_food_level_tag_beats_one_spicy_variant(self):
+        menus = apply_reference([menu("매콤한 감자피자", "피자", spice="hot", menu_id="MN_1", food="피자"),
+                                 menu("콤비네이션피자", "피자", menu_id="MN_2", food="피자"),
+                                 menu("매운오뎅김밥", "분식", spice="hot", menu_id="MN_3", food="김밥"),
+                                 menu("참치김밥", "분식", menu_id="MN_4", food="김밥"),
+                                 menu("야채김밥", "분식", menu_id="MN_5", food="김밥"),
+                                 menu("불족발", "족발·보쌈", spice="hot", menu_id="MN_6", food="불족발"),
+                                 menu("매운불족발", "족발·보쌈", spice="hot", menu_id="MN_7", food="불족발")], TAGS)
+        self.assertEqual({m["components"][0]: m["family_spice"] for m in menus},
+                         {"피자": "mild", "김밥": "", "불족발": "hot"})
+        result = recommend(menus, Profile.parse({"spice": "hot"}, ["피자", "분식", "족발·보쌈"]))
+        names = {item["name"] for item in result["items"]}
+        self.assertFalse(names & {"매콤한 감자피자", "콤비네이션피자"})  # 피자 자체가 안 매운 음식
+        self.assertTrue({"불족발", "매운불족발", "매운오뎅김밥", "참치김밥"} <= names)  # 김밥은 미정이라 남는다
+
+    def test_missing_nutrition_gets_median_and_preferred_group_first(self):
+        def fed(name, category, menu_id, protein):
+            item = menu(name, category, menu_id=menu_id)
+            item["nutrition"] = {"basis": 100, "unit": "g", "values": [120, protein, 13, 4, None]}
+            return item
+        menus = [fed("피자", "피자", "MN_1", 12), fed("김밥", "분식", "MN_2", 3), fed("라면", "분식", "MN_3", 6),
+                 menu("제육볶음", "고기", menu_id="MN_4"), menu("삼겹살", "고기", menu_id="MN_5"),
+                 menu("곱창볶음", "고기", menu_id="MN_6")]
+        categories = ["피자", "분식", "고기"]
+        plain = recommend(menus, Profile.parse({"goal": "protein"}, categories))
+        self.assertEqual(plain["items"][0]["name"], "피자")
+        self.assertEqual(plain["items"][1]["name"], "라면")  # 중앙값과 같으면 영양 자료가 있는 메뉴가 앞
+        meat = recommend(menus, Profile.parse({"goal": "protein", "category": "고기"}, categories))
+        self.assertEqual([item["category"] for item in meat["items"][:3]], ["고기"] * 3)
 
     def test_reference_data_backs_off_after_failure(self):
         with patch.dict(menu_reco._failed, {"at": float("-inf")}), \
