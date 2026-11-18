@@ -64,13 +64,9 @@ def conditions(payload: Any, categories: list[str]) -> tuple[Profile, list[str]]
     values = dict(vars(profile))
     # 작은 모델이 말하지 않은 음식군·조건까지 채우는 것을 막는다.
     text = " ".join(history)
-    support = {
-        "goal": {"light": r"가볍|가벼|저칼|다이어트|칼로리.*낮|부담.*없",
-                 "protein": r"단백질|고단백", "balance": r"균형|골고루"},
-        "spice": {"mild": r"안\s*매[운워]?|맵지|순한|순하게", "hot": r"매콤|매운|맵게"},
-        "soup": {"yes": r"국물|탕|국밥|수프", "no": r"국물.*(?:없|싫|말고|빼)|국물\s*안"},
-    }
-    for key, options in support.items():
+    for key, options in SUPPORT.items():
+        # 문장에서 가장 뒤에 나온 표현을 따른다. 부정 표현("매운 건 싫어")은 긍정 표현("매운")을 포함해
+        # 더 길고 더 뒤에서 끝나므로 이긴다.
         matched = [(match.end(), len(match.group()), value) for value, pattern in options.items()
                    for match in re.finditer(pattern, text)]
         if matched:
@@ -78,20 +74,89 @@ def conditions(payload: Any, categories: list[str]) -> tuple[Profile, list[str]]
         else:
             result.pop(key, None)
     for key in ("goal", "spice", "soup", "query", "meal_category", "allergy", "exclude"):
-        if key not in result:
-            continue
-        if not isinstance(result[key], str):
+        if key in result and not isinstance(result[key], str):
             raise Unavailable("AI가 조건을 정확히 이해하지 못했어요. 조건을 간단히 다시 입력해 주세요.")
-        if key in {"query", "meal_category", "allergy", "exclude"} and result[key] not in text:
-            continue
-        if key in {"allergy", "exclude"}:
-            values[key] = ",".join(filter(None, (values[key], result[key])))
-        else:
+    for key in ("goal", "spice", "soup"):
+        if result.get(key):
             values[key] = result[key]
+    if (query := menu_query(result.get("query"))) and query in text:
+        values["query"] = query
+    # 음식군은 정해진 목록 값이라 문장에 이름이 그대로 없어도 된다("국밥 중에서" → 국밥·해장국).
+    # 대신 그 음식군을 가리키는 말이 문장에 있어야 한다.
+    category = result.get("meal_category")
+    if category in categories and any(word in text for word in category_words(category)):
+        values["meal_category"] = category
+    allergy, exclude = ingredients(text, result.get("allergy", ""), result.get("exclude", ""))
+    values["allergy"] = ",".join(filter(None, (values["allergy"], allergy)))
+    values["exclude"] = ",".join(filter(None, (values["exclude"], exclude)))
     try:
         return Profile.parse(values, categories), history
     except ValueError as error:
         raise Unavailable("AI가 조건을 정확히 이해하지 못했어요. 조건을 간단히 다시 입력해 주세요.") from error
+
+
+NEGATIVE = r"(?:은|는|이|가|도)?\s*(?:싫|못\s*먹|안\s*(?:먹|좋|땡|당)|별로|빼|말고|없|업|노노)"
+SUPPORT = {
+    "goal": {"light": r"가볍|가벼|저칼|다이어트|칼로리.*낮|부담.*없",
+             "protein": r"단백질|고단백", "balance": r"균형|골고루"},
+    "spice": {"mild": r"안\s*매[운워]?|맵지\s*(?:않|안)|순한|순하게|맵찔|매운\s*(?:건|거|것|맛|음식)?" + NEGATIVE
+                      + r"|맵(?:게|기)?\s*(?:는|은)?\s*못",
+              "hot": r"매콤|매운|맵게|얼큰|칼칼|화끈"},
+    # 부정은 국물 바로 뒤(조사·한두 단어 안)만 본다. "국물 요리로, 피자, 파 싫어"의 '싫어'는 파에 걸린다.
+    "soup": {"yes": r"국물|탕(?!수)|국밥|수프",
+             "no": r"국물\s*(?:요리)?" + NEGATIVE + r"|국물\s*(?:은|는)?\s*안|(?:탕|국)\s*말고"},
+}
+CATEGORY_WORDS = {"국밥·해장국": ("국밥", "해장국", "해장"), "닭요리": ("닭",), "밥·덮밥": ("밥", "덮밥"),
+                  "샐러드·건강식": ("샐러드", "건강식", "포케"), "아시안": ("아시안", "동남아", "쌀국수", "베트남", "태국", "인도"),
+                  "양식": ("양식", "파스타", "스테이크", "pasta"), "중식": ("중식", "중국", "짜장", "짬뽕"),
+                  "해산물": ("해산물", "해물", "생선"), "전·부침": ("부침", "전 ", "전요리", "파전", "전을"),
+                  "찌개·탕": ("찌개", "탕"), "면": ("면", "국수"), "죽": ("죽",)}
+ALLERGY_CUE = r"알레르기|알러지|앨러지"
+EXCLUDE_CUE = r"싫|빼|말고|안\s*들어|못\s*먹|안\s*먹|별로|제외|없이|넣지"
+
+
+# 검색어는 메뉴 이름만 받는다. "시원한 거", "야식으로 먹을 만한 거", "싸고 양 많은 거" 같은 말은
+# 검색어가 되면 아무 메뉴와도 맞지 않아 추천이 0개가 된다.
+NOT_MENU = re.compile(r"[거것]$|먹|싶|만한|같은|좋은|많은|낮은|높은|싸고|싼|으로|처럼|말고|^.{13,}$")
+
+
+def menu_query(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    value = re.sub(r"\s*(?:메뉴|종류|요리|음식)$", "", value.strip())
+    return "" if not value or NOT_MENU.search(value) else value
+
+
+def category_words(category: str) -> tuple[str, ...]:
+    return CATEGORY_WORDS.get(category, tuple(category.split("·")))
+
+
+def ingredients(text: str, allergy: str, exclude: str) -> tuple[str, str]:
+    """AI가 뽑은 알레르기·기피 재료 중 문장에서 실제로 그렇게 말한 것만 남긴다.
+
+    재료 바로 뒤(구두점 없이 12자 안)에 '알레르기'가 있으면 알레르기, '싫어·빼 줘·못 먹어' 등이 있으면 기피 재료다.
+    "음 회 땡겨"의 '음', "고기 요리"의 '고기', "안 매운 걸로"의 '매운'처럼 단서가 없는 말은 버린다.
+    """
+    kept: dict[str, list[str]] = {"allergy": [], "exclude": []}
+    for term in dict.fromkeys(t.strip() for t in re.split(r"[,;/]", f"{allergy},{exclude}")):
+        if not term or term not in text:
+            continue
+        for at in (m.end() for m in re.finditer(re.escape(term), text)):
+            tail = re.split(r"[,.!?\n]", text[at:at + 14])[0]
+            if re.search(ALLERGY_CUE, tail):
+                kept["allergy"].append(term)
+                break
+            if re.search(EXCLUDE_CUE, tail):
+                kept["exclude" if term not in re.split(r"[,;/]", allergy) else "allergy"].append(term)
+                break
+    return ",".join(dict.fromkeys(kept["allergy"])), ",".join(dict.fromkeys(kept["exclude"]))
+
+
+def object_particle(word: str) -> str:
+    """받침이 있으면 '을', 없으면 '를'. 한글이 아니면 '을(를)'."""
+    if not word or not "가" <= word[-1] <= "힣":
+        return "을(를)"
+    return "을" if (ord(word[-1]) - 0xAC00) % 28 else "를"
 
 
 def reply(result: dict[str, Any]) -> str:
@@ -99,7 +164,8 @@ def reply(result: dict[str, Any]) -> str:
                   for f in result.get("families", [])[:5]]
     if not candidates:
         return "현재 조건에서 검증 가능한 메뉴를 찾지 못했어요. 특히 알레르기·원재료 정보가 부족하면 추천에서 제외돼요. 조건을 확인해 주세요."
-    summary = "조건에 맞춰 " + ", ".join(c["name"] for c in candidates) + "을 골랐어요."
+    names = [c["name"] for c in candidates]
+    summary = "조건에 맞춰 " + ", ".join(names) + object_particle(names[-1]) + " 골랐어요."
     questions = ["맵기나 국물 선호를 더 바꿔볼까요?", "먹고 싶은 메뉴 이름을 알려주시면 더 좁혀볼게요.",
                  "아래에서 메뉴를 고르면 판매 기록이 있는 매장도 볼 수 있어요."]
     try:

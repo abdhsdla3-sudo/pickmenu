@@ -33,6 +33,65 @@ class LLMTest(unittest.TestCase):
         self.assertEqual((profile.goal, profile.spice, profile.soup, profile.meal_category),
                          ("light", "mild", "no", ""))
 
+    def test_negation_and_soup_scope(self):
+        # 1.6.5: 이야기 추천 548문장 실험에서 반대로 들어가던 표현
+        cases = [("매운 건 싫어", {"spice": "hot"}, "spice", "mild"),
+                 ("맵찔이라 매운 건 못 먹어", {"spice": "hot"}, "spice", "mild"),
+                 ("매운 건 못 먹고 국물 있는 걸로", {"spice": "hot"}, "spice", "mild"),
+                 ("안 매운 거 말고 매운 거", {}, "spice", "hot"),
+                 ("얼큰한 국물", {"soup": "yes"}, "spice", "hot"),
+                 ("국물업는거", {"soup": "yes"}, "soup", "no"),
+                 ("국물 요리로, 피자, 파 싫어", {"soup": "no"}, "soup", "yes"),
+                 ("국물 있는 거, 당근는 빼 줘", {"soup": "no"}, "soup", "yes"),
+                 ("탕 말고 볶음 종류", {}, "soup", "no"),
+                 ("국물은 빼고", {}, "soup", "no"),
+                 ("국물 안 좋아해", {}, "soup", "no")]
+        for text, model, key, want in cases:
+            with self.subTest(text=text), patch.object(llm, "generate", return_value=dict(model)):
+                profile, _ = llm.conditions({"messages": [text], "profile": {}}, [])
+                self.assertEqual(getattr(profile, key), want)
+
+    def test_category_kept_when_words_point_to_it(self):
+        cats = ["국밥·해장국", "족발·보쌈", "밥·덮밥", "해산물", "찌개·탕"]
+        for text, model, want in [("국밥 중에서", "국밥·해장국", "국밥·해장국"),
+                                  ("족발 쪽으로", "족발·보쌈", "족발·보쌈"),
+                                  ("면 말고 밥", "밥·덮밥", "밥·덮밥"),
+                                  ("국물 없는 거", "국밥·해장국", ""),     # 말하지 않은 음식군
+                                  ("뜨끈한 거 먹고 싶다", "찌개·탕", ""),
+                                  ("국밥 먹고 싶어", "없는음식군", "")]:
+            with self.subTest(text=text), patch.object(llm, "generate", return_value={"meal_category": model}):
+                profile, _ = llm.conditions({"messages": [text], "profile": {}}, cats)
+                self.assertEqual(profile.meal_category, want)
+
+    def test_ingredients_need_a_cue(self):
+        for text, model, allergy, exclude in [
+                ("음 회 땡겨 그리고 밀 알레르기 있어", {"allergy": "밀", "exclude": "음"}, "밀", ""),
+                ("점심으로 우유 알레르기 있어, 고기 요리", {"allergy": "우유", "exclude": "고기"}, "우유", ""),
+                ("짬뽕 먹고 싶어 근데 안 매운 걸로", {"exclude": "매운"}, "", ""),
+                ("채식주의자야", {"allergy": "채식주의자"}, "", ""),
+                ("오이랑 고수 둘 다 싫어", {"exclude": "오이, 고수"}, "", "오이,고수"),
+                ("파는 빼 줘! 새우 알레르기 있어", {"exclude": "새우"}, "새우", ""),
+                ("회 먹고 싶다 근데 날것은 별로", {"exclude": "날것"}, "", "날것")]:
+            with self.subTest(text=text), patch.object(llm, "generate", return_value=dict(model)):
+                profile, _ = llm.conditions({"messages": [text], "profile": {}}, [])
+                self.assertEqual((profile.allergy, profile.exclude), (allergy, exclude))
+
+    def test_query_only_menu_names(self):
+        for text, query, want in [("짬뽕 먹고 싶어", "짬뽕", "짬뽕"), ("시원한 거", "시원한 거", ""),
+                                  ("야식으로 먹을 만한 거", "야식으로 먹을 만한 거", ""),
+                                  ("싸고 양 많은 거", "싸고 양 많은 거", ""), ("비건 메뉴 추천해 줘", "비건 메뉴", "비건"),
+                                  ("탕 말고 볶음 종류", "볶음 종류", "볶음"), ("돈까스", "돈가스", "")]:
+            with self.subTest(text=text), patch.object(llm, "generate", return_value={"query": query}):
+                profile, _ = llm.conditions({"messages": [text], "profile": {}}, [])
+                self.assertEqual(profile.query, want)
+
+    def test_reply_particle(self):
+        def fam(name):
+            return {"name": name, "best": {"reasons": []}}
+        with patch.object(llm, "generate", side_effect=llm.Unavailable):
+            self.assertIn("물회를 골랐어요", llm.reply({"families": [fam("국밥"), fam("물회")]}))
+            self.assertIn("국밥을 골랐어요", llm.reply({"families": [fam("물회"), fam("국밥")]}))
+
     def test_busy_and_disabled_do_not_open_network(self):
         with patch.dict(os.environ, {"PICKMENU_LLM_URL": ""}), patch.object(llm, "urlopen") as network:
             with self.assertRaises(llm.Unavailable):
