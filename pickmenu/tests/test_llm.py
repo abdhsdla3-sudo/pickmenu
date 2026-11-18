@@ -80,7 +80,9 @@ class LLMTest(unittest.TestCase):
         for text, query, want in [("짬뽕 먹고 싶어", "짬뽕", "짬뽕"), ("시원한 거", "시원한 거", ""),
                                   ("야식으로 먹을 만한 거", "야식으로 먹을 만한 거", ""),
                                   ("싸고 양 많은 거", "싸고 양 많은 거", ""), ("비건 메뉴 추천해 줘", "비건 메뉴", "비건"),
-                                  ("탕 말고 볶음 종류", "볶음 종류", "볶음"), ("돈까스", "돈가스", "")]:
+                                  ("탕 말고 볶음 종류", "볶음 종류", "볶음"), ("돈까스", "돈가스", ""),
+                                  ("국밥 중에서", "국밥 중에서", "국밥"), ("족발 쪽으로", "족발 쪽으로", "족발"),
+                                  ("국물 없는 거", "국물 없는", ""), ("단백질 위주로", "단백질 위주", "")]:
             with self.subTest(text=text), patch.object(llm, "generate", return_value={"query": query}):
                 profile, _ = llm.conditions({"messages": [text], "profile": {}}, [])
                 self.assertEqual(profile.query, want)

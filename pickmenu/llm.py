@@ -117,13 +117,15 @@ EXCLUDE_CUE = r"싫|빼|말고|안\s*들어|못\s*먹|안\s*먹|별로|제외|�
 
 # 검색어는 메뉴 이름만 받는다. "시원한 거", "야식으로 먹을 만한 거", "싸고 양 많은 거" 같은 말은
 # 검색어가 되면 아무 메뉴와도 맞지 않아 추천이 0개가 된다.
-NOT_MENU = re.compile(r"[거것]$|먹|싶|만한|같은|좋은|많은|낮은|높은|싸고|싼|으로|처럼|말고|^.{13,}$")
+NOT_MENU = re.compile(r"[거것]$|먹|싶|만한|같은|좋은|많은|낮은|높은|싸고|싼|으로|처럼|말고|^.{13,}$|"
+                      r"국물|단백질|매운|맵|가볍|가벼|순한|알레르기")
 
 
 def menu_query(value: Any) -> str:
     if not isinstance(value, str):
         return ""
-    value = re.sub(r"\s*(?:메뉴|종류|요리|음식)$", "", value.strip())
+    # "국밥 중에서" → 국밥, "족발 쪽으로" → 족발
+    value = re.sub(r"\s*(?:중에서|중|쪽으로|쪽|위주로|위주|메뉴|종류|요리|음식)$", "", value.strip())
     return "" if not value or NOT_MENU.search(value) else value
 
 
