@@ -230,8 +230,10 @@ export default {
     }
     if (request.method === "GET" || request.method === "HEAD") {
       if (Object.hasOwn(ASSETS, path)) {
-        const [type, content] = ASSETS[path];
-        return new Response(request.method === "HEAD" ? null : content,
+        const [type, content, binary] = ASSETS[path];
+        const body = request.method === "HEAD" ? null
+          : binary ? Uint8Array.from(atob(content), c => c.charCodeAt(0)) : content;
+        return new Response(body,
           { headers: { ...headers, "Content-Type": type } });
       }
       if (path === "/api/catalog") {

@@ -320,9 +320,43 @@ function render(data) {
     button.type = "button";
     button.setAttribute("aria-label", `${item.name} 상세 보기`);
     button.addEventListener("click", () => openDetail(item, button));
-    card.append(head, node("p", nutritionSummary(item), "muted"), button);
+    appendMenuCard(card, item.components?.[0] || item.name, button, head,
+      node("p", nutritionSummary(item), "muted"));
     results.append(card);
   });
+}
+
+// 음식 사진 시트의 행 순서. 표준 음식명이 일치하는 경우에만 사진을 표시한다.
+const menuPhotoNames = [
+  "돼지갈비", "삼겹살", "오리고기", "비빔밥",
+  "떡볶이", "김밥", "냉면", "돈가스",
+  "제육볶음", "구운치킨", "후라이드치킨", "김치찜",
+  "아구찜", "짬뽕", "포케", "국밥",
+];
+
+function appendMenuCard(card, foodName, button, ...details) {
+  const index = menuPhotoNames.indexOf(foodName);
+  if (index < 0) {
+    card.append(...details, button);
+    return;
+  }
+  const body = node("div", undefined, "menu-card-body");
+  const info = node("div", undefined, "menu-card-info");
+  const figure = node("figure", undefined, "menu-photo");
+  const frame = node("div", undefined, "menu-photo-frame");
+  const image = node("img");
+  image.alt = `${foodName} 예시 사진`;
+  image.loading = "lazy";
+  image.decoding = "async";
+  image.style.left = `${-(index % 4) * 100}%`;
+  image.style.top = `${-Math.floor(index / 4) * 100}%`;
+  image.addEventListener("error", () => figure.remove(), {once: true});
+  image.src = "/menu-photos.webp";
+  frame.append(image);
+  figure.append(frame, node("figcaption", "AI 예시 사진"));
+  info.append(...details);
+  body.append(info, figure);
+  card.append(body, button);
 }
 
 // 1단계: 가게마다 다른 메뉴 이름을 표준 음식명(대표 메뉴)으로 묶어 고르게 한다.
@@ -353,8 +387,8 @@ function renderFamilies(data) {
     // 추천점수(100점 기준)는 순서를 정한 값 그대로다.
     const score = node("p", undefined, "menu-score");
     score.append(node("strong", `${Math.round(family.best.score)}`), node("span", "점 · 추천점수"));
-    card.append(head, score, family.comment ? node("p", family.comment, "menu-comment")
-      : node("p", nutritionSummary(family.best), "muted"), button);
+    appendMenuCard(card, family.name, button, head, score, family.comment ? node("p", family.comment, "menu-comment")
+      : node("p", nutritionSummary(family.best), "muted"));
     results.append(card);
   });
   results.append(node("p", "가게마다 다른 메뉴 이름을 같은 음식으로 묶었어요 (자동 분류 · 사람 미검수).", "muted family-note"));

@@ -11,6 +11,8 @@ const assets = {};
 for (const [url, [name, type]] of Object.entries(urls)) {
   assets[url] = [type, await read(`web/${name}`)];
 }
+assets["/menu-photos.webp"] = ["image/webp", await readFile(
+  new URL("web/menu-photos.webp", import.meta.url), "base64"), true];
 const catalog = JSON.parse(await read("catalog.json"));
 const worker = await read("worker.js");
 await mkdir("dist/server", { recursive: true });

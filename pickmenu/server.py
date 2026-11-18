@@ -30,6 +30,7 @@ ASSETS = {
     "/style.css": ("style.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/mark.svg": ("mark.svg", "image/svg+xml"),
+    "/menu-photos.webp": ("menu-photos.webp", "image/webp"),
 }
 
 
