@@ -10,7 +10,8 @@ import secrets
 import sqlite3
 import threading
 import time
-from contextlib import closing
+from collections.abc import Iterator
+from contextlib import closing, contextmanager
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -29,6 +30,8 @@ PROFILE_FIELDS = {"nickname": 12, "diet": 20, "goal": 20, "spice": 10, "soup": 1
                   "category": 40, "exclude": 100, "allergy": 100,
                   "age": 3, "birth_date": 10, "height": 5, "weight": 5, "gender": 12}
 LOCK_FAILURES, LOCK_SECONDS = 5, 5 * 60
+MAX_FAILURE_ENTRIES = 10_000
+_credential_slots = threading.BoundedSemaphore(4)
 SCRYPT = {"n": 2 ** 14, "r": 8, "p": 1}
 
 _failures: dict[str, tuple[int, float]] = {}
@@ -241,24 +244,37 @@ def signup(payload: Any) -> tuple[str, dict[str, Any]]:
     return token, _account(owner, privacy.mask(username), encrypted)
 
 
+@contextmanager
+def credential_slot() -> Iterator[None]:
+    if not _credential_slots.acquire(blocking=False):
+        raise AuthError("로그인 요청이 많아요. 잠시 뒤 다시 시도해 주세요.", 429)
+    try:
+        yield
+    finally:
+        _credential_slots.release()
+
+
 def _check_lock(username: str) -> None:
     with _failures_lock:
-        count, since = _failures.get(username, (0, 0.0))
-        if count >= LOCK_FAILURES and time.monotonic() - since < LOCK_SECONDS:
+        now = time.monotonic()
+        # 처음 실패한 시각 순서로 오래된 항목부터 제거한다.
+        while _failures:
+            oldest = next(iter(_failures))
+            if now - _failures[oldest][1] < LOCK_SECONDS:
+                break
+            del _failures[oldest]
+        count, _ = _failures.get(username, (0, now))
+        if count >= LOCK_FAILURES:
             raise AuthError("로그인 시도가 많아요. 5분 뒤 다시 시도해 주세요.", 429)
+        if not count and len(_failures) >= MAX_FAILURE_ENTRIES:
+            raise AuthError("로그인 요청이 많아요. 잠시 뒤 다시 시도해 주세요.", 429)
 
 
 def _record_failure(username: str) -> None:
     with _failures_lock:
-        now = time.monotonic()
-        if len(_failures) > 10_000:  # 없는 아이디를 바꿔 가며 시도해도 메모리가 계속 늘지 않게 한다.
-            for name, (_, since) in list(_failures.items()):
-                if now - since >= LOCK_SECONDS:
-                    del _failures[name]
-        count, since = _failures.get(username, (0, 0.0))
-        if time.monotonic() - since >= LOCK_SECONDS:
-            count, since = 0, time.monotonic()
-        _failures[username] = (count + 1, since)
+        if username in _failures or len(_failures) < MAX_FAILURE_ENTRIES:
+            count, since = _failures.get(username, (0, time.monotonic()))
+            _failures[username] = (count + 1, since)
 
 
 def login(payload: Any) -> tuple[str, dict[str, Any]]:
@@ -284,6 +300,15 @@ def logout(token: str | None) -> None:
         return
     with closing(connect()) as db, db:
         db.execute("DELETE FROM sessions WHERE token_hash = ?", (_token_hash(token),))
+
+
+def session_user_id(token: str | None) -> int | None:
+    if not token:
+        return None
+    with closing(connect()) as db:
+        row = db.execute("SELECT user_id FROM sessions WHERE token_hash = ? AND expires_at > ?",
+                         (_token_hash(token), int(time.time()))).fetchone()
+    return int(row[0]) if row else None
 
 
 def current(token: str | None) -> tuple[int, dict[str, Any]] | None:

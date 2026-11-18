@@ -1,0 +1,8 @@
+[Unit]
+Description=Rotate and prune archived PickMenu journals
+After=systemd-journald@pickmenu.service
+ConditionPathExists=/run/systemd/journal.pickmenu/socket
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/journalctl --namespace=pickmenu --rotate --vacuum-time=14d --vacuum-size=64M

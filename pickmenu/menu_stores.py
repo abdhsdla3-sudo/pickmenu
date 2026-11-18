@@ -157,14 +157,15 @@ def stores(path: Path, menus: list[dict[str, Any]], district: str, limit: int = 
         rows = store_rows(path, ids, "")
     order = {mid: at for at, mid in enumerate(ids)}
     places = store_locations()
-    km = {row[1]: distance_km(origin, places[row[1]]) for row in rows if origin and row[1] in places}
+    store_ids = {row[1] for row in rows}
+    km = {sid: distance_km(origin, places[sid]) for sid in store_ids & places.keys()} if origin else {}
     scores = {(row[0], row[1]): store_score(row[3], km.get(row[1])) for row in rows} if origin else {}
     rows.sort(key=lambda row: (order[row[0]], -scores.get((row[0], row[1]), 0), -row[3], row[1]))
     names = store_names()
     by_id = {menu["standard_menu_id"]: menu for menu in menus}
     result: dict[str, Any] = {
         "district": district, "citywide": citywide, "names_available": names is not None,
-        "store_count": len({row[1] for row in rows}), "total": len(rows),
+        "store_count": len(store_ids), "total": len(rows),
         "location_used": origin is not None, "located": len(km),
         "stores": [{"standard_menu_id": mid, "menu_name": by_id[mid]["name"],
                     "store_name": (names or {}).get(store_id), "district": where, "reviews": count}

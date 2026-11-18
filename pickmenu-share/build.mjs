@@ -20,12 +20,13 @@ for (const name of photos) {
 }
 const catalog = JSON.parse(await read("catalog.json"));
 const worker = await read("worker.js");
+const reviewPeriod = process.env.PICKMENU_REVIEW_PERIOD || (await read("../pickmenu/review_period.txt")).trim();
 await mkdir("dist/server", { recursive: true });
 if (!process.argv.includes("--local")) {
   await mkdir("dist/.openai", { recursive: true });
   await copyFile(".openai/hosting.json", "dist/.openai/hosting.json");
 }
 await writeFile("dist/server/index.js",
-  `const MENUS = ${JSON.stringify(catalog)};\nconst ASSETS = ${JSON.stringify(assets)};\n${worker}`,
+  `const REVIEW_PERIOD = ${JSON.stringify(reviewPeriod)};\nconst MENUS = ${JSON.stringify(catalog)};\nconst ASSETS = ${JSON.stringify(assets)};\n${worker}`,
   "utf8",
 );

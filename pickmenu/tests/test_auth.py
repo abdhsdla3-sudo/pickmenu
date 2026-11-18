@@ -277,6 +277,37 @@ class AuthHttpTest(unittest.TestCase):
         auth.connect().close()
         self.assertEqual(path.stat().st_mode & 0o777, 0o600)
 
+    def test_auth_capacity_and_expiry(self):
+        for _ in range(4):
+            self.assertTrue(auth._credential_slots.acquire(blocking=False))
+        try:
+            self.assertEqual(self.call("POST", "/api/auth/signup", registration("later"))[0], 429)
+        finally:
+            for _ in range(4):
+                auth._credential_slots.release()
+
+        with patch.object(auth, "MAX_FAILURE_ENTRIES", 1), patch("auth.time.monotonic") as clock:
+            clock.return_value = 10
+            auth._record_failure("owner-a")
+            auth._record_failure("owner-b")
+            self.assertEqual(len(auth._failures), 1)
+            with self.assertRaises(auth.AuthError):
+                auth._check_lock("owner-b")
+            clock.return_value = 10 + auth.LOCK_SECONDS
+            auth._check_lock("owner-b")
+            self.assertEqual(len(auth._failures), 0)
+
+    def test_request_log_has_only_known_route_and_status(self):
+        handler = object.__new__(Handler)
+        handler.command = "GET"
+        handler.path = "/api/menus/identifying-path?address=identifying-query"
+        with patch.object(handler, "log_message") as log:
+            handler.log_request(404)
+            log.assert_called_once_with("%s %s %s", "GET", "/api/menus/:id", 404)
+            log.reset_mock()
+            handler.log_error("code %d, message %s", 400, "identifying-input")
+            log.assert_called_once_with("HTTP 요청 오류 %s", 400)
+
     def test_recommendation_requires_live_login(self):
         menu = {"standard_menu_id": "MN_1", "name": "두부덮밥", "category": "밥·덮밥",
                 "components": ["두부덮밥"], "spice": "", "soup": "no", "nutrition": None,

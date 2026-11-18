@@ -1,6 +1,5 @@
 /* global MENUS, ASSETS */
 
-const REVIEW_PERIOD = "2026년 7~9월"; // 로컬 서버의 PICKMENU_REVIEW_PERIOD와 같게 둔다.
 const goals = { balance: "균형 식사", protein: "단백질 중심", light: "가벼운 식사" };
 const categories = [...new Set(MENUS.map(menu => menu.category))].sort();
 const byId = new Map(MENUS.map(menu => [menu.standard_menu_id, menu]));

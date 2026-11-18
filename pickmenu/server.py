@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sqlite3
+import sys
 import threading
 from collections.abc import Iterable
 from contextlib import closing
@@ -36,8 +37,7 @@ ASSETS = {
 ASSETS.update({f"/menu-photos/{path.name}": (f"menu-photos/{path.name}", "image/webp")
                for path in (BASE / "web" / "menu-photos").glob("[0-9][0-9][0-9].webp")})
 PHOTO_CACHE = "public, max-age=86400"
-# 리뷰 수집 기간. 카탈로그를 새 기간으로 갱신하면 PICKMENU_REVIEW_PERIOD로 바꾼다.
-REVIEW_PERIOD = os.environ.get("PICKMENU_REVIEW_PERIOD", "2026년 7~9월")
+REVIEW_PERIOD = os.environ.get("PICKMENU_REVIEW_PERIOD") or (BASE / "review_period.txt").read_text(encoding="utf-8").strip()
 _loaded: dict[str, Any] = {"key": None, "reference": None, "menus": None}
 _loaded_lock = threading.Lock()
 
@@ -164,7 +164,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             return menu_reco.data()
         except Exception as error:  # 드라이버 미설치·연결 실패·권한 오류를 같은 안내로 돌려준다.
-            self.log_error("참고자료 DB 오류 %s", error)
+            self.log_error("참고자료 DB 오류 %s", type(error).__name__)
             self.send_json(503, {"error": "가게 추천 자료를 불러올 수 없어요. 잠시 뒤 다시 시도해 주세요."})
             return None
 
@@ -183,7 +183,8 @@ class Handler(BaseHTTPRequestHandler):
                 if (payload := self.read_json()) is INVALID:
                     return
                 action = auth.signup if path.endswith("signup") else auth.login
-                token, account = action(payload)
+                with auth.credential_slot():
+                    token, account = action(payload)
                 self.send_json(201 if path.endswith("signup") else 200, account,
                                [("Set-Cookie", session_cookie(token))])
             elif path == "/api/auth/logout":
@@ -204,7 +205,7 @@ class Handler(BaseHTTPRequestHandler):
         except auth.AuthError as error:
             self.send_json(error.status, {"error": str(error)})
         except sqlite3.Error as error:
-            self.log_error("회원 DB 오류 %s", error)
+            self.log_error("회원 DB 오류 %s", type(error).__name__)
             self.send_json(503, {"error": "계정 정보를 처리할 수 없어요. 잠시 뒤 다시 시도해 주세요."})
 
     def authorize_api(self) -> bool:
@@ -221,7 +222,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             return prepared_menus()
         except (OSError, sqlite3.Error, ValueError) as error:
-            self.log_error("카탈로그 오류 %s", error)
+            self.log_error("카탈로그 오류 %s", type(error).__name__)
             self.send_json(503, {"error": "추천 데이터를 열 수 없어요. 전처리를 완료한 뒤 다시 시도해 주세요."})
             return None
 
@@ -229,7 +230,7 @@ class Handler(BaseHTTPRequestHandler):
         if os.environ.get("PICKMENU_REQUIRE_LOGIN") != "1":
             return True
         try:
-            if auth.current(self.session_token()) is not None:
+            if auth.session_user_id(self.session_token()) is not None:
                 return True
         except sqlite3.Error:
             self.send_json(503, {"error": "로그인 상태를 확인할 수 없어요. 잠시 뒤 다시 시도해 주세요."})
@@ -362,7 +363,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             evidence: dict[str, int] | None = menu_stores.evidence(catalog_path(), ids, district)
         except sqlite3.Error as error:
-            self.log_error("대표 메뉴 집계 오류 %s", error)
+            self.log_error("대표 메뉴 집계 오류 %s", type(error).__name__)
             evidence = None
         return {**family, "best": public_menu(family["best"]), "evidence": evidence}
 
@@ -389,7 +390,7 @@ class Handler(BaseHTTPRequestHandler):
             llm.store_comments(result)
             self.send_json(200, result)
         except sqlite3.Error as error:
-            self.log_error("매장 집계 오류 %s", error)
+            self.log_error("매장 집계 오류 %s", type(error).__name__)
             self.send_json(503, {"error": "매장 자료를 열 수 없어요. 잠시 뒤 다시 시도해 주세요."})
 
     def location_request(self, path: str, payload: Any) -> None:
@@ -412,11 +413,35 @@ class Handler(BaseHTTPRequestHandler):
         except naver_maps.Unavailable as error:
             self.send_json(503, {"error": str(error)})
 
+    def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
+        # URL의 임의 식별자와 질의, 본문, 클라이언트 주소는 기록하지 않는다.
+        path = getattr(self, "path", "").split("?", 1)[0]
+        if path in {
+            "/", "/api/catalog", "/api/recommend", "/api/recommend/stores", "/api/chat",
+            "/api/auth/signup", "/api/auth/login", "/api/auth/logout", "/api/auth/me", "/api/profile",
+            "/api/location/status", "/api/location/search", "/api/location/address",
+            "/api/v2/options", "/api/v2/recommend", "/api/v2/stores",
+        }:
+            route = path
+        elif path.startswith("/api/menus/"):
+            route = "/api/menus/:id"
+        elif path in ASSETS:
+            route = "asset"
+        else:
+            route = "other"
+        method = self.command if self.command in {"GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"} else "-"
+        self.log_message("%s %s %s", method, route, code)
+
+    def log_error(self, format: str, *args: Any) -> None:
+        if format == "code %d, message %s":
+            self.log_message("HTTP 요청 오류 %s", args[0])
+        elif format.startswith("Request timed out"):
+            self.log_message("HTTP 요청 시간 초과")
+        else:
+            self.log_message(format, *args)
+
     def log_message(self, format: str, *args: Any) -> None:
-        # 주소·좌표 질의 문자열은 로그에 남기지 않는다.
-        if args and isinstance(args[0], str) and "/api/location/" in args[0]:
-            args = (args[0].split("?")[0], *args[1:])
-        super().log_message(format, *args)
+        print(f"[{self.log_date_time_string()}] {format % args}", file=sys.stderr)
 
     def do_PUT(self) -> None:
         self.profile_request()
