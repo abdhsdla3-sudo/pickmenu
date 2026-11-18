@@ -15,6 +15,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 import auth
+import llm
 import menu_reco
 import menu_stores
 from raw import BASE, LOCAL
@@ -80,14 +81,14 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(status, "application/json; charset=utf-8",
                    json.dumps(value, ensure_ascii=False).encode("utf-8"), headers)
 
-    def read_json(self) -> Any:
+    def read_json(self, maximum: int = 4096) -> Any:
         """JSON 본문을 읽는다. 실패하면 오류 응답을 보내고 INVALID를 돌려준다."""
         if self.headers.get_content_type() != "application/json":
             self.send_json(415, {"error": "입력 형식을 확인해 주세요."})
             return INVALID
         try:
             size = int(self.headers.get("Content-Length", "0"))
-            if not 0 < size <= 4096:
+            if not 0 < size <= maximum:
                 raise ValueError
             return json.loads(self.rfile.read(size).decode("utf-8"))
         except ValueError:
@@ -219,6 +220,23 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlsplit(self.path).path
+        if path == "/api/chat":
+            if not self.authorize_api() or not self.require_session():
+                return
+            if (payload := self.read_json(16384)) is INVALID:
+                return
+            if (menus := self.load()) is None:
+                return
+            try:
+                profile, _ = llm.conditions(payload, categories(menus))
+                result = self.recommendation(menus, profile)
+                self.send_json(200, {"reply": llm.reply(result), "result": result,
+                                     "conditions": vars(profile)})
+            except ValueError as error:
+                self.send_json(400, {"error": str(error)})
+            except llm.Unavailable as error:
+                self.send_json(503, {"error": str(error)})
+            return
         if path in {"/api/auth/signup", "/api/auth/login", "/api/auth/logout"}:
             if self.authorize_api():
                 self.handle_auth(path)
@@ -257,10 +275,13 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as error:
             self.send_json(400, {"error": str(error)})
             return
+        self.send_json(200, self.recommendation(menus, profile))
+
+    def recommendation(self, menus: list[dict[str, Any]], profile: Profile) -> dict[str, Any]:
         result = recommend(menus, profile)
         result["items"] = [public_menu(menu) for menu in result["items"]]
         result["families"] = [self.family(family, profile.district) for family in result["families"]]
-        self.send_json(200, result)
+        return result
 
     def family(self, family: dict[str, Any], district: str) -> dict[str, Any]:
         """대표 메뉴에 중복 없는 리뷰·매장 수를 붙인다. trace가 없으면 null로 둔다."""
@@ -286,7 +307,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(404, {"error": "메뉴를 찾을 수 없어요."})
             return
         try:
-            self.send_json(200, menu_stores.stores(catalog_path(), selected, district))
+            result = menu_stores.stores(catalog_path(), selected, district)
+            llm.store_comments(result)
+            self.send_json(200, result)
         except sqlite3.Error as error:
             self.log_error("매장 집계 오류 %s", error)
             self.send_json(503, {"error": "매장 자료를 열 수 없어요. 잠시 뒤 다시 시도해 주세요."})

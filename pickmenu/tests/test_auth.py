@@ -258,6 +258,7 @@ class AuthHttpTest(unittest.TestCase):
         with patch("server.catalog", return_value=[menu]):
             self.assertEqual(self.call("GET", "/api/catalog")[0], 200)
             self.assertEqual(self.call("POST", "/api/recommend", {})[0], 401)
+            self.assertEqual(self.call("POST", "/api/chat", {})[0], 401)
             self.assertEqual(self.call("GET", "/api/menus/MN_1")[0], 401)
             self.assertEqual(self.call("POST", "/api/recommend", {}, "pickmenu_session=invalid")[0], 401)
             _, _, cookie = self.call("POST", "/api/auth/signup", registration("member"))

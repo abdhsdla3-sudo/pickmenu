@@ -1,5 +1,9 @@
 # 서비스 구조와 클라우드 이전
 
+현재 Ubuntu 데모의 로컬 GPU 연결은 [LLM 연결 구성](llm-integration.md)을 따른다.
+브라우저는 Ubuntu의 `/api/chat`을 호출하며, 백엔드만 사설 Ollama에 접근한다.
+아래 Sites·클라우드 구성은 이전 계획이며 현재 Ubuntu 데모의 실행 위치와 구분한다.
+
 | 실행 위치 | 책임 | 상태 |
 | --- | --- | --- |
 | ChatGPT Sites | 화면과 브라우저의 동일 출처 API 경로 | 공개 데모 운영 중. 저장소에 메뉴 API 연결 코드 준비 |

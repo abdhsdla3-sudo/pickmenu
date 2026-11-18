@@ -24,7 +24,7 @@ let profile = {...defaults};
 let hasProfile = false;
 let step = 0;
 let sourceMode = "choice";
-let chatStage = 0;
+let chatMessages = [];
 let chatConditions = {};
 let activeRecommendation = null;
 let lastResult = null;
@@ -365,7 +365,7 @@ function familyStoreItem(store, family) {
   const name = node("p", undefined, "family-store-name");
   name.append(node("strong", store.menu_name), node("span", ` – ${store.store_name || "가게 이름 확인 중"}`));
   text.append(name, node("p", `${store.district} · 이 가게 리뷰 ${store.reviews.toLocaleString("ko-KR")}건`, "store-meta"));
-  if (store.comment) text.append(node("p", store.comment, "menu-comment"));
+  if (store.comment) text.append(node("p", `AI 설명 · ${store.comment}`, "menu-comment"));
   const button = node("button", "상세", "small-link");
   button.type = "button";
   button.setAttribute("aria-label", `${store.menu_name} 상세 보기`);
@@ -534,6 +534,8 @@ function clearLocalProfile() {
   hasProfile = false;
   form.reset();
   document.querySelector("#meal").reset();
+  chatMessages = [];
+  chatConditions = {};
   chatLog.replaceChildren();
   chatChips.replaceChildren();
   results.replaceChildren();
@@ -761,7 +763,7 @@ async function recommendNow(conditions, mode) {
       button.type = "button";
       button.addEventListener("click", () => showScreen("results"));
       chatLog.append(button);
-      chatStage = 3;
+
       setChatChips(["다시 골라볼래요"]);
     }
   } catch (error) {
@@ -816,71 +818,70 @@ function setChatChips(answers) {
 function startChat() {
   cancelRecommendation();
   sourceMode = "chat";
-  chatStage = 0;
-  chatConditions = {goal: profile.goal, spice: profile.spice, soup: profile.soup, query: ""};
+  chatMessages = [];
+  chatConditions = {};
   chatLog.replaceChildren();
   chatInput.value = "";
-  chatInput.placeholder = "아래 선택지로 답해도 좋아요";
+  chatInput.placeholder = "오늘 먹고 싶은 음식이나 조건을 말해 주세요";
   showScreen("chat");
-  bubble(`${profile.nickname || "메뉴고민러"}님, 반가워요! 저장된 취향을 기억하고 있어요. 오늘은 어떤 식사가 좋을까요?`);
-  setChatChips(["균형 있게 먹을래요", "단백질 위주로요", "가볍게 먹고 싶어요"]);
+  bubble("오늘은 어떤 식사가 좋으세요? 원하는 메뉴나 맵기·국물·식사 목표를 자유롭게 이야기해 주세요.");
+  setChatChips(["가볍고 안 매운 음식이 좋아요", "국물 있는 메뉴 추천해 줘", "단백질 위주로 먹고 싶어요"]);
 }
+
 document.querySelector("#open-chat").addEventListener("click", startChat);
 document.querySelector("#restart-chat").addEventListener("click", startChat);
 
-function respond(answer) {
+async function respond(answer) {
   if (activeRecommendation || !answer.trim()) return;
+  if (!account) return openAccount();
   const text = answer.trim();
+  if (text.length > 300) { bubble("300자 이내로 입력해 주세요."); return; }
+  const controller = new AbortController();
+  activeRecommendation = controller;
+  setBusy(true);
   bubble(text, "user");
   chatInput.value = "";
-  if (text === "다시 골라볼래요") {
-    startChat();
-    return;
-  }
-  if (text === "다시 시도") {
-    recommendNow({...chatConditions, district: document.querySelector("#chat-district").value}, "chat");
-    return;
-  }
-  if (chatStage === 0) {
-    if (/단백질/u.test(text)) chatConditions.goal = "protein";
-    else if (/가볍/u.test(text)) chatConditions.goal = "light";
-    else if (/균형/u.test(text)) chatConditions.goal = "balance";
-    else {
-      bubble("균형 식사, 단백질 중심, 가벼운 식사 중 하나로 답해 주세요.");
-      return;
-    }
-    chatStage = 1;
-    bubble("좋아요! 오늘 끌리는 맛이나 형태가 있나요?");
-    setChatChips(["국물 있는 메뉴", "매콤한 메뉴", "안 매운 메뉴", "프로필 취향대로"]);
-    return;
-  }
-  if (chatStage === 1) {
-    if (/국물/u.test(text)) chatConditions.soup = "yes";
-    else if (/안 매운|안매운/u.test(text)) chatConditions.spice = "mild";
-    else if (/매콤|매운/u.test(text)) chatConditions.spice = "hot";
-    else if (!/프로필|상관없/u.test(text)) {
-      bubble("아래 선택지에서 오늘의 취향을 골라주세요.");
-      return;
-    }
-    chatStage = 2;
-    bubble("마지막으로 먹고 싶은 메뉴가 있나요? 메뉴 이름을 적거나, 바로 추천받기를 눌러주세요.");
-    chatInput.placeholder = "메뉴명 입력 · 예. 비빔밥";
-    setChatChips(["비빔밥", "국밥", "바로 추천받기"]);
-    return;
-  }
-  if (chatStage === 3) {
-    bubble("새로운 조건으로 골라볼까요? 다시 시작을 눌러주세요.");
-    return;
-  }
-  const query = text === "바로 추천받기" ? "" : text;
-  if (query.length > 40) {
-    bubble("찾고 싶은 메뉴명을 40자 이내로 적어주세요.");
-    return;
-  }
-  chatConditions.query = query;
   chatChips.replaceChildren();
-  recommendNow({...chatConditions, district: document.querySelector("#chat-district").value}, "chat");
+  // 입력은 메모리에서만 유지한다. 과거 대화를 조용히 버려 제한 조건이 사라지지 않게 한다.
+  if (chatMessages.length >= 6) {
+    bubble("대화 6회가 끝났어요. 조건을 정리해 다시 시작해 주세요.");
+    activeRecommendation = null;
+    setBusy(false);
+    return;
+  }
+  const pending = [...chatMessages, text];
+  const waiting = node("div", "AI가 조건과 추천 근거를 살펴보고 있어요…", "bubble bot");
+  chatLog.append(waiting);
+  scrollChat();
+  try {
+    const data = await request("/api/chat", {method: "POST",
+      headers: {"Content-Type": "application/json"}, signal: controller.signal,
+      body: JSON.stringify({messages: pending,
+        profile: {...profilePayload(), ...chatConditions, district: document.querySelector("#chat-district").value}}),
+    });
+    if (controller.signal.aborted) return;
+    chatMessages = pending;
+    chatConditions = data.conditions;
+    render(data.result);
+    bubble(data.reply);
+    const selected = data.conditions;
+    bubble(`적용 조건: ${goalLabels[selected.goal]} · ${selected.spice === "hot" ? "매콤한 맛 선호" : selected.spice === "mild" ? "안 매운 맛 선호" : "맵기 무관"} · ${selected.soup === "yes" ? "국물 선호" : selected.soup === "no" ? "국물 없는 메뉴 선호" : "국물 무관"}${selected.query ? ` · 검색: ${selected.query}` : ""}. 더 바꾸고 싶은 조건을 말해 주세요.`);
+    const button = node("button", "추천 결과와 매장 보기 →", "chat-results-link");
+    button.type = "button";
+    button.addEventListener("click", () => showScreen("results"));
+    chatLog.append(button);
+  } catch (error) {
+    if (!controller.signal.aborted) bubble(error.message);
+  } finally {
+    waiting.remove();
+    if (activeRecommendation === controller) {
+      activeRecommendation = null;
+      setBusy(false);
+      scrollChat();
+    }
+  }
 }
+
 document.querySelector("#chat-form").addEventListener("submit", event => {
   event.preventDefault();
   respond(chatInput.value);
