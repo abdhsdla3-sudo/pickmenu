@@ -107,6 +107,18 @@ class ReferenceTagTest(unittest.TestCase):
         meat = recommend(menus, Profile.parse({"goal": "protein", "category": "고기"}, categories))
         self.assertEqual([item["category"] for item in meat["items"][:3]], ["고기"] * 3)
 
+    def test_unknown_taste_is_penalized_and_order_follows_score(self):
+        rich = menu("육회", "고기", menu_id="MN_1")
+        rich["nutrition"] = {"basis": 100, "unit": "g", "values": [130, 20, 1, 5, None]}
+        menus = apply_reference([rich, menu("제육볶음", "고기", spice="hot", soup="no", menu_id="MN_2"),
+                                 menu("콩불", "고기", spice="hot", soup="no", menu_id="MN_3"),
+                                 menu("오돌뼈", "고기", spice="hot", soup="no", menu_id="MN_4")], TAGS)
+        result = recommend(menus, Profile.parse({"spice": "hot", "soup": "no", "category": "고기", "goal": "protein"},
+                                                ["고기"]))
+        self.assertEqual(result["items"][-1]["name"], "육회")  # 영양은 좋아도 맵기·국물을 확인할 수 없다
+        scores = [item["score"] for item in result["items"]]
+        self.assertEqual(scores, sorted(scores, reverse=True))
+
     def test_reference_data_backs_off_after_failure(self):
         with patch.dict(menu_reco._failed, {"at": float("-inf")}), \
                 patch.object(menu_reco, "data", side_effect=OSError("down")) as load:

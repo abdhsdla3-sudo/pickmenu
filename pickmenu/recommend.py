@@ -92,6 +92,10 @@ SOUP = {"있음": "yes", "없음": "no"}
 SPICE_TABLE = {"보통 매움": "hot"}
 MIN_SPICE_ROWS = 3
 PREFERRED_FIRST = 3
+# 추천점수 감점(100점 기준). 고른 맵기·국물을 음식에서 확인할 수 없으면 조건마다, 선호 음식군 음식이
+# 충분한데 그 밖의 음식이면 한 번 깎는다. 화면 순서는 감점까지 반영한 추천점수 순서와 같다.
+UNKNOWN_TASTE_PENALTY = 15
+OUTSIDE_PREFERRED_PENALTY = 25
 # 이름 끝이 국물 요리인 음식(매운탕·어묵탕·만둣국·김치찌개·순대전골·뼈해장국 등)은 국물 있음으로 본다.
 SOUP_NAME = re.compile(r"(탕|국|찌개|전골|국밥)$")
 
@@ -254,24 +258,29 @@ def recommend(menus: list[dict[str, Any]], profile: Profile) -> dict[str, Any]:
                    f"{GOALS[profile.goal]} 적합도 {round(n * 100)}점 (일반음식 참고값)"
                    if n is not None else "비교할 참고 영양값 부족", *matches]
         ranked.append({**menu, "region": region, "evidence": evidence, "reasons": reasons,
-                       "_parts": (n, t, e), "_preferred": bool(profile.category) and profile.category in groups})
+                       "_parts": (n, t, e), "_preferred": bool(profile.category) and profile.category in groups,
+                       "_unknown_taste": sum(1 for value, actual in (
+                           (profile.spice, menu.get("family_spice", menu["spice"])),
+                           (profile.soup, menu.get("family_soup", menu["soup"]))) if value and not actual)})
     # 영양 자료가 없는 메뉴는 감점하지 않고 이번 후보들의 영양 점수 중앙값을 쓴다.
     known = sorted(menu["_parts"][0] for menu in ranked if menu["_parts"][0] is not None)
     middle = (known[len(known) // 2] if len(known) % 2 else (known[len(known) // 2 - 1] + known[len(known) // 2]) / 2) \
         if known else 0.5
+    # 선호 음식군에 맞는 음식이 3가지 이상이면 그 밖의 음식은 감점한다.
+    preferred_first = len({compact(menu["components"][0]) for menu in ranked if menu["_preferred"]}) >= PREFERRED_FIRST
     for menu in ranked:
         n, t, e = menu.pop("_parts")
-        score = WEIGHTS["nutrition"] * (n if n is not None else middle) + (
-            WEIGHTS["preference"] * t + WEIGHTS["evidence"] * e)
-        menu["score"] = round(score * 100, 3)
+        score = 100 * (WEIGHTS["nutrition"] * (n if n is not None else middle)
+                       + WEIGHTS["preference"] * t + WEIGHTS["evidence"] * e)
+        penalty = UNKNOWN_TASTE_PENALTY * menu.pop("_unknown_taste") + (
+            OUTSIDE_PREFERRED_PENALTY if preferred_first and not menu.pop("_preferred") else 0)
+        menu.pop("_preferred", None)
+        menu["score"] = round(max(0.0, score - penalty), 3)
         menu["_unknown_nutrition"] = n is None
-    # 선호 음식군에 맞는 음식이 3가지 이상이면 그 음식들을 먼저 보여 준다.
-    preferred_first = len({compact(menu["components"][0]) for menu in ranked if menu["_preferred"]}) >= PREFERRED_FIRST
     # 점수가 같으면 영양 자료가 있는 메뉴를 앞에 둔다.
-    ranked.sort(key=lambda x: (preferred_first and not x["_preferred"], -x["score"], x["_unknown_nutrition"],
-                               -x["evidence"]["reviews"], x["standard_menu_id"]))
+    ranked.sort(key=lambda x: (-x["score"], x["_unknown_nutrition"], -x["evidence"]["reviews"], x["standard_menu_id"]))
     for menu in ranked:
-        del menu["_preferred"], menu["_unknown_nutrition"]
+        del menu["_unknown_nutrition"]
     check.sort(key=lambda x: (-x["review_count"], x["standard_menu_id"]))
     first_choices: list[dict[str, Any]] = []
     alternatives: list[dict[str, Any]] = []

@@ -343,7 +343,10 @@ function renderFamilies(data) {
     button.addEventListener("click", () => showFamily(family, data));
     // 카드는 이름·음식군과 영양 한 줄만 보여 준다. LLM 한 줄 설명(comment)이 오면 영양 대신 보여 준다.
     // 추천 근거와 알레르기 확인 안내는 메뉴 상세에 남는다.
-    card.append(head, family.comment ? node("p", family.comment, "menu-comment")
+    // 추천점수(100점 기준)는 순서를 정한 값 그대로다.
+    const score = node("p", undefined, "menu-score");
+    score.append(node("strong", `${Math.round(family.best.score)}`), node("span", "점 · 추천점수"));
+    card.append(head, score, family.comment ? node("p", family.comment, "menu-comment")
       : node("p", nutritionSummary(family.best), "muted"), button);
     results.append(card);
   });
