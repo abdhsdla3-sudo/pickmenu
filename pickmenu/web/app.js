@@ -725,6 +725,21 @@ document.querySelector("#open-choice").addEventListener("click", () => {
   showScreen("choice");
 });
 
+// 추천 결과 위에 이번 추천에 쓴 조건(지역·목표·맵기·국물·음식군·식단·제한 재료)을 보여 준다.
+function showPicked(payload) {
+  const spice = {mild: "안 매운 쪽", hot: "매운 쪽"}[payload.spice];
+  const soup = {yes: "국물 있음", no: "국물 없음"}[payload.soup];
+  const tags = [payload.district || "수원시 전체", goalLabels[payload.goal] || goalLabels.balance,
+    spice || "맵기 상관없음", soup || "국물 상관없음",
+    payload.meal_category ? `음식군 ${payload.meal_category}`
+      : payload.category ? `선호 음식군 ${payload.category}` : "음식군 골고루",
+    payload.diet && payload.diet !== "general" ? dietLabels[payload.diet] : "",
+    payload.query ? `검색어 ${payload.query}` : "",
+    payload.allergy ? `알레르기 ${payload.allergy}` : "", payload.exclude ? `기피 ${payload.exclude}` : ""];
+  document.querySelector("#picked-tags").replaceChildren(...tags.filter(Boolean).map(text => node("span", text, "tag")));
+  document.querySelector("#picked").hidden = false;
+}
+
 async function recommendNow(conditions, mode) {
   activeRecommendation?.abort();
   const controller = new AbortController();
@@ -739,10 +754,12 @@ async function recommendNow(conditions, mode) {
   } else {
     bubble("좋아요. 알려주신 조건으로 메뉴를 찾아볼게요.");
   }
+  const payload = {...profilePayload(), ...conditions};
+  showPicked(payload);
   try {
     const data = await request("/api/recommend", {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({...profilePayload(), ...conditions}), signal: controller.signal,
+      body: JSON.stringify(payload), signal: controller.signal,
     });
     if (controller.signal.aborted) return;
     render(data);
