@@ -32,6 +32,8 @@ ASSETS = {
     "/mark.svg": ("mark.svg", "image/svg+xml"),
     "/menu-photos.webp": ("menu-photos.webp", "image/webp"),
 }
+ASSETS.update({f"/{path.name}": (path.name, "image/webp")
+               for path in (BASE / "web").glob("menu-photos-*.webp")})
 
 
 def catalog_path() -> Path:

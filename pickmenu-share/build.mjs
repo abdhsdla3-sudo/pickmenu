@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
 const urls = {
@@ -11,8 +11,13 @@ const assets = {};
 for (const [url, [name, type]] of Object.entries(urls)) {
   assets[url] = [type, await read(`web/${name}`)];
 }
-assets["/menu-photos.webp"] = ["image/webp", await readFile(
-  new URL("web/menu-photos.webp", import.meta.url), "base64"), true];
+const photos = (await readdir(new URL("web/", import.meta.url)))
+  .filter(name => /^menu-photos(?:-\d+)?\.webp$/.test(name))
+  .sort();
+for (const name of photos) {
+  assets[`/${name}`] = ["image/webp", await readFile(
+    new URL(`web/${name}`, import.meta.url), "base64"), true];
+}
 const catalog = JSON.parse(await read("catalog.json"));
 const worker = await read("worker.js");
 await mkdir("dist/server", { recursive: true });

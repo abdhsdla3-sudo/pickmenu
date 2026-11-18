@@ -47,6 +47,8 @@ if __name__ == "__main__":
         json.dumps(menus, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8"
     )
     (HERE / "web").mkdir(exist_ok=True)
-    for asset in ("index.html", "app.js", "style.css", "mark.svg", "menu-photos.webp"):
+    photo_assets = sorted((LOCAL / "web").glob("menu-photos*.webp"))
+    assets = ["index.html", "app.js", "style.css", "mark.svg", *(p.name for p in photo_assets)]
+    for asset in assets:
         shutil.copyfile(LOCAL / "web" / asset, HERE / "web" / asset)
-    print(f"공유 메뉴 {len(menus):,}개와 화면 파일 5개")
+    print(f"공유 메뉴 {len(menus):,}개와 화면 파일 {len(assets)}개")

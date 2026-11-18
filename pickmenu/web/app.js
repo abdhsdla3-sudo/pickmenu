@@ -334,9 +334,102 @@ const menuPhotoNames = [
   "아구찜", "짬뽕", "포케", "국밥",
 ];
 
+const menuPhotoSheets = [
+  ["/menu-photos.webp", menuPhotoNames],
+  ["/menu-photos-01.webp", [
+    "마라탕", "닭발", "죽", "피자",
+    "알곤이찜", "만두", "찜닭", "타코야키",
+    "햄버거", "짜장면", "샐러드", "탕수육",
+    "튀김", "해물찜", "비빔냉면", "파스타",
+  ]],
+  ["/menu-photos-02.webp", [
+    "김치찌개", "족발", "마키", "볶음밥",
+    "감자탕", "돼지국밥", "핫도그", "순대국밥",
+    "초밥", "마라샹궈", "물회", "회",
+    "주먹밥", "필라프", "곰탕·설렁탕", "김치볶음밥",
+  ]],
+  ["/menu-photos-03.webp", [
+    "똥집튀김", "양념치킨", "닭강정", "콩나물불고기",
+    "갈비찜", "꿔바로우", "쫄면", "소고기국밥",
+    "육회", "제육덮밥", "삼계탕", "치킨",
+    "고기국수", "짬뽕밥", "로제떡볶이", "갈비탕",
+  ]],
+  ["/menu-photos-04.webp", [
+    "치즈돈가스", "순대전골", "육회덮밥", "칼국수",
+    "간장치킨", "돼지불고기", "크림파스타", "보쌈",
+    "왕갈비통닭", "쭈꾸미볶음", "닭볶음탕", "치킨마요덮밥",
+    "된장술밥", "뼈해장국", "우동", "토스트",
+  ]],
+  ["/menu-photos-05.webp", [
+    "짜글이", "곱창볶음", "두루치기", "청국장",
+    "쌀국수", "고추장찌개", "콩국수", "내장국밥",
+    "치킨너겟", "가츠동", "치킨윙·봉", "뿌링클·시즈닝치킨",
+    "목살", "스프", "토마토파스타", "해장국",
+  ]],
+  ["/menu-photos-06.webp", [
+    "오일파스타", "카레라이스", "알탕", "샌드위치",
+    "깐풍기", "라볶이", "불고기덮밥", "된장찌개",
+    "순대", "닭껍질튀김", "연어덮밥", "불족발",
+    "카츠나베", "새우볶음밥", "막국수", "마요덮밥",
+  ]],
+  ["/menu-photos-07.webp", [
+    "순대볶음", "리조또", "마늘치킨", "김치말이국수",
+    "쭈꾸미찜", "오므라이스", "반반치킨", "콩나물국밥",
+    "또띠아랩", "삼겹덮밥", "커리(인도)", "닭갈비덮밥",
+    "치킨난반", "곱도리탕", "소고기구이", "소불고기",
+  ]],
+  ["/menu-photos-08.webp", [
+    "로제파스타", "양장피", "육사시미", "그릭요거트",
+    "곱창구이", "막창구이", "치밥", "치킨텐더",
+    "매운탕", "어묵탕", "아사이볼", "비빔국수",
+    "고기구이", "어묵", "수육", "짜장밥",
+  ]],
+  ["/menu-photos-09.webp", [
+    "요거트볼", "만둣국", "LA갈비", "라면",
+    "카레덮밥", "가라아게덮밥", "라멘", "낙곱새",
+    "가라아게", "새우튀김", "똥집볶음", "마제소바",
+    "볶음면", "팔보채", "함박스테이크", "깐풍육",
+  ]],
+  ["/menu-photos-10.webp", [
+    "탄탄면", "", "치킨까스", "탄두리치킨",
+    "파닭", "수제비", "낙지덮밥", "마파두부",
+    "도시락", "함박스테이크덮밥", "장조림", "허니버터치킨",
+    "쟁반국수", "반미", "치킨베이크", "오징어덮밥",
+  ]],
+  ["/menu-photos-11.webp", [
+    "팟타이", "부대찌개", "선지해장국", "오징어튀김",
+    "유산슬", "육개장", "생선까스", "새우강정",
+    "닭곰탕", "순대튀김", "김치참치덮밥", "부대국밥",
+    "족발덮밥", "텐동", "소바", "닭갈비",
+  ]],
+  ["/menu-photos-12.webp", [
+    "오삼덮밥", "브리야니", "두부찌개", "가지덮밥",
+    "젓갈", "묵은지전골", "백반·정식", "공깃밥",
+    "타코·부리또", "쌈밥", "샐러드랩", "순두부찌개",
+    "잡채밥", "전", "대창구이", "똠얌국밥",
+  ]],
+  ["/menu-photos-13.webp", [
+    "강된장덮밥", "오돌뼈", "대창찜", "북엇국",
+    "계란덮밥", "사태찌개", "송어튀김", "쥐포튀김",
+    "보쌈구이", "카레우동", "들기름메밀면", "초계국수",
+  ]],
+  ["/menu-photos-14.webp", [
+    "꽃빵튀김",
+  ]],
+];
+
+const menuPhotos = new Map();
+for (const [url, foods] of menuPhotoSheets) {
+  const columns = Math.min(4, foods.length);
+  const rows = foods.length / columns;
+  foods.forEach((name, index) => {
+    if (name) menuPhotos.set(name, {url, index, rows, columns});
+  });
+}
+
 function appendMenuCard(card, foodName, button, ...details) {
-  const index = menuPhotoNames.indexOf(foodName);
-  if (index < 0) {
+  const photo = menuPhotos.get(foodName);
+  if (!photo) {
     card.append(...details, button);
     return;
   }
@@ -348,10 +441,12 @@ function appendMenuCard(card, foodName, button, ...details) {
   image.alt = `${foodName} 예시 사진`;
   image.loading = "lazy";
   image.decoding = "async";
-  image.style.left = `${-(index % 4) * 100}%`;
-  image.style.top = `${-Math.floor(index / 4) * 100}%`;
+  image.style.left = `${-(photo.index % photo.columns) * 100}%`;
+  image.style.top = `${-Math.floor(photo.index / photo.columns) * 100}%`;
+  image.style.width = `${photo.columns * 100}%`;
+  image.style.height = `${photo.rows * 100}%`;
   image.addEventListener("error", () => figure.remove(), {once: true});
-  image.src = "/menu-photos.webp";
+  image.src = photo.url;
   frame.append(image);
   figure.append(frame, node("figcaption", "AI 예시 사진"));
   info.append(...details);
