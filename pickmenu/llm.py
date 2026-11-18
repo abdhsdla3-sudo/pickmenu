@@ -17,14 +17,15 @@ class Unavailable(Exception):
     pass
 
 
-def generate(instruction: str, data: Any, schema: dict[str, Any] | None = None) -> dict[str, Any]:
+def generate(instruction: str, data: Any, schema: dict[str, Any] | None = None,
+             temperature: float = 0.1) -> dict[str, Any]:
     base = os.environ.get("PICKMENU_LLM_URL", "").rstrip("/")
     if not base or not _slot.acquire(blocking=False):
         raise Unavailable("AI가 준비되지 않았거나 다른 요청을 처리 중이에요. 잠시 후 다시 시도해 주세요.")
     try:
         payload = {"model": os.environ.get("PICKMENU_LLM_MODEL", "pickmenu-llm:8b"),
                    "stream": False, "think": False, "format": schema or "json", "keep_alive": "5m",
-                   "options": {"num_ctx": 8192, "num_predict": 1536, "temperature": 0.1},
+                   "options": {"num_ctx": 8192, "num_predict": 1536, "temperature": temperature},
                    "messages": [{"role": "system", "content": instruction},
                                 {"role": "user", "content": json.dumps(data, ensure_ascii=False)}]}
         request = Request(base + "/api/chat", data=json.dumps(payload).encode(),
@@ -114,25 +115,102 @@ def reply(result: dict[str, Any]) -> str:
     return summary + " 아래 결과에서 근거를 확인해 주세요."
 
 
+# 추천이유에 쓰면 안 되는 말: 입력에 없는 맛·가격·배달·위생·건강·순위 주장과 과장.
+BANNED = re.compile(r"최고|최상의|1등|1위|보장|할인|무료|쿠폰|가격|저렴|가성비|친절|배달|별점|평점|건강|다이어트|칼로리|"
+                    r"영양|알레르기|위생|깨끗|신선|국내산|유명|맛집|방송|인기\s*1|AI|인공지능|사장님|"
+                    r"맛|기대|오픈|새로 생|신규|개업|일품|풍미|고소|진한|깊은|깊이|감칠|담백|칼칼|부드|쫄깃|바삭|촉촉|"
+                    r"양념|소스|간장|재료|특제|비법|정성|가족|아이들|누구나|조화|씹는|식감|향이|향을|듬뿍|풍부|"
+                    r"추천합니다|일품|자랑|추천했|추천해|추천드|추천받|\d[\d,]*\s*명")
+# 맵다는 말은 메뉴 이름에 매운 단서가 있을 때만 허용한다.
+SPICY_WORD = re.compile(r"매콤|매운|얼큰|칼칼|화끈")
+SPICY_NAME = re.compile(r"매|얼큰|불|고추|마라|땡초|청양")
+TEMPLATES = (
+    "{menu} 생각나는 날, {district}에서 먼저 떠올려 볼 만한 곳이에요. 리뷰 {n}건이 그 이야기를 대신해요.",
+    "리뷰 {n}건이 쌓인 {menu}. 오늘 메뉴 고민을 가볍게 접어 두기 좋은 한 끼예요.",
+    "{store}의 {menu}. 리뷰 {n}건만큼 여러 식탁에 올랐던 메뉴예요.",
+    "고민될 땐 많이 고른 쪽으로. 이 가게의 {menu}, 리뷰 {n}건을 모았어요.",
+    "{district} 동네 한 끼로 {menu}, 리뷰 {n}건이 쌓인 만큼 믿고 골라 볼 만해요.",
+    "오늘은 {menu}에 맡겨 보는 건 어때요? 이 가게에 리뷰 {n}건이 남아 있어요.",
+)
+FEW_TEMPLATES = (
+    "리뷰는 {n}건으로 아직 적지만, {menu}의 새로운 선택지를 찾는다면 눈여겨볼 곳이에요.",
+    "아직 리뷰 {n}건뿐인 숨은 선택지예요. 늘 먹던 곳 말고 새로운 {menu} 한 끼가 궁금할 때 열어 보세요.",
+    "{district}의 {menu}, 리뷰 {n}건으로 이제 막 알려지기 시작한 곳이에요.",
+)
+
+
+def short_menu(name: str) -> str:
+    """기본 문장용 메뉴 이름. [갓성비 (찐)생육회] 조선육회(600g) → 조선육회."""
+    short = re.sub(r"\s+", " ", re.sub(r"\[[^\]]*\]|\([^)]*\)|（[^）]*）", " ", name)).strip(" _-")
+    return short or name
+
+
+def template_reason(row: dict[str, Any], most: int, turn: int = 0) -> str:
+    """AI를 쓸 수 없을 때의 추천이유. 입력 값(메뉴·가게·구·리뷰 수)만 쓴다. `turn`으로 줄마다 문장을 바꾼다."""
+    values = {"menu": short_menu(row["menu_name"]), "store": row.get("store_name") or "이 가게",
+              "district": row["district"], "n": f"{row['reviews']:,}"}
+    if row["reviews"] == most and most >= 5:
+        return "이 메뉴를 파는 가게 중 리뷰가 가장 많이 쌓인 곳이에요. 처음이라면 여기 {menu}부터 시작해 보세요.".format(**values)
+    pool = FEW_TEMPLATES if row["reviews"] < 5 else TEMPLATES
+    pick = turn % len(pool)  # 이어진 줄은 서로 다른 문장
+    return pool[pick].format(**values)
+
+
+def safe_reason(text: Any, row: dict[str, Any], others: set[str]) -> bool:
+    """AI가 쓴 추천이유가 입력 사실만 쓰는지 검사한다."""
+    if not isinstance(text, str) or not 12 <= len(text.strip()) <= 90 or not re.search(r"[가-힣]", text):
+        return False
+    rest = text.replace(row["menu_name"], "").replace(row.get("store_name") or "", "")
+    if BANNED.search(rest) or any(name and name in text for name in others):
+        return False
+    if SPICY_WORD.search(rest) and not SPICY_NAME.search(row["menu_name"]):
+        return False
+    if re.search(r"[\u3040-\u30ff\u4e00-\u9fff]", rest):  # 작은 모델이 섞는 한자·일본어
+        return False
+    allowed = {f"{row['reviews']:,}", str(row["reviews"])}
+    return all(number in allowed for number in re.findall(r"\d[\d,]*", rest))
+
+
 def store_comments(result: dict[str, Any]) -> None:
-    """상위 10개만 설명한다. 실패해도 원래 매장 결과를 그대로 제공한다."""
+    """상위 10개 매장에 추천이유 한 문장을 붙인다.
+
+    로컬 LLM이 입력 사실(메뉴명·가게명·구·리뷰 수)만으로 문장을 짓고, 서버가 금지어·숫자·다른 가게
+    이름을 검사한다. 통과하지 못하거나 AI를 쓸 수 없으면 같은 사실로 만든 문장을 쓴다.
+    """
     rows = result["stores"][:10]
     if not rows:
         return
+    most = max(row["reviews"] for row in rows)
+    # 리뷰가 5건 미만인 가게는 근거가 적어 AI 문장 없이 기본 문장(리뷰가 아직 적다는 안내)을 쓴다.
+    writable = [i for i, row in enumerate(rows) if row["reviews"] >= 5]
+    facts = [{"menu_name": rows[i]["menu_name"], "store_name": rows[i].get("store_name") or "",
+              "district": rows[i]["district"], "reviews": rows[i]["reviews"],
+              "most_reviewed": rows[i]["reviews"] == most} for i in writable]
+    generated: dict[str, Any] = {}
     try:
+        if not facts:
+            raise Unavailable("no facts")
         generated = generate(
-            '각 매장의 추천 이유 중 강조할 근거 코드를 고른다. JSON 키는 입력 인덱스 문자열이다. '
-            '값은 menu_match(고른 메뉴 판매 기록), review_evidence(과거 메뉴 리뷰 수) 중 하나. '
-            '메뉴명이나 리뷰 수를 새로 쓰지 않는다. 실제 설명은 서버가 검증된 값으로 작성한다.',
-            {"stores": rows},
-            {"type": "object", "properties": {str(i): {"type": "string",
-             "enum": ["menu_match", "review_evidence"]} for i in range(len(rows))},
-             "required": [str(i) for i in range(len(rows))]})
-        for i, row in enumerate(rows):
-            code = generated.get(str(i))
-            if code == "menu_match":
-                row["comment"] = f"선택한 메뉴의 판매 기록이 있으며, 이 매장 메뉴 리뷰 {row['reviews']:,}건을 참고했어요."
-            elif code == "review_evidence":
-                row["comment"] = f"선택한 메뉴와의 적합도에 이어, 이 매장 메뉴 리뷰 {row['reviews']:,}건을 근거로 골랐어요."
+            "너는 배달 메뉴 앱의 추천 문구 작가다. 각 매장마다 '추천이유' 한 문장(20~60자, ~요 체)을 쓴다. "
+            "맛·재료·조리법·식감은 묘사하지 않는다(모르는 사실이다). 대신 그 메뉴가 어울리는 상황과 기분"
+            "(퇴근길, 늦은 밤, 비 오는 날, 고민 끝내기 등)이나, 리뷰 수가 말해 주는 선택의 이유를 감성적으로 쓴다. "
+            "메뉴 이름에 들어 있는 말(예: 불향, 차돌, 해장)은 살려 써도 된다. 문장마다 표현을 다르게 한다. "
+            "사실은 입력의 메뉴명·가게명·지역·리뷰 수·most_reviewed만 쓰고, 숫자는 그 매장의 리뷰 수 말고는 쓰지 않는다. "
+            "다른 매장이나 다른 메뉴 이름을 쓰지 않는다. 가격·배달·친절·위생·건강·별점·순위는 말하지 않는다. "
+            "예: '퇴근길 지친 저녁, 불향 한 접시로 하루를 마무리해 보세요. 리뷰 558건이 먼저 다녀갔어요.' "
+            'JSON {"0":"문장","1":"문장",...} 키는 입력 순서 번호.',
+            {"stores": facts},
+            {"type": "object", "properties": {str(i): {"type": "string"} for i in range(len(facts))},
+             "required": [str(i) for i in range(len(facts))]}, temperature=0.8)
     except Unavailable:
         pass
+    by_row = {at: generated.get(str(order)) for order, at in enumerate(writable)}
+    names = {row.get("store_name") or "" for row in rows} | {row["menu_name"] for row in rows}
+    for i, row in enumerate(rows):
+        text = by_row.get(i)
+        # 다른 가게·다른 메뉴 이름(자기 메뉴명·가게명을 포함하는 이름은 제외)
+        others = {name for name in names - {row.get("store_name") or "", row["menu_name"]}
+                  if name not in row["menu_name"] and name not in (row.get("store_name") or "")}
+        row["comment"] = (" ".join(str(text).split()) if safe_reason(text, row, others)
+                          else template_reason(row, most, i))
+

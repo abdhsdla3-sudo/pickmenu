@@ -236,4 +236,5 @@ dialog h3 { font-size: 14px; margin-top: 20px; }
 .small-link { flex: none; border: 0; background: #edf1e5; color: var(--green); font-size: 11px; font-weight: 700; padding: 8px 12px; border-radius: 10px; }
 .menu-score { margin-top: 8px; color: #6c7f55; font-size: 11px; }
 .menu-score strong { font-size: 20px; font-weight: 800; color: var(--green); margin-right: 3px; }
+.store-reason strong { display: inline-block; margin-right: 6px; font-size: 11px; color: var(--green); }
 .menu-comment { font-size: 12px; line-height: 1.6; color: var(--ink); margin-top: 10px; }

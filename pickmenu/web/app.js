@@ -366,7 +366,11 @@ function familyStoreItem(store, family) {
   const name = node("p", undefined, "family-store-name");
   name.append(node("strong", store.menu_name), node("span", ` – ${store.store_name || "가게 이름 확인 중"}`));
   text.append(name, node("p", `${store.district} · 이 가게 리뷰 ${store.reviews.toLocaleString("ko-KR")}건`, "store-meta"));
-  if (store.comment) text.append(node("p", `AI 설명 · ${store.comment}`, "menu-comment"));
+  if (store.comment) {
+    const reason = node("p", undefined, "menu-comment store-reason");
+    reason.append(node("strong", "추천이유"), node("span", store.comment));
+    text.append(reason);
+  }
   const button = node("button", "상세", "small-link");
   button.type = "button";
   button.setAttribute("aria-label", `${store.menu_name} 상세 보기`);
