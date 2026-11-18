@@ -404,14 +404,14 @@ def data() -> Data:
         return _cache["data"]
 
 
-def food_columns() -> dict[str, dict[str, Any]] | None:
-    """음식 컬럼표(국물·맵기·선호음식군). DB에 연결할 수 없으면 None이고 1분 동안 다시 시도하지 않는다."""
+def reference_data() -> Data | None:
+    """참고자료(컬럼표·매장 메뉴). DB에 연결할 수 없으면 None이고 1분 동안 다시 시도하지 않는다."""
     import time
 
     if time.monotonic() - _failed["at"] < RETRY_SECONDS:
         return None
     try:
-        return data().columns
+        return data()
     except Exception:  # 드라이버 미설치·연결 실패는 카탈로그 값만으로 추천한다.
         _failed["at"] = time.monotonic()
         return None

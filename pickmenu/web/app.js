@@ -320,10 +320,7 @@ function render(data) {
     button.type = "button";
     button.setAttribute("aria-label", `${item.name} 상세 보기`);
     button.addEventListener("click", () => openDetail(item, button));
-    card.append(head);
-    addReasons(card, item.reasons);
-    card.append(node("p", nutritionSummary(item), "muted"),
-      node("p", "원재료·알레르기 정보 부족 · 주문 전 확인 필요", "muted"), button);
+    card.append(head, node("p", nutritionSummary(item), "muted"), button);
     results.append(card);
   });
 }
@@ -340,20 +337,14 @@ function renderFamilies(data) {
     const title = node("h3");
     title.append(node("span", String(index + 1).padStart(2, "0"), "rank"), family.name);
     head.append(title, node("span", family.category, "badge"));
-    const evidence = family.evidence
-      ? `${data.region} 리뷰 ${family.evidence.reviews.toLocaleString("ko-KR")}건 · 가게 ${family.evidence.stores.toLocaleString("ko-KR")}곳`
-      : family.best.reasons[0];
-    const reasons = [evidence, `가게별 메뉴 ${family.menu_count.toLocaleString("ko-KR")}종`, ...family.best.reasons.slice(1)];
     const button = node("button", "이 메뉴 고르기", "detail-link");
     button.type = "button";
     button.setAttribute("aria-label", `${family.name} 고르고 파는 가게 보기`);
     button.addEventListener("click", () => showFamily(family, data));
-    card.append(head);
-    addReasons(card, reasons);
-    // LLM 한 줄 설명(comment)이 오면 영양·알레르기 문구 대신 보여 준다. 알레르기 확인 안내는 상세에 남는다.
-    if (family.comment) card.append(node("p", family.comment, "menu-comment"), button);
-    else card.append(node("p", nutritionSummary(family.best), "muted"),
-      node("p", "원재료·알레르기 정보 부족 · 주문 전 확인 필요", "muted"), button);
+    // 카드는 이름·음식군과 영양 한 줄만 보여 준다. LLM 한 줄 설명(comment)이 오면 영양 대신 보여 준다.
+    // 추천 근거와 알레르기 확인 안내는 메뉴 상세에 남는다.
+    card.append(head, family.comment ? node("p", family.comment, "menu-comment")
+      : node("p", nutritionSummary(family.best), "muted"), button);
     results.append(card);
   });
   results.append(node("p", "가게마다 다른 메뉴 이름을 같은 음식으로 묶었어요 (자동 분류 · 사람 미검수).", "muted family-note"));

@@ -3,6 +3,7 @@
 import math
 import re
 import unicodedata
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Any
 
@@ -88,34 +89,89 @@ def nutrition_score(nutrition: dict[str, Any] | None, goal: str) -> float | None
 
 
 SOUP = {"있음": "yes", "없음": "no"}
-SPICE = {"보통 매움": "hot"}
+SPICE_TABLE = {"보통 매움": "hot"}
+# 이름 끝이 국물 요리인 음식(매운탕·어묵탕·만둣국·김치찌개·순대전골·뼈해장국 등)은 국물 있음으로 본다.
+SOUP_NAME = re.compile(r"(탕|국|찌개|전골|국밥)$")
 
 
-def apply_reference(menus: list[dict[str, Any]], columns: dict[str, dict[str, Any]] | None) -> list[dict[str, Any]]:
-    """참고자료 음식 컬럼표의 국물·맵기·선호음식군을 표준 음식명(components[0])이 같은 메뉴에 붙인다.
+def column_spice(rows: list[dict[str, Any]]) -> dict[str, str]:
+    """참고자료 매장 메뉴 행의 맵기(안 매움·약간 매움·매움·일부 매운 옵션)를 컬럼별로 모은다.
 
-    카탈로그가 메뉴 이름으로 정한 맵기·국물은 그대로 두고 빈 값만 채운다. 컬럼표의 `애매`·`-`는
-    정보 없음으로 둔다. 음식군은 카탈로그 음식군 하나에 컬럼표 선호음식군(예: 짬뽕 → 중식·면)을 더한다.
+    판정이 있는 행 중 `안 매움`이 80% 이상이면 mild, `매움`·`약간 매움`이 절반 이상이면 hot,
+    섞여 있으면(일부 매운 옵션 포함) 정하지 않는다. `명시 없음`은 세지 않는다.
     """
-    if not columns:
-        return menus
+    counts: dict[str, Counter[str]] = defaultdict(Counter)
+    for row in rows:
+        level = row.get("spiciness") or ""
+        if row.get("column_name") and level and level != "명시 없음":
+            counts[row["column_name"]][level] += 1
+    result: dict[str, str] = {}
+    for column, count in counts.items():
+        total = sum(count.values())
+        if count["안 매움"] >= 0.8 * total:
+            result[column] = "mild"
+        elif count["매움"] + count["약간 매움"] >= 0.5 * total:
+            result[column] = "hot"
+    return result
+
+
+def reference_tags(columns: dict[str, dict[str, Any]], rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """컬럼별 맵기·국물·선호음식군. 맵기는 매장 메뉴 판정을 먼저 쓰고 없으면 컬럼표 `보통 매움`을 쓴다."""
+    spice = column_spice(rows)
+    return {name: {"spice": spice.get(name) or SPICE_TABLE.get(column.get("spiciness") or "", ""),
+                   "soup": SOUP.get(column.get("broth") or "", ""),
+                   "groups": [group.strip() for group in (column.get("groups") or "").split(";") if group.strip()]}
+            for name, column in columns.items()}
+
+
+def match_column(food: str, names: list[str]) -> tuple[str | None, bool]:
+    """표준 음식명에 맞는 컬럼과 정확히 맞았는지.
+
+    정확히 같은 이름 → `·`로 묶인 컬럼의 한 이름(아구찜 → 아구찜·해물찜) → 끝이 같은 가장 긴
+    컬럼 이름(두 글자 이상, 순대국밥 → 국밥, 로제떡볶이 → 떡볶이) 순으로 찾는다. 끝만 같은 경우는
+    정확히 맞지 않은 것으로 돌려준다.
+    """
+    if food in names:
+        return food, True
+    for name in names:
+        if food in name.split("·"):
+            return name, True
+    tails = sorted((len(part), name) for name in names for part in name.split("·")
+                   if len(part) >= 2 and food.endswith(part))
+    return (tails[-1][1], False) if tails else (None, False)
+
+
+def apply_reference(menus: list[dict[str, Any]], tags: dict[str, dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """참고자료 맵기·국물·선호음식군을 표준 음식명(components[0])이 맞는 메뉴에 붙인다.
+
+    카탈로그가 메뉴 이름으로 정한 맵기·국물은 그대로 두고 빈 값만 채운다. 이름 끝이 국물 요리면
+    국물 있음으로 본다. 끝만 같은 컬럼(로제떡볶이 → 떡볶이)에서는 국물·음식군만 가져오고 맵기는
+    가져오지 않는다. 음식군은 카탈로그 음식군 하나에 컬럼의 선호음식군(예: 짬뽕 → 중식·면)을 더한다.
+    """
+    tags = tags or {}
+    names = sorted(tags)
+    found: dict[str, tuple[str | None, bool]] = {}
     result = []
     for menu in menus:
-        column = columns.get(menu["components"][0])
-        if column is None:
-            result.append(menu)
+        food = menu["components"][0]
+        if food not in found:
+            found[food] = match_column(food, names)
+        name, exact = found[food]
+        soup = menu["soup"] or ("yes" if SOUP_NAME.search(food) else "")
+        if name is None:
+            result.append({**menu, "soup": soup})
             continue
-        groups = [group.strip() for group in (column.get("groups") or "").split(";") if group.strip()]
-        result.append({**menu, "spice": menu["spice"] or SPICE.get(column.get("spiciness") or "", ""),
-                       "soup": menu["soup"] or SOUP.get(column.get("broth") or "", ""),
-                       "groups": list(dict.fromkeys([menu["category"], *groups]))})
+        tag = tags[name]
+        result.append({**menu, "spice": menu["spice"] or (tag["spice"] if exact else ""),
+                       "soup": soup or tag["soup"], "reference_column": name,
+                       "groups": list(dict.fromkeys([menu["category"], *tag["groups"]]))})
     return result
 
 
 def recommend(menus: list[dict[str, Any]], profile: Profile) -> dict[str, Any]:
     ranked: list[dict[str, Any]] = []
     check: list[dict[str, Any]] = []
-    excluded = unknown = 0
+    excluded = unknown = mismatched = 0
     terms = ingredient_terms(profile.allergy) | ingredient_terms(profile.exclude)
     plant = profile.diet in {"vegan", "vegetarian"}
     region = profile.district or "수원시"
@@ -125,6 +181,11 @@ def recommend(menus: list[dict[str, Any]], profile: Profile) -> dict[str, Any]:
         signal = " ".join((menu["name"], menu["category"], *menu["components"]))
         if (not evidence or compact(profile.query) not in compact(signal)
                 or (profile.meal_category and profile.meal_category not in groups)):
+            continue
+        # 고른 맵기·국물과 반대로 확인된 메뉴는 뺀다. 정보가 없는 메뉴는 남기고 점수만 낮춘다.
+        if any(value and actual and value != actual
+               for value, actual in ((profile.spice, menu["spice"]), (profile.soup, menu["soup"]))):
+            mismatched += 1
             continue
         meat = bool(MEAT.search(signal))
         conflict = any(term in compact(signal) for term in terms) or (
@@ -173,7 +234,7 @@ def recommend(menus: list[dict[str, Any]], profile: Profile) -> dict[str, Any]:
             seen.add(family)
             first_choices.append(menu)
     return {"items": (first_choices + alternatives)[:5], "families": families(ranked),
-            "eligible": len(ranked), "excluded": excluded,
+            "eligible": len(ranked), "excluded": excluded, "mismatched": mismatched,
             "unverified": unknown, "check_only": check[:3], "region": region}
 
 
