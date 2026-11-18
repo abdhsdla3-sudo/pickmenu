@@ -91,13 +91,16 @@ def nutrition_score(nutrition: dict[str, Any] | None, goal: str) -> float | None
 SOUP = {"있음": "yes", "없음": "no"}
 SPICE_TABLE = {"보통 매움": "hot"}
 MIN_SPICE_ROWS = 3
-PREFERRED_FIRST = 3
+PREFERRED_FIRST = 1
 # 추천점수 감점(100점 기준). 고른 맵기·국물을 음식에서 확인할 수 없으면 조건마다, 선호 음식군 음식이
-# 충분한데 그 밖의 음식이면 한 번 깎는다. 화면 순서는 감점까지 반영한 추천점수 순서와 같다.
+# 있는데 그 밖의 음식이면 한 번 깎는다. 화면 순서는 감점까지 반영한 추천점수 순서와 같다.
 UNKNOWN_TASTE_PENALTY = 15
 OUTSIDE_PREFERRED_PENALTY = 25
 # 이름 끝이 국물 요리인 음식(매운탕·어묵탕·만둣국·김치찌개·순대전골·뼈해장국 등)은 국물 있음으로 본다.
 SOUP_NAME = re.compile(r"(탕|국|찌개|전골|국밥)$")
+# 이름 끝이 구이·볶음·튀김 등인 음식(삼겹살·목살·제육볶음·치킨·돈가스·덮밥 등)은 국물 없음으로 본다.
+DRY_NAME = re.compile(r"(구이|볶음|튀김|까스|가스|덮밥|볶음밥|김밥|주먹밥|살|바베큐|강정|치킨|윙·봉|텐더|"
+                      r"가라아게|피자|버거|샌드위치|파스타|족발|보쌈|육회|회|초밥)$")
 
 
 def column_spice(rows: list[dict[str, Any]]) -> dict[str, str]:
@@ -128,6 +131,8 @@ def reference_tags(columns: dict[str, dict[str, Any]], rows: list[dict[str, Any]
     spice = column_spice(rows)
     return {name: {"spice": spice.get(name) or SPICE_TABLE.get(column.get("spiciness") or "", ""),
                    "soup": SOUP.get(column.get("broth") or "", ""),
+                   # 컬럼표에서 식사가 아니거나 곁들임인 음식(만두·튀김·핫도그·주먹밥 등)
+                   "side": column.get("is_meal") is False or bool(column.get("is_side")),
                    "groups": [group.strip() for group in (column.get("groups") or "").split(";") if group.strip()]}
             for name, column in columns.items()}
 
@@ -165,13 +170,13 @@ def apply_reference(menus: list[dict[str, Any]], tags: dict[str, dict[str, Any]]
         if food not in found:
             found[food] = match_column(food, names)
         name, exact = found[food]
-        soup = menu["soup"] or ("yes" if SOUP_NAME.search(food) else "")
+        soup = menu["soup"] or ("yes" if SOUP_NAME.search(food) else "no" if DRY_NAME.search(food) else "")
         if name is None:
             result.append({**menu, "soup": soup})
             continue
         tag = tags[name]
         result.append({**menu, "spice": menu["spice"] or (tag["spice"] if exact else ""),
-                       "soup": soup or tag["soup"], "reference_column": name,
+                       "soup": soup or tag["soup"], "reference_column": name, "side": tag.get("side", False),
                        "groups": list(dict.fromkeys([menu["category"], *tag["groups"]]))})
     return food_tags(result, tags, found)
 
@@ -215,6 +220,9 @@ def recommend(menus: list[dict[str, Any]], profile: Profile) -> dict[str, Any]:
         signal = " ".join((menu["name"], menu["category"], *menu["components"]))
         if (not evidence or compact(profile.query) not in compact(signal)
                 or (profile.meal_category and profile.meal_category not in groups)):
+            continue
+        # 컬럼표에서 식사가 아니거나 곁들임인 음식은 검색어로 직접 찾을 때만 보여 준다.
+        if menu.get("side") and not profile.query:
             continue
         # 고른 맵기·국물과 반대로 확인된 메뉴는 뺀다. 메뉴 이름의 단서뿐 아니라 음식 자체의 값도 본다
         # (예: 매운 쪽을 골랐을 때 '매콤한 감자피자'가 있어도 안 매운 음식인 피자는 뺀다).
@@ -266,16 +274,25 @@ def recommend(menus: list[dict[str, Any]], profile: Profile) -> dict[str, Any]:
     known = sorted(menu["_parts"][0] for menu in ranked if menu["_parts"][0] is not None)
     middle = (known[len(known) // 2] if len(known) % 2 else (known[len(known) // 2 - 1] + known[len(known) // 2]) / 2) \
         if known else 0.5
-    # 선호 음식군에 맞는 음식이 3가지 이상이면 그 밖의 음식은 감점한다.
-    preferred_first = len({compact(menu["components"][0]) for menu in ranked if menu["_preferred"]}) >= PREFERRED_FIRST
+    # 선호 음식군에 맞는 음식이 하나라도 있으면 그 밖의 음식은 감점한다.
+    preferred_foods = len({compact(menu["components"][0]) for menu in ranked if menu["_preferred"]})
+    preferred_first = preferred_foods >= PREFERRED_FIRST
     for menu in ranked:
         n, t, e = menu.pop("_parts")
         score = 100 * (WEIGHTS["nutrition"] * (n if n is not None else middle)
                        + WEIGHTS["preference"] * t + WEIGHTS["evidence"] * e)
-        penalty = UNKNOWN_TASTE_PENALTY * menu.pop("_unknown_taste") + (
-            OUTSIDE_PREFERRED_PENALTY if preferred_first and not menu.pop("_preferred") else 0)
+        unknown_taste = menu.pop("_unknown_taste")
+        outside = preferred_first and not menu.pop("_preferred")
         menu.pop("_preferred", None)
+        penalty = UNKNOWN_TASTE_PENALTY * unknown_taste + (OUTSIDE_PREFERRED_PENALTY if outside else 0)
         menu["score"] = round(max(0.0, score - penalty), 3)
+        # 메뉴 상세에서 감점 이유를 볼 수 있게 남긴다.
+        if n is None:
+            menu["reasons"][1] = f"참고 영양값 없음 · 후보 중앙값 {round(middle * 100)}점으로 계산"
+        if unknown_taste:
+            menu["reasons"].append(f"고른 맵기·국물을 확인할 수 없어 {UNKNOWN_TASTE_PENALTY * unknown_taste}점 감점")
+        if outside:
+            menu["reasons"].append(f"선호 음식군 밖이라 {OUTSIDE_PREFERRED_PENALTY}점 감점")
         menu["_unknown_nutrition"] = n is None
     # 점수가 같으면 영양 자료가 있는 메뉴를 앞에 둔다.
     ranked.sort(key=lambda x: (-x["score"], x["_unknown_nutrition"], -x["evidence"]["reviews"], x["standard_menu_id"]))
@@ -294,6 +311,7 @@ def recommend(menus: list[dict[str, Any]], profile: Profile) -> dict[str, Any]:
             first_choices.append(menu)
     return {"items": (first_choices + alternatives)[:5], "families": families(ranked),
             "eligible": len(ranked), "excluded": excluded, "mismatched": mismatched,
+            "category": profile.category, "preferred_foods": preferred_foods,
             "unverified": unknown, "check_only": check[:3], "region": region}
 
 

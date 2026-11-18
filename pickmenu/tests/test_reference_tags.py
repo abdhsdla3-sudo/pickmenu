@@ -1,4 +1,5 @@
 import unittest
+from typing import Any
 from unittest.mock import patch
 
 import menu_reco
@@ -18,13 +19,14 @@ def menu(name, category="중식", spice="", soup="", menu_id="MN_1", food=None):
             "regions": {"수원시": {"reviews": 30, "stores": 3}}}
 
 
-COLUMNS = {"짬뽕": {"groups": "중식;면", "broth": "있음", "spiciness": "보통 매움"},
+COLUMNS: dict[str, dict[str, Any]] = {"짬뽕": {"groups": "중식;면", "broth": "있음", "spiciness": "보통 매움"},
            "볶음짬뽕": {"groups": "중식", "broth": "있음", "spiciness": "-"},
            "탕수육": {"groups": "중식", "broth": "애매", "spiciness": "-"},
            "피자": {"groups": "피자", "broth": "없음", "spiciness": "-"},
            "떡볶이": {"groups": "분식", "broth": "애매", "spiciness": "보통 매움"},
            "아구찜·해물찜": {"groups": "찜·조림;해산물", "broth": "없음", "spiciness": "보통 매움"},
-           "어묵": {"groups": "분식", "broth": "없음", "spiciness": "-"}}
+           "어묵": {"groups": "분식", "broth": "없음", "spiciness": "-"},
+           "만두": {"groups": "분식", "broth": "없음", "spiciness": "-", "is_meal": True, "is_side": True}}
 ROWS = ([{"column_name": "피자", "spiciness": "안 매움"}] * 9 + [{"column_name": "피자", "spiciness": "약간 매움"}]
         + [{"column_name": "탕수육", "spiciness": "안 매움"}, {"column_name": "탕수육", "spiciness": "일부 매운 옵션"}]
         + [{"column_name": "짬뽕", "spiciness": "매움"}] * 3 + [{"column_name": "짬뽕", "spiciness": "명시 없음"}]
@@ -118,6 +120,27 @@ class ReferenceTagTest(unittest.TestCase):
         self.assertEqual(result["items"][-1]["name"], "육회")  # 영양은 좋아도 맵기·국물을 확인할 수 없다
         scores = [item["score"] for item in result["items"]]
         self.assertEqual(scores, sorted(scores, reverse=True))
+
+    def test_side_food_only_by_search_and_dry_names(self):
+        menus = apply_reference([menu("고기만두", "분식", menu_id="MN_1"), menu("라면", "분식", menu_id="MN_2"),
+                                 menu("삼겹살", "고기", menu_id="MN_3")], TAGS)
+        self.assertEqual(menus[2]["soup"], "no")  # 이름 끝이 살이면 국물 없음
+        plain = recommend(menus, Profile.parse({}, ["분식", "고기"]))
+        self.assertNotIn("고기만두", [item["name"] for item in plain["items"]])
+        search = recommend(menus, Profile.parse({"query": "만두"}, ["분식", "고기"]))
+        self.assertEqual([item["name"] for item in search["items"]], ["고기만두"])
+
+    def test_penalty_reasons_and_preferred_count(self):
+        menus = apply_reference([menu("김치전", "전·부침", menu_id="MN_1"), menu("짬뽕", menu_id="MN_2")], TAGS)
+        result = recommend(menus, Profile.parse({"category": "전·부침", "spice": "hot"}, ["전·부침", "중식"]))
+        self.assertEqual((result["category"], result["preferred_foods"]), ("전·부침", 1))
+        self.assertEqual(result["items"][0]["name"], "김치전")  # 선호 음식군 음식이 하나여도 앞에
+        jjamppong = result["items"][1]
+        self.assertIn("선호 음식군 밖이라 25점 감점", jjamppong["reasons"])
+        self.assertIn("고른 맵기·국물을 확인할 수 없어 15점 감점", result["items"][0]["reasons"])
+        self.assertTrue(jjamppong["reasons"][1].startswith("참고 영양값 없음 · 후보 중앙값"))
+        none = recommend(menus, Profile.parse({"category": "피자"}, ["전·부침", "중식", "피자"]))
+        self.assertEqual(none["preferred_foods"], 0)
 
     def test_reference_data_backs_off_after_failure(self):
         with patch.dict(menu_reco._failed, {"at": float("-inf")}), \

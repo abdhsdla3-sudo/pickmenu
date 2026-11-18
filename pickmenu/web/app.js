@@ -328,8 +328,15 @@ function render(data) {
 // 1단계: 가게마다 다른 메뉴 이름을 표준 음식명(대표 메뉴)으로 묶어 고르게 한다.
 function renderFamilies(data) {
   const count = data.families.length;
-  status.textContent = count < 3 ? `현재 조건에서 대표 메뉴 ${count}개를 찾았어요. 검색어와 지역은 직접 바꿀 수 있어요.`
-    : "먹고 싶은 메뉴를 고르면 실제 메뉴와 파는 가게를 보여 드려요.";
+  const top = data.families[0]?.best.score ?? 0;
+  status.textContent = [
+    // 선호 음식군에 조건이 맞는 음식이 없으면 다른 음식군에서 골랐다고 알린다.
+    data.category && data.preferred_foods === 0
+      ? `선호 음식군 ${data.category}에는 지금 조건에 맞는 메뉴가 없어 다른 음식군에서 골랐어요.` : "",
+    top < 40 ? "조건에 꼭 맞는 메뉴가 적어 점수가 낮아요. 맵기·국물 조건을 '상관없음'으로 바꾸면 더 넓게 찾아요." : "",
+    count < 3 ? `현재 조건에서 대표 메뉴 ${count}개를 찾았어요. 검색어와 지역은 직접 바꿀 수 있어요.`
+      : "먹고 싶은 메뉴를 고르면 실제 메뉴와 파는 가게를 보여 드려요.",
+  ].filter(Boolean).join(" ");
   results.replaceChildren();
   data.families.forEach((family, index) => {
     const card = node("article", undefined, "card");
