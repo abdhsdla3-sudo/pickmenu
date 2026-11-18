@@ -177,7 +177,7 @@ legend { font-size: 12px; font-weight: 650; margin-bottom: 10px; }
 .card:first-child { border-color: #adb996; background: #f3f6eb; }
 .card-head { display: flex; align-items: flex-start; gap: 8px; justify-content: space-between; }
 .card h3 { font-size: 16px; letter-spacing: -.5px; }
-.rank { font-size: 10px; color: #7c8f62; margin-right: 8px; }
+.rank { font-size: 22px; font-weight: 800; line-height: 1; color: #7c8f62; margin-right: 10px; vertical-align: -2px; }
 .badge { font-size: 8px; white-space: nowrap; color: #6c7f55; background: #e9efde; border-radius: 6px; padding: 3px 6px; }
 .reason { font-size: 11px; color: #6e7b5f; margin: 11px 0; padding-left: 15px; line-height: 1.8; }
 .muted { font-size: 10px; color: #7e896e; line-height: 1.9; margin-top: 7px; }

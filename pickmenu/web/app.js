@@ -923,6 +923,8 @@ async function initialize() {
   for (const key of preferenceFields.filter(key => key !== "category")) {
     profile[key] = form.elements.namedItem(key).value;
   }
+  // 이미 로그인돼 있고 저장한 취향이 있으면 취향 입력 없이 추천 방식 화면을 연다.
+  if (account && hasProfile) openModes();
   try {
     const data = await request("/api/catalog");
     const select = document.querySelector("#category");

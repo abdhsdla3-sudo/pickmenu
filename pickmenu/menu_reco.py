@@ -351,6 +351,8 @@ def public_groups(data: Data) -> list[dict[str, Any]]:
 _cache: dict[str, Any] = {"data": None, "checked": 0.0}
 _lock = threading.Lock()
 CACHE_SECONDS = 300
+RETRY_SECONDS = 60
+_failed: dict[str, float] = {"at": float("-inf")}
 
 
 def dsn() -> str:
@@ -372,7 +374,7 @@ def load_from_db(conninfo: str | None = None) -> Data:
             FROM pickmenu_data.current_menu_scores""").fetchall()
         columns = db.execute("""
             SELECT column_name, display_name, is_meal, is_side, eligible, meat_preferred,
-                   data->>'선호음식군' AS groups
+                   data->>'선호음식군' AS groups, data->>'국물' AS broth, data->>'맵기' AS spiciness
             FROM pickmenu_data.current_food_columns""").fetchall()
         groups = db.execute("""
             SELECT group_name, visible FROM pickmenu_data.current_preference_groups
@@ -400,3 +402,16 @@ def data() -> Data:
             _cache["data"] = load_from_db()
             _cache["checked"] = time.monotonic()
         return _cache["data"]
+
+
+def food_columns() -> dict[str, dict[str, Any]] | None:
+    """음식 컬럼표(국물·맵기·선호음식군). DB에 연결할 수 없으면 None이고 1분 동안 다시 시도하지 않는다."""
+    import time
+
+    if time.monotonic() - _failed["at"] < RETRY_SECONDS:
+        return None
+    try:
+        return data().columns
+    except Exception:  # 드라이버 미설치·연결 실패는 카탈로그 값만으로 추천한다.
+        _failed["at"] = time.monotonic()
+        return None

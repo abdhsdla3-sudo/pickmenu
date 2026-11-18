@@ -87,6 +87,31 @@ def nutrition_score(nutrition: dict[str, Any] | None, goal: str) -> float | None
     return clip(1 - distance)
 
 
+SOUP = {"있음": "yes", "없음": "no"}
+SPICE = {"보통 매움": "hot"}
+
+
+def apply_reference(menus: list[dict[str, Any]], columns: dict[str, dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """참고자료 음식 컬럼표의 국물·맵기·선호음식군을 표준 음식명(components[0])이 같은 메뉴에 붙인다.
+
+    카탈로그가 메뉴 이름으로 정한 맵기·국물은 그대로 두고 빈 값만 채운다. 컬럼표의 `애매`·`-`는
+    정보 없음으로 둔다. 음식군은 카탈로그 음식군 하나에 컬럼표 선호음식군(예: 짬뽕 → 중식·면)을 더한다.
+    """
+    if not columns:
+        return menus
+    result = []
+    for menu in menus:
+        column = columns.get(menu["components"][0])
+        if column is None:
+            result.append(menu)
+            continue
+        groups = [group.strip() for group in (column.get("groups") or "").split(";") if group.strip()]
+        result.append({**menu, "spice": menu["spice"] or SPICE.get(column.get("spiciness") or "", ""),
+                       "soup": menu["soup"] or SOUP.get(column.get("broth") or "", ""),
+                       "groups": list(dict.fromkeys([menu["category"], *groups]))})
+    return result
+
+
 def recommend(menus: list[dict[str, Any]], profile: Profile) -> dict[str, Any]:
     ranked: list[dict[str, Any]] = []
     check: list[dict[str, Any]] = []
@@ -96,9 +121,10 @@ def recommend(menus: list[dict[str, Any]], profile: Profile) -> dict[str, Any]:
     region = profile.district or "수원시"
     for menu in menus:
         evidence = menu["regions"].get(region)
+        groups = menu.get("groups") or [menu["category"]]
         signal = " ".join((menu["name"], menu["category"], *menu["components"]))
         if (not evidence or compact(profile.query) not in compact(signal)
-                or (profile.meal_category and menu["category"] != profile.meal_category)):
+                or (profile.meal_category and profile.meal_category not in groups)):
             continue
         meat = bool(MEAT.search(signal))
         conflict = any(term in compact(signal) for term in terms) or (
@@ -114,7 +140,8 @@ def recommend(menus: list[dict[str, Any]], profile: Profile) -> dict[str, Any]:
             continue
         matches: list[str] = []
         preferences: list[float] = []
-        for label, value, actual in (("음식군", profile.category, menu["category"]),
+        category = profile.category if profile.category in groups else menu["category"]
+        for label, value, actual in (("음식군", profile.category, category),
                                      ("맵기", profile.spice, menu["spice"]),
                                      ("국물", profile.soup, menu["soup"]),
                                      ("육식 선호", "yes" if profile.diet == "meat" else "",

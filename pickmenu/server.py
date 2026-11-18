@@ -19,7 +19,7 @@ import llm
 import menu_reco
 import menu_stores
 from raw import BASE, LOCAL
-from recommend import DISTRICTS, Profile, recommend
+from recommend import DISTRICTS, Profile, apply_reference, recommend
 
 CATALOG = LOCAL / "catalog.sqlite3"
 MENU_ID = re.compile(r"MN_[0-9a-f]{16}")
@@ -158,7 +158,7 @@ class Handler(BaseHTTPRequestHandler):
             menus = catalog()
             if not menus:
                 raise ValueError("빈 카탈로그")
-            return menus
+            return apply_reference(menus, menu_reco.food_columns())
         except (OSError, sqlite3.Error, ValueError) as error:
             self.log_error("카탈로그 오류 %s", error)
             self.send_json(503, {"error": "추천 데이터를 열 수 없어요. 전처리를 완료한 뒤 다시 시도해 주세요."})
