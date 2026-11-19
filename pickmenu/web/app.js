@@ -74,6 +74,9 @@ function showScreen(name) {
   }
   document.querySelector(".bottom-nav").hidden = ["welcome", "onboarding"].includes(name)
     || (name === "account" && !hasProfile);
+  for (const button of document.querySelectorAll(".mode-switch button")) {
+    button.setAttribute("aria-pressed", String(button.dataset.mode === name));
+  }
   scroller.scrollTop = 0;
   const title = document.querySelector(`[data-screen="${name}"] h2`);
   if (title) title.focus({preventScroll: true});
@@ -163,15 +166,44 @@ function openModes() {
   // 신체정보는 선택(1.7.0)이라 취향 프로필이 있으면 바로 추천 방식으로 간다.
   if (account && !hasProfile) return startOnboarding();
   cancelRecommendation();
-  document.querySelector("#greeting-name").textContent = guest ? "둘러보는 손님" : profile.nickname || "메뉴고민러";
   document.querySelector("#profile-summary").textContent = guest
     ? "둘러보기 중이에요. 가입하면 취향을 저장하고 이야기 추천도 쓸 수 있어요."
     : [summary(), storageNotice, syncNotice].filter(Boolean).join(" · ");
   document.querySelector("#delete-profile").hidden = guest;
-  document.querySelector('[data-action="edit-profile"].text-button').textContent = guest ? "가입하고 취향 저장하기 →" : "프로필 수정 →";
-  document.querySelector("#open-chat").classList.toggle("locked", guest);
+  document.querySelector('.profile-peek [data-action="edit-profile"]').textContent = guest ? "가입하고 취향 저장하기 →" : "프로필 수정 →";
   document.querySelector("#open-location").hidden = guest;
-  showScreen("modes");
+  for (const button of document.querySelectorAll('.mode-switch [data-mode="chat"]')) button.classList.toggle("locked", guest);
+  openMode(guest ? "choice" : savedMode());
+}
+
+// 추천 방식(이야기/선택지)은 화면 위 전환 버튼으로 바꾸고, 마지막에 쓴 방식을 이 브라우저에 기억한다.
+const modeKey = "pickmenu.mode";
+function savedMode() {
+  try {
+    return localStorage.getItem(modeKey) === "choice" ? "choice" : "chat";
+  } catch {
+    return "chat";
+  }
+}
+function openMode(mode) {
+  // 둘러보기는 선택지 추천만 쓴다. 이야기 추천(AI)은 가입 안내로 보낸다.
+  if (guest && mode === "chat") {
+    openAccount("signup");
+    authStatus.textContent = "이야기로 고르기는 가입하고 로그인하면 쓸 수 있어요.";
+    return;
+  }
+  if (guest) return openChoice();
+  try {
+    localStorage.setItem(modeKey, mode);
+  } catch {
+    // 저장소를 못 쓰면 이번 방문 동안만 유지한다.
+  }
+  if (mode === "choice") openChoice();
+  else if (!chatLog.childElementCount) startChat();
+  else {
+    sourceMode = "chat";
+    showScreen("chat");
+  }
 }
 
 function startGuest() {
@@ -691,7 +723,8 @@ async function storeMap(holder, stores) {
     return;
   }
   if (!holder.isConnected) return;
-  const map = L.map(holder, {scrollWheelZoom: false});
+  // 지도 위에서 휠을 굴리면 페이지 대신 지도가 확대·축소된다(Leaflet이 휠 이벤트를 막는다).
+  const map = L.map(holder);
   osmTiles(L).addTo(map);
   const points = [];
   for (const {store, at} of placed) {
@@ -1172,7 +1205,15 @@ document.querySelector("#delete-profile").addEventListener("click", async () => 
   showScreen("welcome");
 });
 
-document.querySelector("#open-choice").addEventListener("click", () => {
+for (const button of document.querySelectorAll(".mode-switch button")) {
+  button.addEventListener("click", () => {
+    if (button.getAttribute("aria-pressed") === "true") return;
+    cancelRecommendation();
+    openMode(button.dataset.mode);
+  });
+}
+
+function openChoice() {
   sourceMode = "choice";
   const meal = document.querySelector("#meal");
   meal.elements.namedItem("goal").value = profile.goal;
@@ -1180,7 +1221,7 @@ document.querySelector("#open-choice").addEventListener("click", () => {
   meal.elements.namedItem("soup").value = profile.soup || "";
   document.querySelector("#choice-profile").textContent = summary();
   showScreen("choice");
-});
+}
 
 // 추천 결과 위에 이번 추천에 쓴 조건(지역·목표·맵기·국물·음식군·식단·제한 재료)을 보여 준다.
 function showPicked(payload) {
@@ -1296,14 +1337,6 @@ function startChat() {
   setChatChips(["가볍고 안 매운 음식이 좋아요", "국물 있는 메뉴 추천해 줘", "단백질 위주로 먹고 싶어요"]);
 }
 
-document.querySelector("#open-chat").addEventListener("click", () => {
-  if (guest) {
-    openAccount("signup");
-    authStatus.textContent = "이야기하며 고르기는 가입하고 로그인하면 쓸 수 있어요.";
-    return;
-  }
-  startChat();
-});
 document.querySelector("#welcome-guest").addEventListener("click", startGuest);
 document.querySelector("#restart-chat").addEventListener("click", startChat);
 
