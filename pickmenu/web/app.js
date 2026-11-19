@@ -70,6 +70,9 @@ function showScreen(name) {
   }
   document.querySelector(".bottom-nav").hidden = ["welcome", "onboarding"].includes(name)
     || (name === "account" && !hasProfile);
+  for (const button of document.querySelectorAll(".mode-switch button")) {
+    button.setAttribute("aria-pressed", String(button.dataset.mode === name));
+  }
   scroller.scrollTop = 0;
   const title = document.querySelector(`[data-screen="${name}"] h2`);
   if (title) title.focus({preventScroll: true});
@@ -158,9 +161,31 @@ function openModes() {
   updateAccountUI();
   if (!personalFields.every(key => profile[key])) return startOnboarding();
   cancelRecommendation();
-  document.querySelector("#greeting-name").textContent = profile.nickname || "메뉴고민러";
   document.querySelector("#profile-summary").textContent = [summary(), storageNotice, syncNotice].filter(Boolean).join(" · ");
-  showScreen("modes");
+  openMode(savedMode());
+}
+
+// 추천 방식(이야기/선택지)은 화면 위 전환 버튼으로 바꾸고, 마지막에 쓴 방식을 이 브라우저에 기억한다.
+const modeKey = "pickmenu.mode";
+function savedMode() {
+  try {
+    return localStorage.getItem(modeKey) === "choice" ? "choice" : "chat";
+  } catch {
+    return "chat";
+  }
+}
+function openMode(mode) {
+  try {
+    localStorage.setItem(modeKey, mode);
+  } catch {
+    // 저장소를 못 쓰면 이번 방문 동안만 유지한다.
+  }
+  if (mode === "choice") openChoice();
+  else if (!chatLog.childElementCount) startChat();
+  else {
+    sourceMode = "chat";
+    showScreen("chat");
+  }
 }
 
 function profilePayload() {
@@ -1103,7 +1128,15 @@ document.querySelector("#delete-profile").addEventListener("click", async () => 
   showScreen("welcome");
 });
 
-document.querySelector("#open-choice").addEventListener("click", () => {
+for (const button of document.querySelectorAll(".mode-switch button")) {
+  button.addEventListener("click", () => {
+    if (button.getAttribute("aria-pressed") === "true") return;
+    cancelRecommendation();
+    openMode(button.dataset.mode);
+  });
+}
+
+function openChoice() {
   sourceMode = "choice";
   const meal = document.querySelector("#meal");
   meal.elements.namedItem("goal").value = profile.goal;
@@ -1111,7 +1144,7 @@ document.querySelector("#open-choice").addEventListener("click", () => {
   meal.elements.namedItem("soup").value = profile.soup || "";
   document.querySelector("#choice-profile").textContent = summary();
   showScreen("choice");
-});
+}
 
 // 추천 결과 위에 이번 추천에 쓴 조건(지역·목표·맵기·국물·음식군·식단·제한 재료)을 보여 준다.
 function showPicked(payload) {
@@ -1227,7 +1260,6 @@ function startChat() {
   setChatChips(["가볍고 안 매운 음식이 좋아요", "국물 있는 메뉴 추천해 줘", "단백질 위주로 먹고 싶어요"]);
 }
 
-document.querySelector("#open-chat").addEventListener("click", startChat);
 document.querySelector("#restart-chat").addEventListener("click", startChat);
 
 async function respond(answer) {
