@@ -155,7 +155,11 @@ def validate_types(rows: list[dict[str, Any]], spec: str) -> None:
                     raise ValueError(f"유한수/정수 형식 오류: {original}")
 
 
-def build_sql(sources: list[dict[str, Any]]) -> tuple[str, dict[str, Any]]:
+DEFAULT_DESCRIPTION = "추천 자료 및 635매장 조사 참고자료"
+
+
+def build_sql(sources: list[dict[str, Any]],
+              description: str = DEFAULT_DESCRIPTION) -> tuple[str, dict[str, Any]]:
     for file, sheet, spec in SPECS.values():
         validate_types(next(s for s in sources if s["name"] == file)["tables"][sheet], spec)
     batch = hashlib.sha256("".join(s["sha256"] for s in sources).encode()).hexdigest()
@@ -174,7 +178,7 @@ def build_sql(sources: list[dict[str, Any]]) -> tuple[str, dict[str, Any]]:
         "row_number integer, data jsonb NOT NULL, PRIMARY KEY(batch_id,file_name,sheet_name,row_number), "
         "FOREIGN KEY(batch_id,file_name) REFERENCES source_files);",
         f"INSERT INTO import_batches(batch_id,description) VALUES ({literal(batch)},"
-        "'추천 v1.3 및 635매장 조사 참고자료') ON CONFLICT DO NOTHING;", ""]
+        f"{literal(description)}) ON CONFLICT DO NOTHING;", ""]
     for source in sources:
         statements.append("INSERT INTO source_files VALUES (" + ",".join([
             literal(batch), literal(source["name"]), literal(source["sha256"]), str(source["bytes"]),
@@ -261,8 +265,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("output", type=Path, help="비공개 SQL 파일 경로. Git에 넣지 마세요")
+    parser.add_argument("--description", default=DEFAULT_DESCRIPTION,
+                        help="적재 이력에 남길 설명(예: '추천 v1.4 및 635매장 조사 참고자료')")
     args = parser.parse_args()
-    sql, report = build_sql(read_sources(args.source))
+    sql, report = build_sql(read_sources(args.source), args.description)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(sql, encoding="utf-8")
     args.output.chmod(0o600)

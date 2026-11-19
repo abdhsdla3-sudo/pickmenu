@@ -10,7 +10,7 @@ from unittest.mock import patch
 from drive_data import EXPECTED
 from prepare import CATALOG, reference, taste_tags
 from raw import LOCAL, ordered_menus
-from recommend import Profile, fill_tastes, ingredient_terms, nutrition_score, recommend
+from recommend import Profile, ingredient_terms, nutrition_score, recommend
 from server import catalog, categories, public_menu
 
 
@@ -65,53 +65,7 @@ class RulesTest(unittest.TestCase):
                 ordered_menus(value)
         self.assertEqual(taste_tags("안매운 우동", [], "면"), ("mild", "yes"))
         self.assertEqual(taste_tags("볶음우동", [], "면"), ("", "no"))
-        for name, category, expected in (("짬뽕", "중식", ("hot", "yes")), ("백짬뽕", "중식", ("mild", "yes")),
-                                         ("볶음짬뽕", "중식", ("hot", "no")), ("짬뽕밥", "중식", ("hot", "yes")),
-                                         ("짜장면", "중식", ("", "no")), ("탕수육", "중식", ("", "no")),
-                                         ("닭볶음탕", "고기", ("hot", "yes")), ("김밥+라면", "분식", ("", "yes")),
-                                         ("마라샹궈", "중식", ("hot", "no")), ("국물없는 라면", "면", ("", "no")),
-                                         ("고추잡채", "중식", ("", "")), ("짜장떡볶이", "분식", ("mild", "no"))):
-            with self.subTest(name=name):
-                self.assertEqual(taste_tags(name, [name], category), expected)
         self.assertIsNone(reference({}, 1, {}, {}))
-
-    def test_spice_and_soup_exclude_opposite_menus(self):
-        menus = [{**fixture("짬뽕", "MN_1"), "category": "중식", "spice": "hot", "soup": "yes"},
-                 {**fixture("볶음밥", "MN_2"), "spice": "mild", "soup": "no"},
-                 {**fixture("잡채밥", "MN_3"), "spice": "", "soup": ""}]
-        result = recommend(menus, Profile.parse({"spice": "mild", "soup": "no"}, []))
-        self.assertEqual([m["standard_menu_id"] for m in result["items"]], ["MN_2", "MN_3"])
-        self.assertEqual(result["taste_mismatched"], 1)
-        self.assertIn("맵기 정보 부족", result["items"][1]["reasons"])
-        hot = recommend(menus, Profile.parse({"spice": "hot"}, []))
-        self.assertEqual([m["standard_menu_id"] for m in hot["items"]], ["MN_1", "MN_3"])
-
-    def test_meat_and_seafood_names(self):
-        menus = [fixture("제육볶음", "MN_1"), fixture("탕수육", "MN_2"), fixture("삼계탕", "MN_3"),
-                 fixture("연어초밥", "MN_4"), fixture("물회", "MN_5"), fixture("야채비빔밥", "MN_6")]
-        result = recommend(menus, Profile.parse({"diet": "vegetarian"}, []))
-        self.assertEqual((result["excluded"], result["unverified"]), (5, 1))
-        self.assertEqual(result["check_only"][0]["name"], "야채비빔밥")
-        meat = recommend(menus, Profile.parse({"diet": "meat"}, []))
-        flags = {m["name"]: "육식 선호 일치" in m["reasons"] for m in meat["items"]}
-        self.assertEqual(flags, {"제육볶음": True, "탕수육": True, "삼계탕": True,
-                                 "연어초밥": False, "물회": False})
-        self.assertNotIn("육식 선호 일치",
-                         recommend([fixture("치킨무", "MN_7")], Profile.parse({"diet": "meat"}, []))["items"][0]["reasons"])
-
-    def test_fill_tastes_from_store_menus(self):
-        tastes = {"고추잡채": ("hot", "no"), "계란국": ("mild", "yes"), "꽃빵": ("mild", "no")}
-        menus = [{**fixture("A세트", "MN_1"), "category": "중식", "components": ["고추잡채", "계란국"],
-                  "spice": "", "soup": ""},
-                 {**fixture("B세트", "MN_2"), "category": "중식", "components": ["꽃빵", "없는음식"],
-                  "spice": "", "soup": ""},
-                 {**fixture("C세트", "MN_3"), "category": "중식", "components": ["꽃빵"],
-                  "spice": "", "soup": ""}]
-        filled = fill_tastes(menus, tastes)
-        self.assertEqual([(m["spice"], m["soup"]) for m in filled], [("hot", "yes"), ("", ""), ("mild", "no")])
-        # 저장된 태그와 이름 규칙이 자료보다 우선이고, 자료가 없어도 규칙은 적용된다.
-        kept = fill_tastes([{**fixture("볶음짬뽕", "MN_4"), "spice": "", "soup": ""}], {"볶음짬뽕": ("mild", "yes")})
-        self.assertEqual((kept[0]["spice"], kept[0]["soup"]), ("hot", "no"))
 
     def test_meal_category_is_an_exact_filter(self):
         menus = [fixture("돼지고기덮밥", "MN_1"),

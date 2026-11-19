@@ -342,47 +342,6 @@ def stores_for_foods(data: Data, foods: list[str], district: str = "", limit: in
             "store_count": len(ranked), "stores": [public_store(m, Query()) for m in ranked[:limit]]}
 
 
-TASTE_SHARE = 0.6
-_tastes: dict[str, Any] = {"data": None, "value": None}
-
-
-def _taste_label(counts: dict[str, float], first: str, second: str) -> str:
-    total = sum(counts.values())
-    for label in (first, second):
-        if total and counts.get(label, 0) / total >= TASTE_SHARE:
-            return label
-    return ""
-
-
-def food_tastes(data: Data) -> dict[str, tuple[str, str]]:
-    """음식 이름(세부음식, 없으면 상위음식)별 맵기(hot·mild)와 국물(yes·no).
-
-    가게 메뉴의 리뷰 수 가중 60% 이상이 같은 쪽일 때만 정하고, 섞여 있으면 빈 문자열로 둔다.
-    '일부 매운 옵션'·'애매'는 어느 쪽으로도 세지 않고 분모에만 넣는다.
-    """
-    with _lock:
-        if _tastes["data"] is data:
-            return _tastes["value"]
-    by_name: dict[str, dict[str, dict[str, float]]] = {}
-    for level in ("detail_food", "upper_food"):
-        counts: dict[str, dict[str, dict[str, float]]] = defaultdict(lambda: {"spice": {}, "soup": {}})
-        for menu in data.menus:
-            name = menu.get(level)
-            if not name or name in by_name or menu["spiciness"] == "명시 없음":
-                continue
-            weight = float(max(menu["review_count"] or 0, 1))
-            spice = "hot" if menu["spiciness"] in SPICY else "mild" if menu["spiciness"] == "안 매움" else "mixed"
-            soup = {"있음": "yes", "없음": "no"}.get(menu["broth"], "mixed")
-            for kind, value in (("spice", spice), ("soup", soup)):
-                counts[name][kind][value] = counts[name][kind].get(value, 0.0) + weight
-        by_name.update(counts)
-    tastes = {name: (_taste_label(c["spice"], "hot", "mild"), _taste_label(c["soup"], "yes", "no"))
-              for name, c in by_name.items()}
-    with _lock:
-        _tastes.update(data=data, value=tastes)
-    return tastes
-
-
 def public_groups(data: Data) -> list[dict[str, Any]]:
     return [{"name": g, "columns": sorted(data.group_columns.get(g, set()))} for g in data.visible_groups]
 
@@ -392,6 +351,8 @@ def public_groups(data: Data) -> list[dict[str, Any]]:
 _cache: dict[str, Any] = {"data": None, "checked": 0.0}
 _lock = threading.Lock()
 CACHE_SECONDS = 300
+RETRY_SECONDS = 60
+_failed: dict[str, float] = {"at": float("-inf")}
 
 
 def dsn() -> str:
@@ -408,19 +369,19 @@ def load_from_db(conninfo: str | None = None) -> Data:
         menus = db.execute("""
             SELECT integrated_store_id, store_name, district, column_name, upper_food, detail_food, display_name,
                    rating_display, rating, review_count, few_reviews, disappointing_reviews,
-                   store_repeat_ratio, recommendation_score, spiciness, broth, balance_score,
+                   repeat_ratio, store_repeat_ratio, recommendation_score, spiciness, broth, balance_score,
                    protein_score, rice_included, portion_g
             FROM pickmenu_data.current_menu_scores""").fetchall()
         columns = db.execute("""
             SELECT column_name, display_name, is_meal, is_side, eligible, meat_preferred,
-                   data->>'선호음식군' AS groups
+                   data->>'선호음식군' AS groups, data->>'국물' AS broth, data->>'맵기' AS spiciness
             FROM pickmenu_data.current_food_columns""").fetchall()
         groups = db.execute("""
             SELECT group_name, visible FROM pickmenu_data.current_preference_groups
             ORDER BY row_number""").fetchall()
         pairs = db.execute("SELECT group_name, column_name FROM pickmenu_data.current_preference_candidates").fetchall()
     for menu in menus:
-        for key in ("rating", "balance_score", "protein_score", "recommendation_score"):
+        for key in ("rating", "balance_score", "protein_score", "recommendation_score", "repeat_ratio"):
             if menu[key] is not None:
                 menu[key] = float(menu[key])
     group_columns: dict[str, set[str]] = defaultdict(set)
@@ -441,3 +402,16 @@ def data() -> Data:
             _cache["data"] = load_from_db()
             _cache["checked"] = time.monotonic()
         return _cache["data"]
+
+
+def reference_data() -> Data | None:
+    """참고자료(컬럼표·매장 메뉴). DB에 연결할 수 없으면 None이고 1분 동안 다시 시도하지 않는다."""
+    import time
+
+    if time.monotonic() - _failed["at"] < RETRY_SECONDS:
+        return None
+    try:
+        return data()
+    except Exception:  # 드라이버 미설치·연결 실패는 카탈로그 값만으로 추천한다.
+        _failed["at"] = time.monotonic()
+        return None

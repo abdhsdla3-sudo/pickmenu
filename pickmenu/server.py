@@ -6,7 +6,8 @@ import json
 import os
 import re
 import sqlite3
-import time
+import sys
+import threading
 from collections.abc import Iterable
 from contextlib import closing
 from http.cookies import CookieError, SimpleCookie
@@ -16,10 +17,12 @@ from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 import auth
+import llm
 import menu_reco
 import menu_stores
+import naver_maps
 from raw import BASE, LOCAL
-from recommend import DISTRICTS, Profile, fill_tastes, recommend
+from recommend import DISTRICTS, Profile, apply_reference, recommend, reference_tags
 
 CATALOG = LOCAL / "catalog.sqlite3"
 MENU_ID = re.compile(r"MN_[0-9a-f]{16}")
@@ -31,6 +34,12 @@ ASSETS = {
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/mark.svg": ("mark.svg", "image/svg+xml"),
 }
+ASSETS.update({f"/menu-photos/{path.name}": (f"menu-photos/{path.name}", "image/webp")
+               for path in (BASE / "web" / "menu-photos").glob("[0-9][0-9][0-9].webp")})
+PHOTO_CACHE = "public, max-age=86400"
+REVIEW_PERIOD = os.environ.get("PICKMENU_REVIEW_PERIOD") or (BASE / "review_period.txt").read_text(encoding="utf-8").strip()
+_loaded: dict[str, Any] = {"key": None, "reference": None, "menus": None}
+_loaded_lock = threading.Lock()
 
 
 def catalog_path() -> Path:
@@ -45,22 +54,52 @@ def catalog(path: Path | None = None) -> list[dict[str, Any]]:
         return [json.loads(value) for value, in db.execute("SELECT data FROM catalog ORDER BY id")]
 
 
-TASTE_RETRY_SECONDS = 60
-_taste_failed = {"at": float("-inf")}
+def prepared_menus() -> list[dict[str, Any]]:
+    """참고자료를 붙인 카탈로그. 카탈로그 파일과 참고자료가 바뀌지 않았으면 이전 결과를 쓴다.
 
-
-def reference_tastes() -> dict[str, tuple[str, str]] | None:
-    """가게 메뉴 자료의 음식별 맵기·국물. DB가 없으면 이름 규칙만 쓰도록 None을 돌려준다.
-
-    연결에 실패하면 1분 동안 다시 시도하지 않아 기존 추천이 연결 대기로 느려지지 않게 한다.
+    돌려준 목록과 메뉴 딕셔너리는 여러 요청이 함께 쓰므로 고치지 않는다(recommend는 복사해 쓴다).
     """
-    if time.monotonic() - _taste_failed["at"] < TASTE_RETRY_SECONDS:
-        return None
+    path = catalog_path()
+    reference = menu_reco.reference_data()
     try:
-        return menu_reco.food_tastes(menu_reco.data())
-    except Exception:  # 드라이버 미설치·연결 실패에도 기존 추천은 동작해야 한다.
-        _taste_failed["at"] = time.monotonic()
+        key: tuple[str, int] | None = (str(path), path.stat().st_mtime_ns)
+    except OSError:
+        key = None  # 파일을 확인할 수 없으면 캐시하지 않고 catalog()가 오류를 알리게 한다.
+    with _loaded_lock:
+        if key is not None and _loaded["key"] == key and _loaded["reference"] is reference:
+            return _loaded["menus"]
+    menus = catalog(path)
+    if not menus:
+        raise ValueError("빈 카탈로그")
+    prepared = apply_reference(menus, reference_tags(reference.columns, reference.menus) if reference else None)
+    if key is not None:
+        with _loaded_lock:
+            _loaded.update(key=key, reference=reference, menus=prepared)
+    return prepared
+
+
+def user_location(payload: Any) -> tuple[float, float] | None:
+    """지도에서 고른 위치 {"lat", "lng"}. 없으면 None, 형식·범위(대한민국)가 틀리면 ValueError."""
+    value = payload.get("location") if isinstance(payload, dict) else None
+    if value is None:
         return None
+    if not isinstance(value, dict):
+        raise ValueError("위치 형식을 확인해 주세요.")
+    lat, lng = value.get("lat"), value.get("lng")
+    if (not isinstance(lat, (int, float)) or not isinstance(lng, (int, float))
+            or isinstance(lat, bool) or isinstance(lng, bool)
+            or not (33 <= lat <= 39 and 124 <= lng <= 132)):
+        raise ValueError("지도에서 국내 위치를 골라 주세요.")
+    return float(lat), float(lng)
+
+
+def recent_foods(payload: Any) -> list[str]:
+    """브라우저가 보낸 최근 추천 음식 이름(최근 3번 × 5개). 형식이 틀리면 ValueError."""
+    value = payload.get("recent", []) if isinstance(payload, dict) else []
+    if (not isinstance(value, list) or len(value) > 30
+            or not all(isinstance(name, str) and 0 < len(name) <= 40 for name in value)):
+        raise ValueError("최근 추천 목록 형식을 확인해 주세요.")
+    return value
 
 
 def categories(menus: list[dict[str, Any]]) -> list[str]:
@@ -81,16 +120,23 @@ def session_cookie(token: str | None) -> str:
 
 
 class Handler(BaseHTTPRequestHandler):
+    timeout = 30  # 느린 연결(slowloris)이 스레드를 오래 붙잡지 않게 한다.
+
     def reply(self, status: int, kind: str, body: bytes,
-              headers: Iterable[tuple[str, str]] = ()) -> None:
+              headers: Iterable[tuple[str, str]] = (), cache: str = "no-store") -> None:
         self.send_response(status)
         for name, value in headers:
             self.send_header(name, value)
         self.send_header("Content-Type", kind)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache)
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy",
+                         "default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; "
+                         "style-src 'self' https://cdnjs.cloudflare.com; "
+                         "img-src 'self' data: https://cdnjs.cloudflare.com https://tile.openstreetmap.org; "
+                         "frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
         self.end_headers()
         self.wfile.write(body)
 
@@ -99,14 +145,14 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(status, "application/json; charset=utf-8",
                    json.dumps(value, ensure_ascii=False).encode("utf-8"), headers)
 
-    def read_json(self) -> Any:
+    def read_json(self, maximum: int = 4096) -> Any:
         """JSON 본문을 읽는다. 실패하면 오류 응답을 보내고 INVALID를 돌려준다."""
         if self.headers.get_content_type() != "application/json":
             self.send_json(415, {"error": "입력 형식을 확인해 주세요."})
             return INVALID
         try:
             size = int(self.headers.get("Content-Length", "0"))
-            if not 0 < size <= 4096:
+            if not 0 < size <= maximum:
                 raise ValueError
             return json.loads(self.rfile.read(size).decode("utf-8"))
         except ValueError:
@@ -118,7 +164,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             return menu_reco.data()
         except Exception as error:  # 드라이버 미설치·연결 실패·권한 오류를 같은 안내로 돌려준다.
-            self.log_error("참고자료 DB 오류 %s", error)
+            self.log_error("참고자료 DB 오류 %s", type(error).__name__)
             self.send_json(503, {"error": "가게 추천 자료를 불러올 수 없어요. 잠시 뒤 다시 시도해 주세요."})
             return None
 
@@ -137,7 +183,8 @@ class Handler(BaseHTTPRequestHandler):
                 if (payload := self.read_json()) is INVALID:
                     return
                 action = auth.signup if path.endswith("signup") else auth.login
-                token, account = action(payload)
+                with auth.credential_slot():
+                    token, account = action(payload)
                 self.send_json(201 if path.endswith("signup") else 200, account,
                                [("Set-Cookie", session_cookie(token))])
             elif path == "/api/auth/logout":
@@ -158,7 +205,7 @@ class Handler(BaseHTTPRequestHandler):
         except auth.AuthError as error:
             self.send_json(error.status, {"error": str(error)})
         except sqlite3.Error as error:
-            self.log_error("회원 DB 오류 %s", error)
+            self.log_error("회원 DB 오류 %s", type(error).__name__)
             self.send_json(503, {"error": "계정 정보를 처리할 수 없어요. 잠시 뒤 다시 시도해 주세요."})
 
     def authorize_api(self) -> bool:
@@ -173,12 +220,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def load(self) -> list[dict[str, Any]] | None:
         try:
-            menus = catalog()
-            if not menus:
-                raise ValueError("빈 카탈로그")
-            return fill_tastes(menus, reference_tastes())
+            return prepared_menus()
         except (OSError, sqlite3.Error, ValueError) as error:
-            self.log_error("카탈로그 오류 %s", error)
+            self.log_error("카탈로그 오류 %s", type(error).__name__)
             self.send_json(503, {"error": "추천 데이터를 열 수 없어요. 전처리를 완료한 뒤 다시 시도해 주세요."})
             return None
 
@@ -186,7 +230,7 @@ class Handler(BaseHTTPRequestHandler):
         if os.environ.get("PICKMENU_REQUIRE_LOGIN") != "1":
             return True
         try:
-            if auth.current(self.session_token()) is not None:
+            if auth.session_user_id(self.session_token()) is not None:
                 return True
         except sqlite3.Error:
             self.send_json(503, {"error": "로그인 상태를 확인할 수 없어요. 잠시 뒤 다시 시도해 주세요."})
@@ -200,7 +244,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path in ASSETS:
             filename, content_type = ASSETS[path]
-            self.reply(200, content_type, (BASE / "web" / filename).read_bytes())
+            self.reply(200, content_type, (BASE / "web" / filename).read_bytes(),
+                       cache=PHOTO_CACHE if content_type == "image/webp" else "no-store")
         elif path == "/api/auth/me":
             self.handle_auth(path)
         elif path == "/api/v2/stores":
@@ -213,6 +258,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": "가게를 찾을 메뉴 이름과 지역을 확인해 주세요."})
             elif (data := self.reference()) is not None:
                 self.send_json(200, menu_reco.stores_for_foods(data, foods, district))
+        elif path == "/api/location/status":
+            if self.require_session():
+                self.send_json(200, {"address_search": naver_maps.available()})
         elif path == "/api/v2/options":
             if not self.require_session():
                 return
@@ -222,7 +270,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/catalog":
             if (menus := self.load()) is not None:
                 self.send_json(200, {"categories": categories(menus), "menu_count": len(menus),
-                                     "period": "2026년 7~9월"})
+                                     "period": REVIEW_PERIOD})
         elif path.startswith("/api/menus/"):
             if not self.require_session():
                 return
@@ -238,6 +286,29 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlsplit(self.path).path
+        if path in {"/api/location/search", "/api/location/address"}:
+            if not self.authorize_api() or not self.require_session():
+                return
+            if (payload := self.read_json()) is not INVALID:
+                self.location_request(path, payload)
+            return
+        if path == "/api/chat":
+            if not self.authorize_api() or not self.require_session():
+                return
+            if (payload := self.read_json(16384)) is INVALID:
+                return
+            if (menus := self.load()) is None:
+                return
+            try:
+                profile, _ = llm.conditions(payload, categories(menus))
+                result = self.recommendation(menus, profile)
+                self.send_json(200, {"reply": llm.reply(result), "result": result,
+                                     "conditions": vars(profile)})
+            except ValueError as error:
+                self.send_json(400, {"error": str(error)})
+            except llm.Unavailable as error:
+                self.send_json(503, {"error": str(error)})
+            return
         if path in {"/api/auth/signup", "/api/auth/login", "/api/auth/logout"}:
             if self.authorize_api():
                 self.handle_auth(path)
@@ -273,13 +344,18 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             profile = Profile.parse(payload, categories(menus))
+            recent = recent_foods(payload)
         except ValueError as error:
             self.send_json(400, {"error": str(error)})
             return
-        result = recommend(menus, profile)
+        self.send_json(200, self.recommendation(menus, profile, recent))
+
+    def recommendation(self, menus: list[dict[str, Any]], profile: Profile,
+                       recent: list[str] | None = None) -> dict[str, Any]:
+        result = recommend(menus, profile, recent or [])
         result["items"] = [public_menu(menu) for menu in result["items"]]
         result["families"] = [self.family(family, profile.district) for family in result["families"]]
-        self.send_json(200, result)
+        return result
 
     def family(self, family: dict[str, Any], district: str) -> dict[str, Any]:
         """대표 메뉴에 중복 없는 리뷰·매장 수를 붙인다. trace가 없으면 null로 둔다."""
@@ -287,7 +363,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             evidence: dict[str, int] | None = menu_stores.evidence(catalog_path(), ids, district)
         except sqlite3.Error as error:
-            self.log_error("대표 메뉴 집계 오류 %s", error)
+            self.log_error("대표 메뉴 집계 오류 %s", type(error).__name__)
             evidence = None
         return {**family, "best": public_menu(family["best"]), "evidence": evidence}
 
@@ -299,16 +375,73 @@ class Handler(BaseHTTPRequestHandler):
                 or not all(isinstance(mid, str) and MENU_ID.fullmatch(mid) for mid in ids)):
             self.send_json(400, {"error": "메뉴와 지역을 확인해 주세요."})
             return
+        try:
+            origin = user_location(payload)
+        except ValueError as error:
+            self.send_json(400, {"error": str(error)})
+            return
         by_id = {menu["standard_menu_id"]: menu for menu in menus}
         selected = [by_id[mid] for mid in dict.fromkeys(ids) if mid in by_id]
         if not selected:
             self.send_json(404, {"error": "메뉴를 찾을 수 없어요."})
             return
         try:
-            self.send_json(200, menu_stores.stores(catalog_path(), selected, district))
+            result = menu_stores.stores(catalog_path(), selected, district, origin=origin)
+            llm.store_comments(result)
+            self.send_json(200, result)
         except sqlite3.Error as error:
-            self.log_error("매장 집계 오류 %s", error)
+            self.log_error("매장 집계 오류 %s", type(error).__name__)
             self.send_json(503, {"error": "매장 자료를 열 수 없어요. 잠시 뒤 다시 시도해 주세요."})
+
+    def location_request(self, path: str, payload: Any) -> None:
+        """주소와 좌표는 JSON 본문으로 받고 저장하거나 로그에 남기지 않는다."""
+        try:
+            if path == "/api/location/search":
+                value = payload.get("query") if isinstance(payload, dict) else None
+                query = value.strip() if isinstance(value, str) else ""
+                if not 2 <= len(query) <= 80 or any(ord(c) < 32 for c in query):
+                    self.send_json(400, {"error": "찾을 주소를 2~80자로 입력해 주세요."})
+                    return
+                self.send_json(200, {"results": naver_maps.geocode(query)})
+            else:
+                origin = user_location({"location": payload})
+                if origin is None:
+                    raise ValueError("위치를 확인해 주세요.")
+                self.send_json(200, {"address": naver_maps.reverse(*origin)})
+        except ValueError as error:
+            self.send_json(400, {"error": str(error)})
+        except naver_maps.Unavailable as error:
+            self.send_json(503, {"error": str(error)})
+
+    def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
+        # URL의 임의 식별자와 질의, 본문, 클라이언트 주소는 기록하지 않는다.
+        path = getattr(self, "path", "").split("?", 1)[0]
+        if path in {
+            "/", "/api/catalog", "/api/recommend", "/api/recommend/stores", "/api/chat",
+            "/api/auth/signup", "/api/auth/login", "/api/auth/logout", "/api/auth/me", "/api/profile",
+            "/api/location/status", "/api/location/search", "/api/location/address",
+            "/api/v2/options", "/api/v2/recommend", "/api/v2/stores",
+        }:
+            route = path
+        elif path.startswith("/api/menus/"):
+            route = "/api/menus/:id"
+        elif path in ASSETS:
+            route = "asset"
+        else:
+            route = "other"
+        method = self.command if self.command in {"GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"} else "-"
+        self.log_message("%s %s %s", method, route, code)
+
+    def log_error(self, format: str, *args: Any) -> None:
+        if format == "code %d, message %s":
+            self.log_message("HTTP 요청 오류 %s", args[0])
+        elif format.startswith("Request timed out"):
+            self.log_message("HTTP 요청 시간 초과")
+        else:
+            self.log_message(format, *args)
+
+    def log_message(self, format: str, *args: Any) -> None:
+        print(f"[{self.log_date_time_string()}] {format % args}", file=sys.stderr)
 
     def do_PUT(self) -> None:
         self.profile_request()

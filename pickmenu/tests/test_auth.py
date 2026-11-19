@@ -251,6 +251,63 @@ class AuthHttpTest(unittest.TestCase):
         self.assertEqual(self.call("GET", "/api/auth/me", cookie=session)[1]["user"], None)
         self.assertEqual(self.call("PUT", "/api/nothing", {})[0], 404)
 
+    def test_location_lookup_requires_session_and_json_body(self):
+        self.assertEqual(self.call("POST", "/api/location/search", {"query": "효원로 241"})[0], 401)
+        _, _, cookie = self.call("POST", "/api/auth/signup", registration("locator"))
+        session = cookie.split(";")[0]
+        with patch("server.naver_maps.geocode", return_value=[]) as geocode:
+            self.assertEqual(self.call("GET", "/api/location/search?query=ignored", cookie=session)[0], 404)
+            self.assertEqual(self.call("POST", "/api/location/search", {"query": 241}, session)[0], 400)
+            self.assertEqual(self.call("POST", "/api/location/search", {"query": "효원로 241"}, session)[:2],
+                             (200, {"results": []}))
+            geocode.assert_called_once_with("효원로 241")
+        with patch("server.naver_maps.reverse", return_value="효원로 241") as reverse:
+            self.assertEqual(self.call("POST", "/api/location/address", {"lat": True, "lng": 127.03}, session)[0],
+                             400)
+            self.assertEqual(self.call("POST", "/api/location/address", {"lat": 37.26, "lng": 127.03}, session)[:2],
+                             (200, {"address": "효원로 241"}))
+            reverse.assert_called_once_with(37.26, 127.03)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX 파일 권한이 필요합니다.")
+    def test_account_database_permissions(self):
+        path = auth.users_path()
+        auth.connect().close()
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        path.chmod(0o644)
+        auth.connect().close()
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
+    def test_auth_capacity_and_expiry(self):
+        for _ in range(4):
+            self.assertTrue(auth._credential_slots.acquire(blocking=False))
+        try:
+            self.assertEqual(self.call("POST", "/api/auth/signup", registration("later"))[0], 429)
+        finally:
+            for _ in range(4):
+                auth._credential_slots.release()
+
+        with patch.object(auth, "MAX_FAILURE_ENTRIES", 1), patch("auth.time.monotonic") as clock:
+            clock.return_value = 10
+            auth._record_failure("owner-a")
+            auth._record_failure("owner-b")
+            self.assertEqual(len(auth._failures), 1)
+            with self.assertRaises(auth.AuthError):
+                auth._check_lock("owner-b")
+            clock.return_value = 10 + auth.LOCK_SECONDS
+            auth._check_lock("owner-b")
+            self.assertEqual(len(auth._failures), 0)
+
+    def test_request_log_has_only_known_route_and_status(self):
+        handler = object.__new__(Handler)
+        handler.command = "GET"
+        handler.path = "/api/menus/identifying-path?address=identifying-query"
+        with patch.object(handler, "log_message") as log:
+            handler.log_request(404)
+            log.assert_called_once_with("%s %s %s", "GET", "/api/menus/:id", 404)
+            log.reset_mock()
+            handler.log_error("code %d, message %s", 400, "identifying-input")
+            log.assert_called_once_with("HTTP 요청 오류 %s", 400)
+
     def test_recommendation_requires_live_login(self):
         menu = {"standard_menu_id": "MN_1", "name": "두부덮밥", "category": "밥·덮밥",
                 "components": ["두부덮밥"], "spice": "", "soup": "no", "nutrition": None,
@@ -258,6 +315,7 @@ class AuthHttpTest(unittest.TestCase):
         with patch("server.catalog", return_value=[menu]):
             self.assertEqual(self.call("GET", "/api/catalog")[0], 200)
             self.assertEqual(self.call("POST", "/api/recommend", {})[0], 401)
+            self.assertEqual(self.call("POST", "/api/chat", {})[0], 401)
             self.assertEqual(self.call("GET", "/api/menus/MN_1")[0], 401)
             self.assertEqual(self.call("POST", "/api/recommend", {}, "pickmenu_session=invalid")[0], 401)
             _, _, cookie = self.call("POST", "/api/auth/signup", registration("member"))

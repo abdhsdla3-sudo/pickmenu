@@ -86,11 +86,6 @@ class RulesTest(unittest.TestCase):
         far = menu_reco.stores_for_foods(data, ["떡볶이"], "팔달구")
         self.assertEqual((far["citywide"], far["store_count"]), (True, 3))
         self.assertEqual(menu_reco.stores_for_foods(data, ["부대찌개"])["stores"], [])
-        tastes = menu_reco.food_tastes(data)
-        self.assertEqual((tastes["국밥"], tastes["김밥"]), (("mild", "yes"), ("mild", "no")))
-        # 떡볶이는 매움 10건·안 매움 20건이라 안 매움이 60%를 넘는다.
-        self.assertEqual(tastes["떡볶이"], ("mild", "no"))
-        self.assertIs(menu_reco.food_tastes(data), tastes)
         broth = recommend(data, Query(broth="yes"))
         self.assertEqual([i["column"] for i in broth["items"]], ["국밥"])
 

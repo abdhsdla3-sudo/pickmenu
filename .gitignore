@@ -9,6 +9,9 @@ node_modules/
 *.db
 *.key
 *.fernet
+account-keys.json
+.pgpass
+pgpass.conf
 *.csv
 *.xlsx
 *.zip
@@ -16,6 +19,10 @@ node_modules/
 *.gguf
 *.safetensors
 *.log
+*.log.[0-9]*
+pgadmin-first-login.txt
+postgresql-login.txt
+sqlite-web-login.txt
 /pickmenu/local/
 /pickmenu-share/catalog.json
 /pickmenu-share/web/

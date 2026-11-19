@@ -1,6 +1,6 @@
 # 추천·지도 참고자료 DB
 
-0.5.0부터 PostgreSQL `pickmenu_dev`의 `pickmenu_data` 스키마에 다운로드한 추천 v1.3 자료와 지도 조사 자료를 보관한다. pgAdmin에서 `Databases → pickmenu_dev → Schemas → pickmenu_data → Tables`를 새로고침하면 조회할 수 있다. 추천 화면의 실행 카탈로그와 SQLite 회원 DB는 별개다.
+0.5.0부터 PostgreSQL `pickmenu_dev`의 `pickmenu_data` 스키마에 다운로드한 추천 자료와 지도 조사 자료를 보관한다. 2026-11-18부터 활성 배치는 **추천 v1.4**(드라이브 `추천_최종_v1.4`)이고, v1.3 배치는 복구용으로 남아 있다. pgAdmin에서 `Databases → pickmenu_dev → Schemas → pickmenu_data → Tables`를 새로고침하면 조회할 수 있다. 추천 화면의 실행 카탈로그와 SQLite 회원 DB는 별개다.
 
 ## 자료별 역할
 
@@ -32,16 +32,25 @@
 - 지도 자료의 미확인 운영 상태와 미조회 API는 그대로 유지한다. 좌표·전화·시간을 생성하지 않는다. 별도 API 호출은 이번 적재에 포함하지 않는다.
 - MD와 지도 `00_요약`, `03_검증기준`, `05_API실행안내`는 자료 설명으로 보관한다. 문서의 명령어를 자동 실행하지 않는다.
 
+## 적재 이력
+
+| 적재일 | 자료 | 배치 ID 앞 12자리 | 비고 |
+| --- | --- | --- | --- |
+| 2026-11-17 | 추천 v1.3 + 635매장 조사 | `9e0930e28f31` | 최초 적재 |
+| 2026-11-18 | 추천 v1.4 + 635매장 조사(같은 파일) | `1628d728a5d3` | 현재 활성. 국물 12·육식 12·선호 음식군 8개 컬럼 라벨 수정, 메뉴_추천 1,257 → 1,256줄 |
+
+v1.4에서 바뀐 파일은 `메뉴_추천.csv`, `컬럼표.csv`, `추천예시.csv`, `README.md`, `추천기준표.md`다. `음식_영양.csv`, `선호음식군_대응표.csv`, 지도 엑셀은 v1.3과 같다.
+
 ## 적재 및 복구
 
 기존 `openpyxl`과 Python 표준 라이브러리를 사용한다. SQL에는 원본 데이터가 포함되므로 비공개 경로에서 생성하고 Git에 넣지 않는다. Ubuntu에서 먼저 `pg_dump -Fc`로 백업한 후 아래처럼 실행한다.
 
 ```sh
-python import_reference.py /private/통합자료 /private/reference-import.sql
+python import_reference.py /private/통합자료 /private/reference-import.sql --description '추천 v1.4 및 635매장 조사 참고자료'
 sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d pickmenu_dev -f /private/reference-import.sql
 ```
 
-트랜잭션 하나로 스키마·원문·업무 테이블·활성 배치를 반영한다. 제약조건·행 수 오류가 나면 연결 종료 시 전체 롤백한다. 동일 파일 해시 조합은 같은 배치이므로 재실행해도 중복 적재하지 않는다. 이전 배치가 있으면 `active_dataset.batch_id`를 그 값으로 되돌려 조회 기준을 복구할 수 있다. 스키마 정의가 바뀌는 후속 업데이트에는 별도 마이그레이션이 필요하다.
+`/private/통합자료`에는 `06_메뉴별점추천`(추천 CSV 5개와 README.md, 추천기준표.md)과 `07_지도데이터`(지도 엑셀)가 있어야 한다. 트랜잭션 하나로 스키마·원문·업무 테이블·활성 배치를 반영한다. 제약조건·행 수 오류가 나면 연결 종료 시 전체 롤백한다. 동일 파일 해시 조합은 같은 배치이므로 재실행해도 중복 적재하지 않는다. 이전 배치가 있으면 `active_dataset.batch_id`를 그 값으로 되돌려 조회 기준을 복구할 수 있다. 스키마 정의가 바뀌는 후속 업데이트에는 별도 마이그레이션이 필요하다.
 
 ## pgAdmin 조회 예시
 
