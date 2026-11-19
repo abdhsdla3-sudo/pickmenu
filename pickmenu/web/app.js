@@ -709,8 +709,10 @@ function familyStoreItem(store, family) {
   if (store.address) text.append(node("p", store.address, "store-address"));
   if (store.comment) {
     const reason = node("p", undefined, "menu-comment store-reason");
-    reason.append(node("strong", "추천이유"), node("span", store.comment));
+    // 사실 문장(서버 작성)과 AI 한마디를 나눠 보여 준다. 예전 응답은 comment 한 줄만 있다.
+    reason.append(node("strong", "추천이유"), node("span", store.comment_facts || store.comment));
     text.append(reason);
+    if (store.comment_mood) text.append(node("p", store.comment_mood, "store-mood"));
   }
   const button = node("button", "상세", "small-link");
   button.type = "button";

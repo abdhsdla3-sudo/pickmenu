@@ -143,6 +143,62 @@ def store_names() -> dict[str, str] | None:
         return _names["value"]
 
 
+def load_store_facts() -> dict[str, dict[str, Any]]:
+    """가게(통합매장ID)별 추천이유 근거. 참고자료 매장 메뉴 행을 가게 단위로 모은다.
+
+    - `positive_ratio`: 긍정 리뷰 / 리뷰 수(가게 전체 리뷰 10건 이상일 때)
+    - `repeat_ratio`: 가게 단골 주문 비율(재주문 표본 20건 이상일 때)
+    - `quantity`: 양 리뷰 판정(많음·보통·적음) 중 리뷰 수 가중 최다값. '언급없음'은 세지 않는다.
+    """
+    import psycopg
+
+    totals: dict[str, dict[str, Any]] = {}
+    with psycopg.connect(menu_reco.dsn(), connect_timeout=5) as db:
+        db.read_only = True
+        rows = db.execute("""
+            SELECT integrated_store_id, review_count, positive, store_repeat_ratio, repeat_sample_count,
+                   quantity_review FROM pickmenu_data.current_menu_scores""").fetchall()
+    for store_id, reviews, positive, repeat, samples, quantity in rows:
+        if not store_id:
+            continue
+        item = totals.setdefault(store_id, {"reviews": 0, "positive": 0, "repeat": None, "samples": 0,
+                                            "quantity": {}})
+        item["reviews"] += reviews or 0
+        item["positive"] += positive or 0
+        if repeat is not None and (samples or 0) >= item["samples"]:
+            item["repeat"], item["samples"] = float(repeat), samples or 0
+        if quantity in {"많음", "보통", "적음"}:
+            item["quantity"][quantity] = item["quantity"].get(quantity, 0) + (reviews or 0)
+    facts: dict[str, dict[str, Any]] = {}
+    for store_id, item in totals.items():
+        fact: dict[str, Any] = {}
+        if item["reviews"] >= 10:
+            fact["positive_ratio"] = round(item["positive"] / item["reviews"], 3)
+        if item["repeat"] is not None and item["samples"] >= 20:
+            fact["repeat_ratio"] = round(item["repeat"], 3)
+        if item["quantity"]:
+            fact["quantity"] = max(item["quantity"].items(), key=lambda pair: (pair[1], pair[0]))[0]
+        facts[store_id] = fact
+    return facts
+
+
+_facts: dict[str, Any] = {"value": None, "checked": float("-inf")}
+
+
+def store_facts() -> dict[str, dict[str, Any]] | None:
+    """가게 근거를 5분 동안 메모리에 둔다. 불러오지 못하면 1분 뒤 다시 시도하고 None을 돌려준다."""
+    with _lock:
+        age = time.monotonic() - _facts["checked"]
+        if age < (CACHE_SECONDS if _facts["value"] is not None else RETRY_SECONDS):
+            return _facts["value"]
+        try:
+            _facts["value"] = load_store_facts()
+        except Exception:  # 근거가 없으면 카탈로그 값(가게 수·리뷰 몫)만으로 문장을 쓴다.
+            _facts["value"] = None
+        _facts["checked"] = time.monotonic()
+        return _facts["value"]
+
+
 def stores(path: Path, menus: list[dict[str, Any]], district: str, limit: int = 50,
            origin: tuple[float, float] | None = None) -> dict[str, Any]:
     """고른 순서의 실제 메뉴별 판매 매장. 고른 구에 없으면 수원 전체로 넓힌다.
@@ -170,7 +226,18 @@ def stores(path: Path, menus: list[dict[str, Any]], district: str, limit: int = 
         "stores": [{"standard_menu_id": mid, "menu_name": by_id[mid]["name"],
                     "store_name": (names or {}).get(store_id), "district": where, "reviews": count}
                    for mid, store_id, where, count in rows[:limit]]}
+    # 추천이유 문장의 근거: 같은 메뉴를 파는 가게 수와 그 메뉴 리뷰 중 이 가게 몫(잘라 내기 전 전체 기준).
+    menu_reviews: dict[str, int] = {}
+    menu_stores: dict[str, set[str]] = {}
+    for mid, store_id, _, count in rows:
+        menu_reviews[mid] = menu_reviews.get(mid, 0) + count
+        menu_stores.setdefault(mid, set()).add(store_id)
+    facts = store_facts() or {}
     for store, row in zip(result["stores"], rows[:limit], strict=True):
+        mid, store_id, count = row[0], row[1], row[3]
+        store["evidence"] = {"menu_stores": len(menu_stores[mid]),
+                             "menu_share": round(count / menu_reviews[mid], 3) if menu_reviews[mid] else None,
+                             **facts.get(store_id, {})}
         # 지도 표시용 가게 위치(도로명 주소를 바꾼 공개 좌표). 없으면 지도에서 빠진다.
         store["location"] = list(places[row[1]]) if row[1] in places else None
         store["address"] = store_address(row[1]) or None

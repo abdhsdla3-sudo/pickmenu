@@ -109,6 +109,10 @@ class StoreApiTest(unittest.TestCase):
         names = patch.object(menu_stores, "store_names", lambda: {"SW_a": "가 육회", "SW_b": "나 식당", "SW_c": "다 제육"})
         names.start()
         self.addCleanup(names.stop)
+        facts = patch.object(menu_stores, "store_facts",
+                             lambda: {"SW_a": {"repeat_ratio": 0.5, "positive_ratio": 0.9, "quantity": "많음"}})
+        facts.start()
+        self.addCleanup(facts.stop)
 
     def test_step_one_has_exact_family_evidence(self):
         status, result = self.call("/api/recommend", {})
@@ -129,6 +133,11 @@ class StoreApiTest(unittest.TestCase):
                          [("최상급 육회", "가 육회", "권선구", 5), ("최상급 육회", "나 식당", "영통구", 2),
                           ("[별미한점] 육회", "가 육회", "권선구", 2)])
         self.assertEqual((found["store_count"], found["citywide"], found["names_available"]), (2, False, True))
+        # 추천이유 근거: 같은 메뉴를 파는 가게 수와 이 가게 몫(5/7), 참고자료 가게 근거
+        self.assertEqual(found["stores"][0]["evidence"], {"menu_stores": 2, "menu_share": 0.714, "repeat_ratio": 0.5,
+                                                          "positive_ratio": 0.9, "quantity": "많음"})
+        self.assertEqual(found["stores"][1]["evidence"], {"menu_stores": 2, "menu_share": 0.286})
+        self.assertNotIn("건", found["stores"][0]["comment_facts"])
         status, found = self.call("/api/recommend/stores", {"menu_ids": ids, "district": "영통구"})
         self.assertEqual([s["store_name"] for s in found["stores"]], ["나 식당"])
         # 고른 구에 없으면 수원 전체로 넓히고 알린다.
@@ -154,6 +163,34 @@ class StoreApiTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {
                 "PICKMENU_REQUIRE_LOGIN": "1", "PICKMENU_USERS_PATH": os.path.join(temp, "users.sqlite3")}):
             self.assertEqual(self.call("/api/recommend/stores", {"menu_ids": [IDS["최상급 육회"]]})[0], 401)
+
+
+class StoreFactsTest(unittest.TestCase):
+    def test_store_facts_aggregate_and_thresholds(self):
+        rows = [("SW_a", 30, 27, 0.5, 40, "많음"), ("SW_a", 10, 8, 0.48, 10, "적음"),
+                ("SW_b", 5, 5, 0.9, 5, "언급없음"), (None, 3, 3, None, 0, "보통")]
+
+        class FakeDB:
+            read_only = False
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def execute(self, query):
+                return self
+
+            def fetchall(self):
+                return rows
+
+        fake = type("psycopg", (), {"connect": staticmethod(lambda *a, **k: FakeDB())})
+        with patch.dict("sys.modules", {"psycopg": fake}):
+            facts = menu_stores.load_store_facts()
+        # 리뷰 10건 이상일 때만 만족 비율, 재주문 표본 20건 이상일 때만 단골 비율, 양은 리뷰 가중 최다값
+        self.assertEqual(facts, {"SW_a": {"positive_ratio": 0.875, "repeat_ratio": 0.5, "quantity": "많음"},
+                                 "SW_b": {}})
 
 
 class StoreNameCacheTest(unittest.TestCase):

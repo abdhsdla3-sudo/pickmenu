@@ -212,19 +212,9 @@ BANNED = re.compile(r"최고|최상의|1등|1위|보장|할인|무료|쿠폰|가
 # 맵다는 말은 메뉴 이름에 매운 단서가 있을 때만 허용한다.
 SPICY_WORD = re.compile(r"매콤|매운|얼큰|칼칼|화끈")
 SPICY_NAME = re.compile(r"매|얼큰|불|고추|마라|땡초|청양")
-TEMPLATES = (
-    "{menu} 생각나는 날, {district}에서 먼저 떠올려 볼 만한 곳이에요. 리뷰 {n}건이 그 이야기를 대신해요.",
-    "리뷰 {n}건이 쌓인 {menu}. 오늘 메뉴 고민을 가볍게 접어 두기 좋은 한 끼예요.",
-    "{store}의 {menu}. 리뷰 {n}건만큼 여러 식탁에 올랐던 메뉴예요.",
-    "고민될 땐 많이 고른 쪽으로. 이 가게의 {menu}, 리뷰 {n}건을 모았어요.",
-    "{district} 동네 한 끼로 {menu}, 리뷰 {n}건이 쌓인 만큼 믿고 골라 볼 만해요.",
-    "오늘은 {menu}에 맡겨 보는 건 어때요? 이 가게에 리뷰 {n}건이 남아 있어요.",
-)
-FEW_TEMPLATES = (
-    "리뷰는 {n}건으로 아직 적지만, {menu}의 새로운 선택지를 찾는다면 눈여겨볼 곳이에요.",
-    "아직 리뷰 {n}건뿐인 숨은 선택지예요. 늘 먹던 곳 말고 새로운 {menu} 한 끼가 궁금할 때 열어 보세요.",
-    "{district}의 {menu}, 리뷰 {n}건으로 이제 막 알려지기 시작한 곳이에요.",
-)
+# AI 한마디에서 반복되던 말. 이 말이 들어가면 쓰지 않는다(1,172개 표본에서 자주 겹쳤다).
+OVERUSED = re.compile(r"퇴근길|고민|다녀갔|선택지|믿고|한\s*끼로\s*충분")
+MOOD_MIN, MOOD_MAX = 6, 28
 
 
 def short_menu(name: str) -> str:
@@ -233,72 +223,95 @@ def short_menu(name: str) -> str:
     return short or name
 
 
-def template_reason(row: dict[str, Any], most: int, turn: int = 0) -> str:
-    """AI를 쓸 수 없을 때의 추천이유. 입력 값(메뉴·가게·구·리뷰 수)만 쓴다. `turn`으로 줄마다 문장을 바꾼다."""
-    values = {"menu": short_menu(row["menu_name"]), "store": row.get("store_name") or "이 가게",
-              "district": row["district"], "n": f"{row['reviews']:,}"}
-    if row["reviews"] == most and most >= 5:
-        return "이 메뉴를 파는 가게 중 리뷰가 가장 많이 쌓인 곳이에요. 처음이라면 여기 {menu}부터 시작해 보세요.".format(**values)
-    pool = FEW_TEMPLATES if row["reviews"] < 5 else TEMPLATES
-    pick = turn % len(pool)  # 이어진 줄은 서로 다른 문장
-    return pool[pick].format(**values)
+
+def percent(value: float) -> str:
+    return f"{round(value * 100)}%"
 
 
-def safe_reason(text: Any, row: dict[str, Any], others: set[str]) -> bool:
-    """AI가 쓴 추천이유가 입력 사실만 쓰는지 검사한다."""
-    if not isinstance(text, str) or not 12 <= len(text.strip()) <= 90 or not re.search(r"[가-힣]", text):
+def fact_sentences(row: dict[str, Any], most: int, place: str, turn: int = 0) -> str:
+    """추천이유의 사실 문장. 서버가 DB·카탈로그 값으로만 쓴다.
+
+    리뷰 수는 바로 위 줄에 보이므로 다시 말하지 않는다. 이 메뉴 리뷰 중 이 가게의 몫, 단골 주문 비율,
+    만족 리뷰 비율, 양 리뷰 판정 중 기준을 넘는 것을 최대 2개 고르고, 줄마다 두 번째 근거를 바꿔 같은 말이
+    이어지지 않게 한다.
+    """
+    if row["reviews"] < 5:
+        return "아직 리뷰가 적어 새로 찾아볼 만한 가게예요."
+    evidence = row.get("evidence") or {}
+    count, share = evidence.get("menu_stores"), evidence.get("menu_share")
+    lead = ""
+    if count and count >= 2 and row["reviews"] == most:
+        lead = f"{place}에서 이 메뉴를 파는 가게 {count:,}곳 중 리뷰가 가장 많이 모인 곳이에요."
+    elif count and count >= 3 and share and share >= 0.1:
+        lead = f"{place}에서 이 메뉴 리뷰의 {percent(share)}가 이 가게에 모였어요."
+    extra = []
+    if (repeat := evidence.get("repeat_ratio")) is not None and repeat >= 0.3:
+        extra.append(f"이 가게 단골 주문 비율은 {percent(repeat)}예요.")
+    if (positive := evidence.get("positive_ratio")) is not None and positive >= 0.8:
+        extra.append(f"이 가게 리뷰의 {percent(positive)}가 만족한 리뷰예요.")
+    if evidence.get("quantity") == "많음":
+        extra.append("양이 넉넉하다는 리뷰가 많아요.")
+    if extra:
+        extra = extra[turn % len(extra):] + extra[:turn % len(extra)]
+    picked = ([lead] if lead else []) + extra
+    if not picked:
+        picked = [f"{place}에서 이 메뉴를 파는 가게 {count:,}곳 중 하나예요." if count else "이 메뉴를 파는 가게예요."]
+    return " ".join(picked[:2])
+
+
+def safe_mood(text: Any, row: dict[str, Any], others: set[str], seen: set[str]) -> bool:
+    """AI 한마디가 숫자·사실 주장 없이 짧은 분위기 말인지 검사한다."""
+    if not isinstance(text, str):
         return False
-    rest = text.replace(row["menu_name"], "").replace(row.get("store_name") or "", "")
-    if BANNED.search(rest) or any(name and name in text for name in others):
+    text = " ".join(text.split())
+    if not MOOD_MIN <= len(text) <= MOOD_MAX or not re.search(r"[가-힣]", text) or text in seen:
+        return False
+    rest = text.replace(row["menu_name"], "").replace(short_menu(row["menu_name"]), "")
+    if re.search(r"\d", rest) or re.search(r"리뷰|손님|단골|만족|주문|가게", rest):
+        return False
+    if BANNED.search(rest) or OVERUSED.search(rest) or any(name and name in text for name in others):
         return False
     if SPICY_WORD.search(rest) and not SPICY_NAME.search(row["menu_name"]):
         return False
-    if re.search(r"[\u3040-\u30ff\u4e00-\u9fff]", rest):  # 작은 모델이 섞는 한자·일본어
-        return False
-    allowed = {f"{row['reviews']:,}", str(row["reviews"])}
-    return all(number in allowed for number in re.findall(r"\d[\d,]*", rest))
+    return not re.search(r"[\u3040-\u30ff\u4e00-\u9fff]", rest)  # 작은 모델이 섞는 한자·일본어
 
 
 def store_comments(result: dict[str, Any]) -> None:
-    """상위 10개 매장에 추천이유 한 문장을 붙인다.
+    """상위 10개 매장에 추천이유를 붙인다.
 
-    로컬 LLM이 입력 사실(메뉴명·가게명·구·리뷰 수)만으로 문장을 짓고, 서버가 금지어·숫자·다른 가게
-    이름을 검사한다. 통과하지 못하거나 AI를 쓸 수 없으면 같은 사실로 만든 문장을 쓴다.
+    숫자와 사실은 서버가 정해진 문장(`fact_sentences`)으로 쓰고, 로컬 LLM은 메뉴 이름과 지역만 보고 숫자 없는
+    짧은 한마디만 맡는다. 한마디가 검사를 통과하지 못하거나 AI를 쓸 수 없으면 사실 문장만 보여 준다.
+    `comment`(합친 문장), `comment_facts`, `comment_mood`를 채운다.
     """
     rows = result["stores"][:10]
     if not rows:
         return
     most = max(row["reviews"] for row in rows)
-    # 리뷰가 5건 미만인 가게는 근거가 적어 AI 문장 없이 기본 문장(리뷰가 아직 적다는 안내)을 쓴다.
-    writable = [i for i, row in enumerate(rows) if row["reviews"] >= 5]
-    facts = [{"menu_name": rows[i]["menu_name"], "store_name": rows[i].get("store_name") or "",
-              "district": rows[i]["district"], "reviews": rows[i]["reviews"],
-              "most_reviewed": rows[i]["reviews"] == most} for i in writable]
+    place = result.get("district") or "수원시"
+    inputs = [{"menu": short_menu(row["menu_name"]), "district": row["district"]} for row in rows]
     generated: dict[str, Any] = {}
     try:
-        if not facts:
-            raise Unavailable("no facts")
         generated = generate(
-            "너는 배달 메뉴 앱의 추천 문구 작가다. 각 매장마다 '추천이유' 한 문장(20~60자, ~요 체)을 쓴다. "
-            "맛·재료·조리법·식감은 묘사하지 않는다(모르는 사실이다). 대신 그 메뉴가 어울리는 상황과 기분"
-            "(퇴근길, 늦은 밤, 비 오는 날, 고민 끝내기 등)이나, 리뷰 수가 말해 주는 선택의 이유를 감성적으로 쓴다. "
-            "메뉴 이름에 들어 있는 말(예: 불향, 차돌, 해장)은 살려 써도 된다. 문장마다 표현을 다르게 한다. "
-            "사실은 입력의 메뉴명·가게명·지역·리뷰 수·most_reviewed만 쓰고, 숫자는 그 매장의 리뷰 수 말고는 쓰지 않는다. "
-            "다른 매장이나 다른 메뉴 이름을 쓰지 않는다. 가격·배달·친절·위생·건강·별점·순위는 말하지 않는다. "
-            "예: '퇴근길 지친 저녁, 불향 한 접시로 하루를 마무리해 보세요. 리뷰 558건이 먼저 다녀갔어요.' "
-            'JSON {"0":"문장","1":"문장",...} 키는 입력 순서 번호.',
-            {"stores": facts},
-            {"type": "object", "properties": {str(i): {"type": "string"} for i in range(len(facts))},
-             "required": [str(i) for i in range(len(facts))]}, temperature=0.8)
+            "너는 배달 메뉴 앱의 한마디 작가다. 각 메뉴에 어울리는 상황이나 기분을 담은 짧은 한마디"
+            f"({MOOD_MIN}~{MOOD_MAX}자, 문장이 아니어도 된다)를 쓴다. 예: '쌀쌀한 저녁 한 그릇으로', "
+            "'주말 늦은 점심에 가볍게', '비 오는 날 생각나는'. 숫자, 리뷰·손님·단골·가게 이야기, 맛·재료·식감 묘사, "
+            "가격·배달·건강·순위는 쓰지 않는다. 퇴근길·고민 같은 흔한 말을 피하고, 메뉴마다 서로 다른 상황을 쓴다. "
+            'JSON {"0":"한마디","1":"한마디",...} 키는 입력 순서 번호.',
+            {"menus": inputs},
+            {"type": "object", "properties": {str(i): {"type": "string"} for i in range(len(rows))},
+             "required": [str(i) for i in range(len(rows))]}, temperature=0.8)
     except Unavailable:
         pass
-    by_row = {at: generated.get(str(order)) for order, at in enumerate(writable)}
     names = {row.get("store_name") or "" for row in rows} | {row["menu_name"] for row in rows}
+    seen: set[str] = set()
     for i, row in enumerate(rows):
-        text = by_row.get(i)
         # 다른 가게·다른 메뉴 이름(자기 메뉴명·가게명을 포함하는 이름은 제외)
         others = {name for name in names - {row.get("store_name") or "", row["menu_name"]}
                   if name not in row["menu_name"] and name not in (row.get("store_name") or "")}
-        row["comment"] = (" ".join(str(text).split()) if safe_reason(text, row, others)
-                          else template_reason(row, most, i))
-
+        facts = fact_sentences(row, most, place, i)
+        text = generated.get(str(i))
+        mood = " ".join(text.split()) if safe_mood(text, row, others, seen) and isinstance(text, str) else ""
+        if mood:
+            seen.add(mood)
+        row["comment_facts"], row["comment_mood"] = facts, mood
+        row["comment"] = f"{facts} {mood}" if mood else facts

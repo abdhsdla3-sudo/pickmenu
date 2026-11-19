@@ -117,43 +117,63 @@ class LLMTest(unittest.TestCase):
 
     def test_store_reasons_fall_back_and_limit(self):
         def row(name, reviews):
-            return {"menu_name": name, "store_name": f"{name}집", "district": "권선구", "reviews": reviews}
-        result = {"citywide": False, "stores": [row(f"메뉴{i}", 7 + i) for i in range(12)]}
+            return {"menu_name": name, "store_name": f"{name}집", "district": "권선구", "reviews": reviews,
+                    "evidence": {"menu_stores": 12, "menu_share": 0.05}}
+        result = {"district": "권선구", "citywide": False, "stores": [row(f"메뉴{i}", 7 + i) for i in range(12)]}
         with patch.object(llm, "generate", side_effect=llm.Unavailable):
             llm.store_comments(result)
         self.assertNotIn("comment", result["stores"][10])
         self.assertIn("가장 많이", result["stores"][9]["comment"])  # 리뷰가 가장 많은 가게
         self.assertTrue(all("comment" in r for r in result["stores"][:10]))
-        self.assertTrue(any("8건" in r["comment"] for r in result["stores"][:10]))
+        # 리뷰 수는 바로 위 줄에 있으므로 추천이유에서 다시 말하지 않는다.
+        self.assertFalse(any("건" in r["comment"] for r in result["stores"][:10]))
+        self.assertEqual(result["stores"][0]["comment"], "권선구에서 이 메뉴를 파는 가게 12곳 중 하나예요.")
+        self.assertEqual(result["stores"][0]["comment_mood"], "")
+
+    def test_fact_sentences_use_db_evidence_and_rotate(self):
+        base = {"menu_name": "아구찜", "store_name": "아구집", "district": "권선구", "reviews": 40}
+        rich = {**base, "evidence": {"menu_stores": 8, "menu_share": 0.234, "repeat_ratio": 0.49,
+                                     "positive_ratio": 0.95, "quantity": "많음"}}
+        first = llm.fact_sentences(rich, 100, "권선구", 0)
+        self.assertEqual(first, "권선구에서 이 메뉴 리뷰의 23%가 이 가게에 모였어요. 이 가게 단골 주문 비율은 49%예요.")
+        self.assertIn("95%가 만족한 리뷰", llm.fact_sentences(rich, 100, "권선구", 1))  # 다음 줄은 다른 근거
+        self.assertIn("양이 넉넉", llm.fact_sentences(rich, 100, "권선구", 2))
+        low = {**base, "evidence": {"menu_stores": 8, "menu_share": 0.05, "repeat_ratio": 0.2,
+                                    "positive_ratio": 0.6, "quantity": "적음"}}
+        self.assertEqual(llm.fact_sentences(low, 100, "수원시", 0), "수원시에서 이 메뉴를 파는 가게 8곳 중 하나예요.")
+        self.assertEqual(llm.fact_sentences({**base, "reviews": 3}, 100, "권선구"),
+                         "아직 리뷰가 적어 새로 찾아볼 만한 가게예요.")
+        self.assertEqual(llm.fact_sentences(base, 100, "권선구"), "이 메뉴를 파는 가게예요.")
 
     def test_store_reasons_keep_only_safe_ai_text(self):
         stores = [{"menu_name": "불향가득제육", "store_name": "제육대가", "district": "영통구", "reviews": 120},
-                  {"menu_name": "매운 제육", "store_name": "한끼식당", "district": "영통구", "reviews": 30}]
-        written = {"0": "퇴근길 지친 저녁, 불향 한 접시로 하루를 마무리해 보세요. 리뷰 120건이 먼저 다녀갔어요.",
-                   "1": "제육대가보다 저렴하고 배달도 빠른 집이에요."}
-        result = {"citywide": False, "stores": [dict(s) for s in stores]}
+                  {"menu_name": "매운 제육", "store_name": "한끼식당", "district": "영통구", "reviews": 30},
+                  {"menu_name": "김치찌개", "store_name": "찌개집", "district": "영통구", "reviews": 20}]
+        written = {"0": "쌀쌀한 저녁 한 접시로", "1": "제육대가보다 저렴한 집", "2": "쌀쌀한 저녁 한 접시로"}
+        result = {"district": "영통구", "citywide": False, "stores": [dict(s) for s in stores]}
         with patch.object(llm, "generate", return_value=written) as generate:
             llm.store_comments(result)
         self.assertEqual(generate.call_args.kwargs["temperature"], 0.8)
-        self.assertEqual(result["stores"][0]["comment"], written["0"])
-        self.assertNotIn("저렴", result["stores"][1]["comment"])  # 금지어·다른 가게 이름이면 기본 문장
-        self.assertTrue(llm.safe_reason("리뷰 120건이 쌓인 든든한 한 끼예요.", stores[0], set()))
-        self.assertFalse(llm.safe_reason("리뷰 999건이 쌓인 든든한 한 끼예요.", stores[0], set()))
-        self.assertFalse(llm.safe_reason("이 동네 최고의 맛집이에요, 꼭 드셔 보세요.", stores[0], set()))
-        self.assertTrue(llm.safe_reason("최상급 기분을 내는 불향가득제육 한 접시예요.", stores[0], set()))
-        self.assertFalse(llm.safe_reason("간장의 깊이가 매력적인 불향가득제육이에요.", stores[0], set()))
-        self.assertFalse(llm.safe_reason("120명이 고른 불향 한 접시로 저녁을 열어 보세요.", stores[0], set()))
-        self.assertFalse(llm.safe_reason("늦은 밤 두루치기로 푸근한 밥 한 쟁抓好하세요.", stores[0], set()))
-        self.assertFalse(llm.safe_reason("새로 오픈한 매장이라 호기심으로 들러 보세요.", stores[0], set()))
-        few = {"citywide": False, "stores": [{"menu_name": "짬뽕", "store_name": "만빈원", "district": "팔달구",
-                                              "reviews": 2}]}
-        with patch.object(llm, "generate") as generate:
-            llm.store_comments(few)
-        generate.assert_not_called()  # 리뷰 5건 미만만 있으면 AI를 부르지 않는다
-        self.assertIn("아직 적지만", few["stores"][0]["comment"])
+        sent = generate.call_args.args[1]["menus"]
+        self.assertEqual(sent[0], {"menu": "불향가득제육", "district": "영통구"})  # 숫자·가게 이름은 보내지 않는다
+        self.assertEqual(result["stores"][0]["comment_mood"], "쌀쌀한 저녁 한 접시로")
+        self.assertTrue(result["stores"][0]["comment"].endswith("쌀쌀한 저녁 한 접시로"))
+        self.assertEqual(result["stores"][1]["comment_mood"], "")  # 금지어·다른 가게 이름
+        self.assertEqual(result["stores"][2]["comment_mood"], "")  # 앞 줄과 같은 한마디
+        ok = stores[0]
+        self.assertTrue(llm.safe_mood("주말 늦은 점심에 가볍게", ok, set(), set()))
+        for bad in ("리뷰 120건이 쌓인 한 접시", "120명이 고른 저녁", "퇴근길 지친 저녁에", "이 동네 최고의 맛집이에요",
+                    "간장의 깊이가 매력적인", "늦은 밤 푸근한 밥 한 쟁抓好", "새로 오픈한 매장", "단골이 많은 집", "짧다"):
+            with self.subTest(bad=bad):
+                self.assertFalse(llm.safe_mood(bad, ok, set(), set()))
         plain = {"menu_name": "콤비네이션피자", "store_name": "피자집", "district": "권선구", "reviews": 9}
-        self.assertFalse(llm.safe_reason("매콤한 기분 전환이 필요한 날의 한 판이에요.", plain, set()))
-        self.assertTrue(llm.safe_reason("매콤한 기분 전환이 필요한 날 어울려요.", stores[1], set()))
+        self.assertFalse(llm.safe_mood("매콤한 기분 전환이 필요한 날", plain, set(), set()))
+        self.assertTrue(llm.safe_mood("매콤한 기분 전환이 필요한 날", stores[1], set(), set()))
+        few = {"district": "팔달구", "citywide": False,
+               "stores": [{"menu_name": "짬뽕", "store_name": "만빈원", "district": "팔달구", "reviews": 2}]}
+        with patch.object(llm, "generate", side_effect=llm.Unavailable):
+            llm.store_comments(few)
+        self.assertEqual(few["stores"][0]["comment"], "아직 리뷰가 적어 새로 찾아볼 만한 가게예요.")
 
     def test_empty_results_do_not_prompt_model(self):
         with patch.object(llm, "generate") as generate:
