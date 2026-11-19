@@ -18,6 +18,38 @@ class LLMTest(unittest.TestCase):
             with self.assertRaises(llm.Unavailable):
                 llm.conditions(payload, [])
 
+    def test_multi_turn_conversation_can_change_and_release_conditions(self):
+        """여러 번 이어 말할 때 조건이 갇히던 문제(실제 모델로 재현)."""
+        cats = ["중식", "국밥·해장국"]
+
+        def turn(messages, previous, model):
+            with patch.object(llm, "generate", return_value=dict(model)):
+                profile, _ = llm.conditions({"messages": messages, "profile": previous}, cats)
+            return vars(profile)
+
+        first = turn(["짬뽕 먹고 싶어"], {}, {"query": "짬뽕", "meal_category": "중식"})
+        self.assertEqual((first["query"], first["meal_category"]), ("짬뽕", "중식"))
+        # 모델은 대화 기록에서 짬뽕·중식을 다시 꺼내지만, 거절했으므로 푼다.
+        second = turn(["짬뽕 먹고 싶어", "음 짬뽕 말고 다른 거"], first, {"query": "짬뽕", "meal_category": "중식"})
+        self.assertEqual((second["query"], second["meal_category"]), ("", ""))
+        # 다음 말에서도 되살아나지 않는다(새로 말한 것만 바꾼다).
+        third = turn(["짬뽕 먹고 싶어", "음 짬뽕 말고 다른 거", "국물은 상관없어"], second,
+                     {"query": "짬뽕", "meal_category": "중식", "soup": "yes"})
+        self.assertEqual((third["query"], third["meal_category"], third["soup"]), ("", "", ""))
+        # "짬뽕 말고 짜장면"은 중식을 유지하고 검색어만 바꾼다.
+        swap = turn(["짬뽕 먹고 싶어", "짬뽕 말고 짜장면"], first, {"query": "짜장면", "meal_category": "중식"})
+        self.assertEqual((swap["query"], swap["meal_category"]), ("짜장면", "중식"))
+        # 이어진 말에서 조건을 바꾸거나 풀 수 있다.
+        hot = turn(["국물 있는 거", "아 근데 매운 건 싫어"], {"soup": "yes"}, {})
+        self.assertEqual((hot["soup"], hot["spice"]), ("yes", "mild"))
+        free = turn(["국물 있는 거", "아 근데 매운 건 싫어", "맵기는 상관없고 국물 없는 걸로"], hot, {})
+        self.assertEqual((free["spice"], free["soup"]), ("", "no"))
+        other = turn(["국밥 중에서", "다른 음식으로 보여줘"], {"meal_category": "국밥·해장국", "query": "국밥"},
+                     {"query": "국밥", "meal_category": "국밥·해장국"})
+        self.assertEqual((other["query"], other["meal_category"]), ("", ""))
+        anything = turn(["중식 먹고 싶어", "아무거나 괜찮아"], {"meal_category": "중식"}, {"meal_category": "중식"})
+        self.assertEqual(anything["meal_category"], "")
+
     def test_invalid_input_never_calls_model(self):
         for messages in ([], [3], ["x" * 301], ["x"] * 7, ["a\nb"]):
             with self.subTest(messages=messages), patch.object(llm, "generate") as generate:

@@ -1314,6 +1314,15 @@ function bubble(text, who = "bot") {
   chatLog.append(node("div", text, `bubble ${who}`));
   scrollChat();
 }
+function restartChip() {
+  chatChips.replaceChildren();
+  const button = node("button", "대화 다시 시작");
+  button.type = "button";
+  button.addEventListener("click", startChat);
+  chatChips.append(button);
+  scrollChat();
+}
+
 function setChatChips(answers) {
   chatChips.replaceChildren();
   for (const answer of answers) {
@@ -1356,6 +1365,7 @@ async function respond(answer) {
     bubble("대화 6회가 끝났어요. 조건을 정리해 다시 시작해 주세요.");
     activeRecommendation = null;
     setBusy(false);
+    restartChip();
     return;
   }
   const pending = [...chatMessages, text];
@@ -1365,22 +1375,32 @@ async function respond(answer) {
   try {
     const data = await request("/api/chat", {method: "POST",
       headers: {"Content-Type": "application/json"}, signal: controller.signal,
-      body: JSON.stringify({messages: pending,
+      // 최근에 보여 준 음식을 함께 보내 "다른 거 보여줘"에 다른 메뉴가 나오게 한다(선택지 추천과 같은 감점).
+      body: JSON.stringify({messages: pending, recent: recentFoods(),
         profile: {...profilePayload(), ...chatConditions, district: document.querySelector("#chat-district").value}}),
     });
     if (controller.signal.aborted) return;
     chatMessages = pending;
     chatConditions = data.conditions;
     render(data.result);
+    if (data.result.families?.length) rememberFoods(data.result.families.map(family => family.name));
     bubble(data.reply);
     const selected = data.conditions;
-    bubble(`적용 조건: ${goalLabels[selected.goal]} · ${selected.spice === "hot" ? "매콤한 맛 선호" : selected.spice === "mild" ? "안 매운 맛 선호" : "맵기 무관"} · ${selected.soup === "yes" ? "국물 선호" : selected.soup === "no" ? "국물 없는 메뉴 선호" : "국물 무관"}${selected.query ? ` · 검색: ${selected.query}` : ""}. 더 바꾸고 싶은 조건을 말해 주세요.`);
+    bubble(`적용 조건: ${goalLabels[selected.goal]} · ${selected.spice === "hot" ? "매콤한 맛 선호" : selected.spice === "mild" ? "안 매운 맛 선호" : "맵기 무관"} · ${selected.soup === "yes" ? "국물 선호" : selected.soup === "no" ? "국물 없는 메뉴 선호" : "국물 무관"}${selected.meal_category ? ` · 음식군: ${selected.meal_category}` : ""}${selected.query ? ` · 검색: ${selected.query}` : ""}. 더 바꾸고 싶은 조건을 말해 주세요.`);
     const button = node("button", "추천 결과와 매장 보기 →", "chat-results-link");
     button.type = "button";
     button.addEventListener("click", () => showScreen("results"));
     chatLog.append(button);
+    // 다음에 할 말을 버튼으로 제안해 대화가 끊기지 않게 한다. 남은 횟수가 없으면 다시 시작만 둔다.
+    if (pending.length >= 6) restartChip();
+    else setChatChips([selected.query || selected.meal_category ? "다른 음식으로 보여줘" : "다른 메뉴도 보여줘",
+      selected.spice === "mild" ? "맵기는 상관없어" : "안 매운 걸로", selected.soup ? "국물은 상관없어" : "국물 없는 걸로"]);
   } catch (error) {
-    if (!controller.signal.aborted) bubble(error.message);
+    if (!controller.signal.aborted) {
+      bubble(error.message);
+      // 보낸 말은 대화에 남지 않았으니 한 번에 다시 보낼 수 있게 한다.
+      setChatChips([text]);
+    }
   } finally {
     waiting.remove();
     if (activeRecommendation === controller) {

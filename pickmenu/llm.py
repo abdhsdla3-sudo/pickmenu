@@ -77,15 +77,21 @@ def conditions(payload: Any, categories: list[str]) -> tuple[Profile, list[str]]
         if key in result and not isinstance(result[key], str):
             raise Unavailable("AI가 조건을 정확히 이해하지 못했어요. 조건을 간단히 다시 입력해 주세요.")
     for key in ("goal", "spice", "soup"):
-        if result.get(key):
+        if result.get(key) == ANY:  # "맵기는 상관없어", "국물은 아무거나" → 이전 조건을 푼다
+            values[key] = ""
+        elif result.get(key):
             values[key] = result[key]
-    if (query := menu_query(result.get("query"))) and query in text:
+    # 검색어·음식군은 이번 말에서 새로 말했을 때만 바꾼다. 이전 조건은 브라우저가 profile로 다시 보내므로
+    # 유지되고, 풀었던 메뉴("짬뽕 말고 다른 거")를 모델이 대화 기록에서 다시 꺼내 되살리지 않는다.
+    latest = history[-1]
+    if (query := menu_query(result.get("query"))) and query in latest:
         values["query"] = query
     # 음식군은 정해진 목록 값이라 문장에 이름이 그대로 없어도 된다("국밥 중에서" → 국밥·해장국).
-    # 대신 그 음식군을 가리키는 말이 문장에 있어야 한다.
+    # 대신 그 음식군을 가리키는 말이 이번 문장에 있어야 한다.
     category = result.get("meal_category")
-    if category in categories and any(word in text for word in category_words(category)):
+    if category in categories and any(word in latest for word in category_words(category)):
         values["meal_category"] = category
+    drop_rejected(values, latest, text)
     allergy, exclude = ingredients(text, result.get("allergy", ""), result.get("exclude", ""))
     for field, model_terms in (("allergy", allergy), ("exclude", exclude)):
         terms = [term.strip() for term in re.split(r"[,;/]", f"{values[field]},{model_terms}") if term.strip()]
@@ -105,16 +111,59 @@ def conditions(payload: Any, categories: list[str]) -> tuple[Profile, list[str]]
 
 
 NEGATIVE = r"(?:은|는|이|가|도)?\s*(?:싫|못\s*먹|안\s*(?:먹|좋|땡|당)|별로|빼|말고|없|업|노노)"
+# "상관없어"·"아무거나"는 그 조건을 푸는 말이다. 이전 대화에서 고른 맵기·국물이 계속 남거나,
+# "국물은 상관없어"가 '국물' 때문에 국물 있음이 되던 문제를 막는다.
+ANY = "any"
+INDIFFERENT = r"\s*(?:은|는|도|이|가)?\s*(?:상관\s*(?:없|안)|아무거나|아무\s*거나|무관|다\s*(?:괜찮|좋)|있든\s*없든|노\s*상관)"
 SUPPORT = {
     "goal": {"light": r"가볍|가벼|저칼|다이어트|칼로리.*낮|부담.*없",
              "protein": r"단백질|고단백", "balance": r"균형|골고루"},
     "spice": {"mild": r"안\s*매[운워]?|맵지\s*(?:않|안)|순한|순하게|맵찔|매운\s*(?:건|거|것|맛|음식)?" + NEGATIVE
                       + r"|맵(?:게|기)?\s*(?:는|은)?\s*못",
-              "hot": r"매콤|매운|맵게|얼큰|칼칼|화끈"},
+              "hot": r"매콤|매운|맵게|얼큰|칼칼|화끈",
+              ANY: r"(?:맵기|매운\s*(?:거|건|것|정도)?|맵든\s*안\s*맵든)" + INDIFFERENT},
     # 부정은 국물 바로 뒤(조사·한두 단어 안)만 본다. "국물 요리로, 피자, 파 싫어"의 '싫어'는 파에 걸린다.
     "soup": {"yes": r"국물|탕(?!수)|국밥|수프",
-             "no": r"국물\s*(?:요리)?" + NEGATIVE + r"|국물\s*(?:은|는)?\s*(?:안|필요\s*없)|(?:탕|국)\s*말고"},
+             "no": r"국물\s*(?:요리)?" + NEGATIVE + r"|국물\s*(?:은|는)?\s*(?:안|필요\s*없)|(?:탕|국)\s*말고",
+             ANY: r"국물" + INDIFFERENT},
 }
+# "짬뽕 말고", "중식은 별로" → 앞에서 정한 검색어·음식군을 푼다. "아무거나"는 메뉴·음식군 제한을 모두 푼다.
+REJECT = r"\s*(?:은|는|이|가|도|을|를)?\s*(?:말고|말구|빼고|싫|별로|대신|질려|질렸|외에|아닌|말곤|그만)"
+ANYTHING = re.compile(r"아무거나|아무\s*거나|뭐든지?|다\s*괜찮|다\s*좋아")
+OTHER = re.compile(r"다른\s*(?:음식|메뉴|거|걸|것|종류)")
+
+
+def last_rejected(word: str, text: str) -> bool:
+    """대화에서 그 말이 마지막으로 나온 자리가 거절("짬뽕 말고")이면 True. 다시 원하면("역시 짬뽕") False."""
+    found = list(re.finditer(re.escape(word), text))
+    return bool(found) and re.match(REJECT, text[found[-1].end():]) is not None
+
+
+def drop_rejected(values: dict[str, Any], latest: str, text: str) -> None:
+    """거절한 검색어·음식군을 지운다. 대화 전체에 남은 메뉴 이름 때문에 같은 결과가 반복되지 않게 한다."""
+    if ANYTHING.search(latest) and not re.search(r"맵|매운|국물", latest):
+        values["query"] = values["meal_category"] = ""
+        return
+    # "다른 음식으로 보여줘": 이번 말에 새 메뉴 이름이 없으면 앞에서 고른 메뉴·음식군을 푼다.
+    if OTHER.search(latest) and values.get("query") and values["query"] not in latest:
+        values["query"] = values["meal_category"] = ""
+        return
+    category = values.get("meal_category") or ""
+    rejected = [word for word in (values.get("query") or "", *category_words(category))
+                if word.strip() and last_rejected(word.strip(), text)]
+    if not rejected:
+        return
+    if values.get("query") in rejected:
+        values["query"] = ""
+    if category:
+        rest = text
+        for word in rejected:
+            rest = rest.replace(word, "")
+        # 음식군 이름을 직접 거절했거나("중식은 별로"), 그 음식군을 가리키던 말이 거절한 메뉴뿐이면
+        # ("짬뽕 말고 다른 거") 음식군도 푼다. "짬뽕 말고 짜장면"은 짜장이 남아 중식을 유지한다.
+        if any(word in category.split("·") for word in rejected) or not any(
+                word in rest for word in category_words(category)):
+            values["meal_category"] = ""
 CATEGORY_WORDS = {"국밥·해장국": ("국밥", "해장국", "해장"), "닭요리": ("닭",), "밥·덮밥": ("밥", "덮밥"),
                   "샐러드·건강식": ("샐러드", "건강식", "포케"), "아시안": ("아시안", "동남아", "쌀국수", "베트남", "태국", "인도"),
                   "양식": ("양식", "파스타", "스테이크", "pasta"), "중식": ("중식", "중국", "짜장", "짬뽕"),
