@@ -673,7 +673,8 @@ async function storeMap(holder, stores) {
     return;
   }
   if (!holder.isConnected) return;
-  const map = L.map(holder, {scrollWheelZoom: false});
+  // 지도 위에서 휠을 굴리면 페이지 대신 지도가 확대·축소된다(Leaflet이 휠 이벤트를 막는다).
+  const map = L.map(holder);
   osmTiles(L).addTo(map);
   const points = [];
   for (const {store, at} of placed) {
