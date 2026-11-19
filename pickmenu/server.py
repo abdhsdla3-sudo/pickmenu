@@ -110,6 +110,11 @@ def public_menu(menu: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in menu.items() if key not in {"regions", "mapping_note"}}
 
 
+def guest_allowed() -> bool:
+    """둘러보기: 로그인 없이 선택지 추천·가게 목록·메뉴 상세만 쓴다. 대화(AI)·위치 검색·프로필 저장은 로그인 필요."""
+    return os.environ.get("PICKMENU_GUEST") == "1"
+
+
 def session_cookie(token: str | None) -> str:
     """로그인 세션 쿠키. 토큰이 없으면 쿠키를 지운다."""
     parts = [f"{SESSION_COOKIE}={token or ''}", "Path=/", "HttpOnly", "SameSite=Lax",
@@ -192,7 +197,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, {"user": None}, [("Set-Cookie", session_cookie(None))])
             elif path == "/api/auth/me":
                 found = auth.current(self.session_token())
-                self.send_json(200, found[1] if found else {"user": None, "profile": None})
+                self.send_json(200, {**(found[1] if found else {"user": None, "profile": None}),
+                                     "guest": guest_allowed()})
             elif path == "/api/profile":
                 if (found := auth.current(self.session_token())) is None:
                     self.send_json(401, {"error": "로그인이 필요해요."})
@@ -226,8 +232,18 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(503, {"error": "추천 데이터를 열 수 없어요. 전처리를 완료한 뒤 다시 시도해 주세요."})
             return None
 
-    def require_session(self) -> bool:
+    def is_member(self) -> bool:
+        """로그인을 요구하지 않는 실행이거나 유효한 세션이 있으면 True."""
         if os.environ.get("PICKMENU_REQUIRE_LOGIN") != "1":
+            return True
+        try:
+            return auth.session_user_id(self.session_token()) is not None
+        except sqlite3.Error:
+            return False
+
+    def require_session(self, guest_ok: bool = False) -> bool:
+        """로그인 세션 확인. `guest_ok` 경로는 PICKMENU_GUEST=1일 때 로그인 없이 연다(둘러보기)."""
+        if os.environ.get("PICKMENU_REQUIRE_LOGIN") != "1" or (guest_ok and guest_allowed()):
             return True
         try:
             if auth.session_user_id(self.session_token()) is not None:
@@ -249,7 +265,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/auth/me":
             self.handle_auth(path)
         elif path == "/api/v2/stores":
-            if not self.require_session():
+            if not self.require_session(guest_ok=True):
                 return
             params = parse_qs(urlsplit(self.path).query)
             foods = [f for f in params.get("food", []) if f.strip()][:5]
@@ -272,7 +288,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, {"categories": categories(menus), "menu_count": len(menus),
                                      "period": REVIEW_PERIOD})
         elif path.startswith("/api/menus/"):
-            if not self.require_session():
+            if not self.require_session(guest_ok=True):
                 return
             if (menus := self.load()) is not None:
                 mid = path.removeprefix("/api/menus/")
@@ -333,7 +349,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not self.authorize_api():
             return
-        if not self.require_session():
+        if not self.require_session(guest_ok=True):
             return
         if (payload := self.read_json()) is INVALID:
             return
@@ -387,7 +403,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             result = menu_stores.stores(catalog_path(), selected, district, origin=origin)
-            llm.store_comments(result)
+            # 둘러보기(로그인 전) 요청은 GPU를 쓰지 않고 사실 문장만 붙인다.
+            llm.store_comments(result, use_ai=self.is_member())
             self.send_json(200, result)
         except sqlite3.Error as error:
             self.log_error("매장 집계 오류 %s", type(error).__name__)

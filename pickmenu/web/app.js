@@ -56,13 +56,17 @@ const serverFields = ["nickname", ...personalFields, ...preferenceFields];
 const authForm = document.querySelector("#auth-form");
 const authStatus = document.querySelector("#auth-status");
 let account = null;
+// 둘러보기: 서버가 허용하면(PICKMENU_GUEST=1) 로그인 없이 선택지 추천과 가게 목록만 쓴다. 취향은 저장하지 않는다.
+let guestAllowed = false;
+let guest = false;
+const guestScreens = ["modes", "choice", "results"];
 let accountReturn = "welcome";
 let syncNotice = "";
 document.querySelector("#category").addEventListener("change", () => { categoryTouched = true; });
 
 function showScreen(name) {
-  if (!account && !["welcome", "account"].includes(name)) {
-    openAccount();
+  if (!account && !["welcome", "account"].includes(name) && !(guest && guestScreens.includes(name))) {
+    openAccount(guest ? "signup" : "login");
     return;
   }
   for (const screen of document.querySelectorAll("[data-screen]")) {
@@ -145,7 +149,7 @@ function updateStep() {
 }
 
 function startOnboarding() {
-  if (!account) return openAccount();
+  if (!account) return openAccount(guest ? "signup" : "login");
   cancelRecommendation();
   applyProfile();
   step = 0;
@@ -154,13 +158,27 @@ function startOnboarding() {
 }
 
 function openModes() {
-  if (!account) return openAccount();
+  if (!account && !guest) return openAccount();
   updateAccountUI();
-  if (!personalFields.every(key => profile[key])) return startOnboarding();
+  // 신체정보는 선택(1.7.0)이라 취향 프로필이 있으면 바로 추천 방식으로 간다.
+  if (account && !hasProfile) return startOnboarding();
   cancelRecommendation();
-  document.querySelector("#greeting-name").textContent = profile.nickname || "메뉴고민러";
-  document.querySelector("#profile-summary").textContent = [summary(), storageNotice, syncNotice].filter(Boolean).join(" · ");
+  document.querySelector("#greeting-name").textContent = guest ? "둘러보는 손님" : profile.nickname || "메뉴고민러";
+  document.querySelector("#profile-summary").textContent = guest
+    ? "둘러보기 중이에요. 가입하면 취향을 저장하고 이야기 추천도 쓸 수 있어요."
+    : [summary(), storageNotice, syncNotice].filter(Boolean).join(" · ");
+  document.querySelector("#delete-profile").hidden = guest;
+  document.querySelector('[data-action="edit-profile"].text-button').textContent = guest ? "가입하고 취향 저장하기 →" : "프로필 수정 →";
+  document.querySelector("#open-chat").classList.toggle("locked", guest);
+  document.querySelector("#open-location").hidden = guest;
   showScreen("modes");
+}
+
+function startGuest() {
+  if (!guestAllowed) return openAccount("signup");
+  clearLocalProfile();
+  guest = true;
+  openModes();
 }
 
 function profilePayload() {
@@ -697,6 +715,51 @@ async function storeMap(holder, stores) {
   setTimeout(() => map.invalidateSize(), 50);
 }
 
+// 추천 결과에서 주문까지 이어지게: 가게 이름 복사(배달앱 검색용)와 네이버 지도 검색 링크.
+// 지도 링크에는 공개된 가게 이름과 구만 넣고, 사용자 위치·계정 정보는 넣지 않는다.
+// 클립보드 API가 막힌 환경(권한·일부 인앱 브라우저)에서는 선택 후 복사 명령으로 한 번 더 시도한다.
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const area = node("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.append(area);
+    area.select();
+    let done = false;
+    try {
+      done = document.execCommand("copy");
+    } catch {
+      done = false;
+    }
+    area.remove();
+    return done;
+  }
+}
+
+function storeActions(store) {
+  const actions = node("div", undefined, "store-actions");
+  const copy = node("button", "가게 이름 복사", "small-link");
+  copy.type = "button";
+  copy.setAttribute("aria-label", `${store.store_name} 가게 이름 복사`);
+  copy.addEventListener("click", async () => {
+    copy.textContent = await copyText(store.store_name)
+      ? "복사했어요 · 배달앱에서 검색해 보세요" : `복사할 수 없어요 · ${store.store_name}`;
+    setTimeout(() => { copy.textContent = "가게 이름 복사"; }, 2500);
+  });
+  const map = node("a", "지도에서 보기", "small-link");
+  map.href = `https://map.naver.com/p/search/${encodeURIComponent(`${store.store_name} 수원 ${store.district || ""}`.trim())}`;
+  map.target = "_blank";
+  map.rel = "noopener noreferrer";
+  map.setAttribute("aria-label", `${store.store_name} 네이버 지도에서 보기 (새 창)`);
+  actions.append(copy, map);
+  return actions;
+}
+
 function familyStoreItem(store, family) {
   const item = node("li", undefined, "family-store");
   const text = node("div");
@@ -714,6 +777,7 @@ function familyStoreItem(store, family) {
     text.append(reason);
     if (store.comment_mood) text.append(node("p", store.comment_mood, "store-mood"));
   }
+  if (store.store_name) text.append(storeActions(store));
   const button = node("button", "상세", "small-link");
   button.type = "button";
   button.setAttribute("aria-label", `${store.menu_name} 상세 보기`);
@@ -767,7 +831,8 @@ async function showFamily(family, data) {
       showFamily(family, data);
     }));
     place.append(pick);
-    results.append(place);
+    // 위치 검색·주소 변환은 로그인 사용자만 쓴다. 둘러보기에서는 위치 줄을 숨긴다.
+    if (!guest) results.append(place);
     const mapHolder = node("div", undefined, "store-map");
     mapHolder.setAttribute("role", "region");
     mapHolder.setAttribute("aria-label", "가게 위치 지도. 번호는 아래 목록 순서예요.");
@@ -847,6 +912,7 @@ function updateAccountUI() {
     document.getElementById(id).hidden = Boolean(account);
   }
   document.querySelector("#start-onboarding").hidden = !account;
+  document.querySelector("#welcome-guest").hidden = Boolean(account) || !guestAllowed;
   document.querySelector("#resume").hidden = !account || !hasProfile;
   document.querySelector("#welcome-note").textContent = account
     ? "약 1분이면 내 식사 프로필 완성" : "로그인하거나 회원가입하고 내 취향을 알려주세요";
@@ -951,6 +1017,7 @@ authForm.addEventListener("submit", async event => {
           serverFields.map(key => [key, values[key] || ""]))} : {})}),
     });
     account = data.user;
+    guest = false;
     clearLocalProfile();
     authForm.reset();
     setAuthMode();
@@ -1019,6 +1086,7 @@ document.querySelector("#logout").addEventListener("click", async event => {
   }
   button.disabled = false;
   account = null;
+  guest = false;
   syncNotice = "";
   clearLocalProfile();
   updateAccountUI();
@@ -1228,7 +1296,15 @@ function startChat() {
   setChatChips(["가볍고 안 매운 음식이 좋아요", "국물 있는 메뉴 추천해 줘", "단백질 위주로 먹고 싶어요"]);
 }
 
-document.querySelector("#open-chat").addEventListener("click", startChat);
+document.querySelector("#open-chat").addEventListener("click", () => {
+  if (guest) {
+    openAccount("signup");
+    authStatus.textContent = "이야기하며 고르기는 가입하고 로그인하면 쓸 수 있어요.";
+    return;
+  }
+  startChat();
+});
+document.querySelector("#welcome-guest").addEventListener("click", startGuest);
 document.querySelector("#restart-chat").addEventListener("click", startChat);
 
 async function respond(answer) {
@@ -1309,6 +1385,7 @@ async function initialize() {
   try {
     // 로그인 세션이 있으면 계정에 저장된 취향을 우선 적용한다.
     const me = await request("/api/auth/me");
+    guestAllowed = me.guest === true;
     if (me.user) {
       account = me.user;
       if (adoptServerProfile(me.profile)) persistLocal();

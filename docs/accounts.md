@@ -14,11 +14,13 @@
 
 Ubuntu 웹 서비스에는 `PICKMENU_REQUIRE_LOGIN=1`을 설정해 추천·상세 API도 로그인 세션을 요구한다. 이 설정을 생략한 독립 메뉴 API는 기존 호출 호환성을 유지한다. 웹 화면 자체는 항상 로그인 후 이용하도록 안내한다.
 
+**둘러보기(1.7.0, 선택):** `PICKMENU_GUEST=1`을 함께 두면 로그인 없이 선택지 추천(`/api/recommend`), 가게 목록(`/api/recommend/stores`), 메뉴 상세(`/api/menus/…`, `/api/v2/stores`)를 쓸 수 있다. 첫 화면에 `로그인 없이 둘러보기`가 나타난다. 이야기 추천(AI)·위치 검색·프로필 저장·`/api/v2/recommend`는 계속 로그인이 필요하고, 둘러보기의 가게 추천이유는 AI 한마디 없이 사실 문장만 쓴다. 취향은 저장하지 않는다. `/api/auth/me`가 `guest`(허용 여부)를 돌려준다. 설정하지 않으면 1.6.x와 같다.
+
 ## API
 
 | 요청 | 설명 |
 | --- | --- |
-| `POST /api/auth/signup` | `{username, password, profile}`로 가입하고 바로 로그인한다. 웹에서는 birth_date·height·weight·gender 필수, nickname·취향 선택. 기존 age 입력도 호환한다. 아이디 4~20자, 비밀번호 8~64자. 중복이면 409 |
+| `POST /api/auth/signup` | `{username, password, profile}`로 가입하고 바로 로그인한다. 1.7.0부터 birth_date·height·weight·gender·nickname·취향 모두 선택(입력하면 범위 검사). 기존 age 입력도 호환한다. 아이디 4~20자, 비밀번호 8~64자. 중복이면 409 |
 | `POST /api/auth/login` | 로그인. 틀리면 401, 같은 아이디로 5회 실패하면 5분간 429 |
 | `POST /api/auth/logout` | 세션을 지우고 쿠키를 만료한다 |
 | `GET /api/auth/me` | `{user, profile}`. 로그인하지 않았으면 `user`가 `null` |

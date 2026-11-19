@@ -164,6 +164,27 @@ class StoreApiTest(unittest.TestCase):
                 "PICKMENU_REQUIRE_LOGIN": "1", "PICKMENU_USERS_PATH": os.path.join(temp, "users.sqlite3")}):
             self.assertEqual(self.call("/api/recommend/stores", {"menu_ids": [IDS["최상급 육회"]]})[0], 401)
 
+    def test_guest_mode_opens_only_choice_recommendation(self):
+        with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {
+                "PICKMENU_REQUIRE_LOGIN": "1", "PICKMENU_GUEST": "1", "PICKMENU_LLM_URL": "http://127.0.0.1:9",
+                "PICKMENU_USERS_PATH": os.path.join(temp, "users.sqlite3")}):
+            self.assertEqual(self.call("/api/recommend", {})[0], 200)
+            with patch("llm.generate") as generate:
+                status, found = self.call("/api/recommend/stores", {"menu_ids": [IDS["최상급 육회"]]})
+            self.assertEqual(status, 200)
+            generate.assert_not_called()  # 둘러보기는 AI 한마디 없이 사실 문장만
+            self.assertEqual(found["stores"][0]["comment_mood"], "")
+            # 대화(AI)·위치 검색·프로필 저장은 여전히 로그인이 필요하다.
+            for path, body in (("/api/chat", {"messages": ["국밥"]}), ("/api/location/search", {"query": "수원역"}),
+                               ("/api/v2/recommend", {})):
+                with self.subTest(path=path):
+                    self.assertEqual(self.call(path, body)[0], 401)
+            connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=10)
+            connection.request("GET", "/api/auth/me")
+            me = json.loads(connection.getresponse().read())
+            connection.close()
+            self.assertEqual((me["user"], me["guest"]), (None, True))
+
 
 class StoreFactsTest(unittest.TestCase):
     def test_store_facts_aggregate_and_thresholds(self):

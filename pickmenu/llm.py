@@ -276,7 +276,7 @@ def safe_mood(text: Any, row: dict[str, Any], others: set[str], seen: set[str]) 
     return not re.search(r"[\u3040-\u30ff\u4e00-\u9fff]", rest)  # 작은 모델이 섞는 한자·일본어
 
 
-def store_comments(result: dict[str, Any]) -> None:
+def store_comments(result: dict[str, Any], use_ai: bool = True) -> None:
     """상위 10개 매장에 추천이유를 붙인다.
 
     숫자와 사실은 서버가 정해진 문장(`fact_sentences`)으로 쓰고, 로컬 LLM은 메뉴 이름과 지역만 보고 숫자 없는
@@ -291,6 +291,8 @@ def store_comments(result: dict[str, Any]) -> None:
     inputs = [{"menu": short_menu(row["menu_name"]), "district": row["district"]} for row in rows]
     generated: dict[str, Any] = {}
     try:
+        if not use_ai:
+            raise Unavailable("guest")
         generated = generate(
             "너는 배달 메뉴 앱의 한마디 작가다. 각 메뉴에 어울리는 상황이나 기분을 담은 짧은 한마디"
             f"({MOOD_MIN}~{MOOD_MAX}자, 문장이 아니어도 된다)를 쓴다. 예: '쌀쌀한 저녁 한 그릇으로', "

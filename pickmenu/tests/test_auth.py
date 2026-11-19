@@ -91,12 +91,16 @@ class AuthTest(unittest.TestCase):
         self.assertIsNone(auth.save_profile(user_id, None))
         self.assertIsNone(auth.current(token)[1]["profile"])
 
-    def test_signup_requires_basics_and_validates_ranges(self):
-        for field in ["age", "height", "weight", "gender"]:
-            value = registration("basics")
+    def test_signup_basics_are_optional_but_validated(self):
+        # 1.7.0부터 생년월일·키·몸무게·성별은 선택이다. 아이디·비밀번호만으로 가입할 수 있다.
+        for at, field in enumerate(["age", "height", "weight", "gender"]):
+            value = registration(f"optional{at}")
             del value["profile"][field]
-            with self.subTest(field=field), self.assertRaises(auth.AuthError):
-                auth.signup(value)
+            with self.subTest(field=field):
+                _, account = auth.signup(value)
+                self.assertEqual(account["profile"][field], "")
+        _, bare = auth.signup({"username": "bareuser", "password": "password123", "profile": {}})
+        self.assertEqual((bare["profile"]["height"], bare["profile"]["gender"]), ("", ""))
         for field, item in [("age", "1.5"), ("age", "121"), ("height", "NaN"),
                             ("weight", "Infinity"), ("weight", "0"), ("gender", "unknown")]:
             value = registration("basics")
@@ -231,7 +235,7 @@ class AuthHttpTest(unittest.TestCase):
         return result
 
     def test_flow(self):
-        self.assertEqual(self.call("GET", "/api/auth/me")[1], {"user": None, "profile": None})
+        self.assertEqual(self.call("GET", "/api/auth/me")[1], {"user": None, "profile": None, "guest": False})
         self.assertEqual(self.call("PUT", "/api/profile", {"diet": "vegan"})[0], 401)
         status, data, cookie = self.call("POST", "/api/auth/signup", registration("flow"))
         self.assertEqual((status, data["user"]["username"]), (201, "f***"))
