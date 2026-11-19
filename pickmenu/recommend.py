@@ -13,8 +13,14 @@ from typing import Any
 WEIGHTS = {"nutrition": 0.40, "preference": 0.30, "evidence": 0.10, "satisfaction": 0.12, "reorder": 0.08}
 GOALS = {"balance": "균형 식사", "protein": "단백질 중심", "light": "가벼운 식사"}
 DISTRICTS = {"", "권선구", "영통구", "장안구", "팔달구"}
-MEAT = re.compile(r"소고기|쇠고기|우삼겹|돼지|삼겹|닭|오리|족발|보쌈|스테이크|돈까스|돈가스|치킨|베이컨|소시지|곱창|막창|갈비|육회|불고기")
-ANIMAL = re.compile(r"생선|새우|해물|해산물|오징어|아귀|아구|참치|연어|멸치|젓갈|굴소스|조개|바지락|전복|장어")
+# 이름에 보이는 고기·해산물 단서. 채식 제외와(참고자료 육식 라벨이 없는 메뉴의) 육식 선호 판정에 쓴다.
+MEAT = re.compile(r"소고기|쇠고기|우삼겹|돼지|삼겹|닭|오리|족발|보쌈|스테이크|돈까스|돈가스|치킨(?!무)|베이컨|소시지|곱창|막창|"
+                  r"갈비|육회|불고기|(?<!콩)고기|제육|탕수육|꿔바로우|깐풍기|라조기|유린기|삼계탕|육개장|감자탕|뼈|곱도리|가츠|카츠|"
+                  r"치밥|순대|선지|차돌|목살|항정|햄|떡갈비|육전|수육|편육|도리탕|김치찜|짜글이|돈코츠|차슈|규동|부타동|"
+                  r"함박|미트|양꼬치|양고기|육사시미|두루치기|낙곱새")
+ANIMAL = re.compile(r"생선|새우|해물|해산물|오징어|아귀|아구|참치|연어|멸치|젓갈|굴소스|조개|바지락|전복|장어|초밥|스시|사시미|"
+                    r"물회|회덮밥|모듬회|광어|우럭|게장|꽃게|대게|킹크랩|게살|알탕|명란|낙지|쭈꾸미|주꾸미|문어|홍합|굴|어묵|"
+                    r"동태|황태|코다리|대구|고등어|삼치|갈치|가자미|복어|매운탕|짬뽕")
 VEGAN_EXCLUDE = re.compile(r"달걀|계란|우유|치즈|버터|유청|요거트|꿀")
 ALIASES = (("계란", "달걀", "난류", "에그"), ("우유", "유제품", "치즈", "버터", "유청"),
            ("밀", "밀가루", "밀글루텐"), ("땅콩", "피넛"), ("돼지", "돼지고기", "돈육"),
@@ -175,6 +181,8 @@ def reference_tags(columns: dict[str, dict[str, Any]], rows: list[dict[str, Any]
                    "soup": SOUP.get(column.get("broth") or "", ""),
                    # 컬럼표에서 식사가 아니거나 곁들임인 음식(만두·튀김·핫도그·주먹밥 등)
                    "side": column.get("is_meal") is False or bool(column.get("is_side")),
+                   # 컬럼표 '육식'(추천 기준표의 육식 선호 대상, 고기·해산물 중심 음식). 값이 없으면 None.
+                   "meat": None if column.get("meat_preferred") is None else bool(column["meat_preferred"]),
                    "groups": [group.strip() for group in (column.get("groups") or "").split(";") if group.strip()]}
             for name, column in columns.items()}
 
@@ -219,6 +227,7 @@ def apply_reference(menus: list[dict[str, Any]], tags: dict[str, dict[str, Any]]
         tag = tags[name]
         result.append({**menu, "spice": menu["spice"] or (tag["spice"] if exact else ""),
                        "soup": soup or tag["soup"], "reference_column": name, "side": tag.get("side", False),
+                       "meat_preferred": tag.get("meat"),
                        "quality": tag.get("quality", {}),
                        "groups": list(dict.fromkeys([menu["category"], *tag["groups"]]))})
     return food_tags(result, tags, found)
@@ -304,9 +313,13 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
                                      (profile.soup, menu.get("family_soup", "")))):
             mismatched += 1
             continue
-        meat = bool(MEAT.search(signal))
+        # 육식 선호 일치는 참고자료 컬럼표의 '육식' 라벨(menu_reco와 같은 기준)을 먼저 쓰고, 연결된 컬럼이
+        # 없을 때만 이름 단서를 쓴다. 채식 제외는 라벨이나 이름 단서 중 하나라도 고기·해산물이면 뺀다.
+        label = menu.get("meat_preferred")
+        named_meat = bool(MEAT.search(signal))
+        meat = label if label is not None else named_meat
         conflict = any(term in normalized_signal for term in terms) or (
-            plant and (meat or ANIMAL.search(signal) or
+            plant and (named_meat or label is True or ANIMAL.search(signal) or
                        (profile.diet == "vegan" and VEGAN_EXCLUDE.search(signal))))
         if conflict:
             excluded += 1
