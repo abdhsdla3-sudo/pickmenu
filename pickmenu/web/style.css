@@ -127,6 +127,7 @@ legend { font-size: 12px; font-weight: 650; margin-bottom: 10px; }
 .picked-label { display: block; font-size: 10px; font-weight: 700; color: #6c7f55; margin-bottom: 7px; }
 .picked-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .picked-tags .tag { font-size: 11px; padding: 4px 9px; background: #fffef9; border: 1px solid #dfe5d3; }
+.menu-score .check-tag { margin-left: 8px; vertical-align: middle; }
 .tag.warn { background: #f5eddf; color: #94704e; }
 .score-line { font-size: 10px; color: #7e896e; margin-top: 8px; line-height: 1.8; }
 .store-list { list-style: none; margin: 12px 0 0; padding: 0; border-top: 1px solid var(--line); }

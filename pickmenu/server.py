@@ -300,9 +300,9 @@ class Handler(BaseHTTPRequestHandler):
             if (menus := self.load()) is None:
                 return
             try:
-                profile, _ = llm.conditions(payload, categories(menus))
+                profile, history = llm.conditions(payload, categories(menus))
                 result = self.recommendation(menus, profile)
-                self.send_json(200, {"reply": llm.reply(result), "result": result,
+                self.send_json(200, {"reply": llm.reply(result, history), "result": result,
                                      "conditions": vars(profile)})
             except ValueError as error:
                 self.send_json(400, {"error": str(error)})

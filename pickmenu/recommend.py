@@ -15,7 +15,45 @@ GOALS = {"balance": "균형 식사", "protein": "단백질 중심", "light": "�
 DISTRICTS = {"", "권선구", "영통구", "장안구", "팔달구"}
 MEAT = re.compile(r"소고기|쇠고기|우삼겹|돼지|삼겹|닭|오리|족발|보쌈|스테이크|돈까스|돈가스|치킨|베이컨|소시지|곱창|막창|갈비|육회|불고기")
 ANIMAL = re.compile(r"생선|새우|해물|해산물|오징어|아귀|아구|참치|연어|멸치|젓갈|굴소스|조개|바지락|전복|장어")
-VEGAN_EXCLUDE = re.compile(r"달걀|계란|우유|치즈|버터|유청|요거트|꿀")
+# 채식·비건일 때만 쓰는 추가 충돌 단서. 보통 고기·해산물 육수나 건더기가 들어가는 음식 이름이다.
+# MEAT는 육식 선호 점수에도 쓰여 따로 둔다. 여기 없는 메뉴도 안전하다는 뜻은 아니다('재료 확인 필요').
+PLANT_CONFLICT = re.compile(
+    r"제육|목살|두루치기|순대|감자탕|뼈|곰탕|설렁탕|내장|국밥|해장국|선지|육개장|사태|대창|삼계|부대|햄|스팸|"
+    r"고기|가츠|카츠|깐풍|탕수|육사시미|깐풍육|가라아게|치밥|짜장|짜글이|김치찜|김치찌개|고추장찌개|만두|만둣|"
+    r"라멘|마제소바|탄탄면|유산슬|양장피|팔보채|짬뽕|마라|똠얌|알탕|알곤이|알밥|매운탕|어묵|오뎅|북엇|북어|"
+    r"황태|동태|코다리|명란|낙지|쭈꾸미|주꾸미|문어|오삼|꽃게|대게|홍합|초밥|마키|사시미|포케|물회|회덮밥|"
+    r"(?:^|\s)회(?:\s|$)|카레|커리|팟타이|피시|어육|멸치|육수|쌀국수|초계|물냉면|(?:^|\s)냉면(?:\s|$)")
+# 알레르기 재료가 보통 들어가는 음식 이름. 재료 이름이 메뉴명에 없어도 충돌로 보고 뺀다.
+ALLERGEN_DISHES = {
+    "밀": r"면|국수|빵|피자|파스타|우동|라면|만두|만둣|수제비|튀김|돈가스|돈까스|토스트|샌드위치|햄버거|떡볶이|라볶이|"
+          r"짜장|짬뽕|쫄면|소바|라멘|가츠|카츠|탕수|부침|파전|전병|와플|케이크",
+    "우유": r"피자|크림|로제|리조또|라떼|그라탕|치즈",
+    "달걀": r"오므라이스|계란|달걀|에그|마요|카스테라|빵|케이크",
+    "새우": r"짬뽕|해물|팟타이|똠얌|새우",
+    "대두": r"된장|청국장|간장|두부|콩",
+}
+# 맛 선호. 메뉴 자료에 맛 정보가 없어 메뉴 이름·분류·구성 음식 이름의 단서로 짐작한다(맵기·국물은 따로 있다).
+# 키: (화면 이름, 메뉴 단서). 단서가 없는 메뉴는 '정보 부족'으로 점수만 낮춘다.
+TASTES = {
+    "sweet": ("달콤한 맛", r"떡볶이|라볶이|로제|양념치킨|강정|탕수|불고기|찜닭|데리야끼|허니|꿀|팬케이크|와플|디저트|빙수|케이크|"
+                         r"짜장|갈비|고구마|단호박|토스트|마요"),
+    "salty": ("짭짤한 맛", r"찌개|조림|젓갈|간장|라면|짜장|두루치기|제육|된장|청국장|부대|라멘|게장|짜글이|볶음|치킨|족발"),
+    "sour": ("새콤한 맛", r"냉면|물회|쫄면|비빔국수|무침|초계|막국수|샐러드|포케|탕수|깐풍|유린기|똠얌|김치말이|레몬|유자|"
+                        r"피클|초밥|쟁반국수"),
+    "nutty": ("고소한 맛", r"들깨|참깨|깨|콩국수|땅콩|크림|치즈|버터|견과|두부|비지|순두부|부침|파전|김밥|볶음밥|비빔밥|"
+                         r"전복죽|호박죽|곱창|대창"),
+    "plain": ("담백한 맛", r"죽|곰탕|설렁탕|백숙|삼계|칼국수|수제비|샤브|초밥|(?:^|\s)회(?:\s|$)|샐러드|포케|우동|소바|"
+                         r"두부|수육|보쌈|콩나물|북엇|황태|맑은|지리|쌀국수|닭가슴살"),
+    "rich": ("진하고 기름진 맛", r"크림|치즈|버터|튀김|치킨|돈가스|돈까스|까스|피자|햄버거|곱창|막창|대창|삼겹|마요|로제|"
+                            r"리조또|탕수|그라탕|라멘|감자탕|부대"),
+    "crispy": ("바삭한 식감", r"튀김|치킨|돈가스|돈까스|까스|가라아게|탕수|깐풍|부침|파전|강정|크리스피|후라이드|유린기|"
+                           r"(?:^|\s)전(?:\s|$)"),
+    "cool": ("시원한 맛", r"냉면|물회|콩국수|막국수|김치말이|초계|해장국|콩나물|북엇|황태|동태|매운탕|조개|재첩|쌀국수|"
+                        r"메밀|소바|지리"),
+    "chewy": ("쫄깃한 식감", r"쫄면|떡|냉면|곱창|막창|족발|오징어|쭈꾸미|주꾸미|낙지|우동|칼국수|수제비|순대"),
+    "soft": ("부드러운 식감", r"죽|계란|달걀|오므라이스|두부|순두부|찜|수육|보쌈|리조또|크림|그라탕|스튜|카레|커리"),
+}
+VEGAN_EXCLUDE = re.compile(r"달걀|계란|우유|치즈|버터|유청|요거트|꿀|피자|크림|로제|리조또|오므라이스|토스트|마요")
 ALIASES = (("계란", "달걀", "난류", "에그"), ("우유", "유제품", "치즈", "버터", "유청"),
            ("밀", "밀가루", "밀글루텐"), ("땅콩", "피넛"), ("돼지", "돼지고기", "돈육"),
            ("새우", "쉬림프"), ("대두", "콩", "두부", "두유"))
@@ -37,6 +75,8 @@ class Profile:
     exclude: str
     allergy: str
     meal_category: str = ""
+    # 맛 선호(TASTES 키, 쉼표 구분). 앞에 '-'가 붙으면 피하고 싶은 맛.
+    taste: str = ""
 
     @classmethod
     def parse(cls, data: Any, categories: list[str]) -> "Profile":
@@ -58,6 +98,11 @@ class Profile:
             if field != "query" and value.strip() and not re.search(r"[^,;/\s]", value):
                 raise ValueError("제한 재료 이름을 입력해 주세요.")
             values[field] = value.strip()
+        taste = data.get("taste", "")
+        if not isinstance(taste, str) or any(item.lstrip("-") not in TASTES
+                                            for item in taste.split(",") if item):
+            raise ValueError("목록에 있는 조건을 선택해 주세요.")
+        values["taste"] = taste
         return cls(**values)
 
 
@@ -279,8 +324,16 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
     ranked: list[dict[str, Any]] = []
     check: list[dict[str, Any]] = []
     excluded = unknown = mismatched = 0
-    terms = ingredient_terms(profile.allergy) | ingredient_terms(profile.exclude)
+    allergy_terms = ingredient_terms(profile.allergy)
+    terms = allergy_terms | ingredient_terms(profile.exclude)
+    allergy_dishes = "|".join(dishes for name, dishes in ALLERGEN_DISHES.items() if name in allergy_terms)
     plant = profile.diet in {"vegan", "vegetarian"}
+    # 메뉴 재료 정보가 거의 없어, 이름·구성에서 충돌이 확인된 메뉴만 빼고 나머지는 추천한다.
+    # 싫어하는 재료는 안전 문제가 아니라 그대로 두고, 알레르기·채식은 '재료 확인 필요'로 표시한다.
+    unchecked = ([f"알레르기({profile.allergy})"] if allergy_terms else []) + (
+        ["비건" if profile.diet == "vegan" else "채식"] if plant else [])
+    check_note = (f"재료 정보가 없어 {'·'.join(unchecked)} 조건을 확인하지 못했어요. 주문 전에 가게에 꼭 확인해 주세요."
+                  if unchecked else "")
     region = profile.district or "수원시"
     query = compact(profile.query)
     for menu in menus:
@@ -305,17 +358,17 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
             mismatched += 1
             continue
         meat = bool(MEAT.search(signal))
-        conflict = any(term in normalized_signal for term in terms) or (
-            plant and (meat or ANIMAL.search(signal) or
+        conflict = any(term in normalized_signal for term in terms) or bool(
+            allergy_dishes and re.search(allergy_dishes, signal)) or (
+            plant and (meat or ANIMAL.search(signal) or PLANT_CONFLICT.search(signal) or
                        (profile.diet == "vegan" and VEGAN_EXCLUDE.search(signal))))
         if conflict:
             excluded += 1
             continue
-        if plant or terms:
+        if check_note:
             unknown += 1
             check.append({"standard_menu_id": menu["standard_menu_id"], "name": menu["name"],
                           "review_count": evidence["reviews"]})
-            continue
         matches: list[str] = []
         preferences: list[float] = []
         category = profile.category if profile.category in groups else menu["category"]
@@ -329,6 +382,17 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
             if value:
                 preferences.append(1 if value == actual else (0.35 if not actual else 0))
                 matches.append(f"{label} {'일치' if value == actual else '정보 부족' if not actual else '불일치'}")
+        # 맛은 대표 음식명과 분류로만 짐작한다. 세트 메뉴 이름("돈까스김밥 세트")의 다른 음식에 끌려가지 않게 한다.
+        taste_signal = f"{menu['components'][0]} {menu['category']}"
+        for item in filter(None, profile.taste.split(",")):
+            name, clue = TASTES[item.lstrip("-")]
+            found = bool(re.search(clue, taste_signal))
+            if item.startswith("-"):
+                preferences.append(0 if found else 1)
+                matches.append(f"{name} 피하기 {'불일치' if found else '일치'} (메뉴 이름으로 짐작)")
+            else:
+                preferences.append(1 if found else 0.35)
+                matches.append(f"{name} {'단서 있음' if found else '정보 부족'} (메뉴 이름으로 짐작)")
         n = nutrition_score(menu["nutrition"], profile.goal)
         t = sum(preferences) / len(preferences) if preferences else 0.5
         e = (0.7 * clip(math.log1p(evidence["reviews"]) / math.log1p(150))
@@ -337,7 +401,10 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
         reasons = [f"{region} 리뷰 {evidence['reviews']:,}건 · 매장 {evidence['stores']:,}곳",
                    f"{GOALS[profile.goal]} 적합도 {round(n * 100)}점 (일반음식 참고값)"
                    if n is not None else "비교할 참고 영양값 부족", quality_text, *matches]
+        if check_note:
+            reasons.append(check_note)
         ranked.append({**menu, "region": region, "evidence": evidence, "reasons": reasons,
+                       "needs_check": bool(check_note),
                        "_parts": (n, t, e, s, r), "_preferred": bool(profile.category) and profile.category in groups,
                        "_unknown_taste": sum(1 for value, actual in (
                            (profile.spice, menu.get("family_spice", menu["spice"])),
