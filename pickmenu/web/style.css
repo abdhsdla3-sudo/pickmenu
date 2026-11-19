@@ -68,6 +68,8 @@ input, select { font-size: 16px; }
 .welcome-bottom .text-button { width: 100%; margin-top: 9px; }
 .step-top, .page-top { display: flex; align-items: center; gap: 12px; font-size: 11px; font-weight: 600; color: #7b8371; margin: -8px 0 20px; }
 .step-top .text-button, .page-top .text-button { margin-left: auto; }
+/* 이야기/선택지 전환 바는 화면을 내려도 위에 고정된다. 화면 여백(26px 25px)만큼 넓혀 배경으로 덮는다. */
+.page-top.mode-bar { position: sticky; top: 0; z-index: 3; background: var(--paper); margin: -26px -25px 20px; padding: 12px 25px; border-bottom: 1px solid #edf0e5; }
 .mode-switch { display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: #edf2e4; }
 .mode-switch button { border: 0; background: transparent; border-radius: 999px; padding: 7px 15px; font-size: 12px; font-weight: 700; color: var(--muted); cursor: pointer; }
 .mode-switch button[aria-pressed="true"] { background: #fff; color: var(--green); box-shadow: 0 1px 3px rgba(52, 57, 46, .15); }
