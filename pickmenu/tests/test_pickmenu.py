@@ -29,15 +29,39 @@ class RulesTest(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 Profile.parse(value, [])
 
-    def test_strict_restrictions_are_never_relaxed(self):
+    def test_restrictions_drop_conflicts_and_flag_unknowns(self):
         menus = [fixture("계란김밥", "MN_1"), fixture("두부덮밥", "MN_2"),
                  fixture("돼지불고기덮밥", "MN_3")]
+        # 이름·구성에서 충돌이 보이면 빼고, 알 수 없는 메뉴는 '재료 확인 필요'로 추천한다.
         result = recommend(menus, Profile.parse({"diet": "vegan", "goal": "protein"}, []))
-        self.assertEqual((result["eligible"], result["excluded"], result["unverified"]), (0, 2, 1))
+        self.assertEqual((result["eligible"], result["excluded"], result["unverified"]), (1, 2, 1))
         self.assertEqual(result["check_only"][0]["name"], "두부덮밥")
-        for field in ("allergy", "exclude"):
-            result = recommend(menus, Profile.parse({field: "달걀"}, []))
-            self.assertEqual((result["eligible"], result["excluded"], result["unverified"]), (0, 1, 2))
+        self.assertTrue(result["items"][0]["needs_check"])
+        self.assertIn("비건", result["items"][0]["reasons"][-1])
+        result = recommend(menus, Profile.parse({"allergy": "달걀"}, []))
+        self.assertEqual((result["eligible"], result["excluded"], result["unverified"]), (2, 1, 2))
+        self.assertTrue(all(item["needs_check"] for item in result["items"]))
+        self.assertNotIn("계란김밥", [item["name"] for item in result["items"]])
+        # 채식이면 고기·해산물 육수가 보통 들어가는 음식(국밥·짬뽕 등)도 뺀다.
+        result = recommend([fixture("순대국밥", "MN_4"), fixture("짬뽕", "MN_5"), fixture("비빔밥", "MN_6")],
+                           Profile.parse({"diet": "vegetarian"}, []))
+        self.assertEqual([item["name"] for item in result["items"]], ["비빔밥"])
+        # 밀 알레르기면 면·피자처럼 보통 밀이 들어가는 음식도 뺀다.
+        result = recommend([fixture("콩국수", "MN_7"), fixture("피자", "MN_8"), fixture("비빔밥", "MN_6")],
+                           Profile.parse({"allergy": "밀"}, []))
+        self.assertEqual([item["name"] for item in result["items"]], ["비빔밥"])
+        # 싫어하는 재료는 안전 문제가 아니라 확인 표시 없이 추천한다.
+        result = recommend(menus, Profile.parse({"exclude": "달걀"}, []))
+        self.assertEqual((result["eligible"], result["excluded"], result["unverified"]), (2, 1, 0))
+        self.assertFalse(any(item["needs_check"] for item in result["items"]))
+
+    def test_taste_preference(self):
+        menus = [fixture("물냉면", "MN_1"), fixture("돈가스", "MN_2")]
+        self.assertEqual(recommend(menus, Profile.parse({"taste": "sour"}, []))["items"][0]["name"], "물냉면")
+        self.assertEqual(recommend(menus, Profile.parse({"taste": "crispy"}, []))["items"][0]["name"], "돈가스")
+        self.assertEqual(recommend(menus, Profile.parse({"taste": "-crispy"}, []))["items"][0]["name"], "물냉면")
+        with self.assertRaises(ValueError):
+            Profile.parse({"taste": "umami"}, [])
 
     def test_nutrition_missing_units_and_scoring(self):
         info = {"basis": 100, "unit": "g", "values": [120, 6, 13, 4, None]}

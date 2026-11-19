@@ -127,6 +127,27 @@ class LLMTest(unittest.TestCase):
                 profile, _ = llm.conditions({"messages": [text], "profile": {}}, [])
                 self.assertEqual(profile.query, want)
 
+    def test_taste_words(self):
+        for text, spice in [("맵고 짜고 단거", "hot"), ("매운거, 짠거, 단거", "hot"), ("안 맵고 짠 거", "mild"),
+                            ("덜 매운 걸로", "mild"), ("짠 거", "")]:
+            with self.subTest(text=text), patch.object(llm, "generate", return_value={}):
+                self.assertEqual(llm.conditions({"messages": [text], "profile": {}}, [])[0].spice, spice)
+        self.assertEqual(llm.tastes("맵고 짜고 단거"), "sweet,salty")
+        self.assertEqual(llm.tastes("새콤하고 바삭한 거, 느끼한 건 싫어"), "sour,-rich,crispy")
+        self.assertEqual(llm.tastes("담백하고 시원한 국물"), "plain,cool")
+        self.assertEqual(llm.tastes("단백질 위주로 간단하게"), "")
+        self.assertEqual(llm.menu_query("새콤한"), "")
+        self.assertIn("짭짤한 맛", llm.taste_note(["맵고 짜고 단거"]))
+        self.assertEqual(llm.taste_note(["단백질 위주로"]), "")
+        with patch.object(llm, "generate", return_value={}):
+            self.assertEqual(llm.conditions({"messages": ["고소하고 쫄깃한 거"], "profile": {}}, [])[0].taste, "nutty,chewy")
+
+    def test_reply_warns_when_ingredients_unchecked(self):
+        family = {"name": "두부덮밥", "best": {"reasons": [], "needs_check": True}}
+        with patch.object(llm, "generate", side_effect=llm.Unavailable("x")):
+            self.assertIn("가게에 꼭 확인", llm.reply({"families": [family]}))
+            self.assertNotIn("가게에 꼭 확인", llm.reply({"families": [{**family, "best": {"reasons": []}}]}))
+
     def test_reply_particle(self):
         def fam(name):
             return {"name": name, "best": {"reasons": []}}

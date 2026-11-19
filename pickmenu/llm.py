@@ -8,7 +8,7 @@ from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-from recommend import ALIASES, DISTRICTS, Profile
+from recommend import ALIASES, DISTRICTS, TASTES, Profile
 
 _slot = threading.BoundedSemaphore(1)
 
@@ -97,6 +97,7 @@ def conditions(payload: Any, categories: list[str]) -> tuple[Profile, list[str]]
         terms = [term.strip() for term in re.split(r"[,;/]", f"{values[field]},{model_terms}") if term.strip()]
         terms.extend(match.group(1) for message in history for match in EXPLICIT_INGREDIENT[field].finditer(message))
         values[field] = ",".join(dict.fromkeys(terms))
+    values["taste"] = tastes(text)
     for message in history:
         if EXPLICIT_VEGAN.search(message):
             values["diet"] = "vegan"
@@ -118,9 +119,9 @@ INDIFFERENT = r"\s*(?:은|는|도|이|가)?\s*(?:상관\s*(?:없|안)|아무거�
 SUPPORT = {
     "goal": {"light": r"가볍|가벼|저칼|다이어트|칼로리.*낮|부담.*없",
              "protein": r"단백질|고단백", "balance": r"균형|골고루"},
-    "spice": {"mild": r"안\s*매[운워]?|맵지\s*(?:않|안)|순한|순하게|맵찔|매운\s*(?:건|거|것|맛|음식)?" + NEGATIVE
+    "spice": {"mild": r"안\s*(?:매[운워]?|맵[고게지다]?)|덜\s*(?:매[운워]|맵[고게]?)|맵지\s*(?:않|안)|순한|순하게|맵찔|매운\s*(?:건|거|것|맛|음식)?" + NEGATIVE
                       + r"|맵(?:게|기)?\s*(?:는|은)?\s*못",
-              "hot": r"매콤|매운|맵게|얼큰|칼칼|화끈",
+              "hot": r"매콤|매운|맵게|맵고|매워|맵다|얼큰|칼칼|화끈",
               ANY: r"(?:맵기|매운\s*(?:거|건|것|정도)?|맵든\s*안\s*맵든)" + INDIFFERENT},
     # 부정은 국물 바로 뒤(조사·한두 단어 안)만 본다. "국물 요리로, 피자, 파 싫어"의 '싫어'는 파에 걸린다.
     "soup": {"yes": r"국물|탕(?!수)|국밥|수프",
@@ -195,7 +196,10 @@ def menu_query(value: Any) -> str:
         return ""
     # "국밥 중에서" → 국밥, "족발 쪽으로" → 족발
     value = re.sub(r"\s*(?:중에서|중|쪽으로|쪽|위주로|위주|메뉴|종류|요리|음식)$", "", value.strip())
-    return "" if not value or NOT_MENU.search(value) else value
+    # "새콤한"처럼 맛 표현만 있으면 검색어가 아니다(맛은 taste로 따로 반영한다).
+    if not value or NOT_MENU.search(value) or any(re.search(p, value) for p in TASTE_WORDS.values()):
+        return ""
+    return value
 
 
 def category_words(category: str) -> tuple[str, ...]:
@@ -230,13 +234,55 @@ def object_particle(word: str) -> str:
     return "을" if (ord(word[-1]) - 0xAC00) % 28 else "를"
 
 
-def reply(result: dict[str, Any]) -> str:
+# 맛 표현(키는 recommend.TASTES). 맵기는 SUPPORT의 spice가 맡는다.
+TASTE_WORDS = {
+    "sweet": r"달달|달콤|달짝|달게|달고|단\s*(?:거|것|게|음식|맛|걸)|단짠|들큰",
+    "salty": r"짠|짜고|짜게|짭짤|짭조름|단짠|간이\s*(?:센|세|쎈|강한)|간간",
+    "sour": r"새콤|새큼|시큼|상큼|신맛|시큰|새콤달콤",
+    "nutty": r"고소",
+    "plain": r"담백|깔끔|슴슴|심심|삼삼|자극(?:적이지|\s*없|\s*적)|싱거",
+    "rich": r"느끼|기름진|기름지|헤비|꾸덕|진한|진하게|크리미|묵직",
+    "crispy": r"바삭|튀긴|튀김|크리스피|바사삭",
+    "cool": r"시원",
+    "chewy": r"쫄깃|쫀득|쫀쫀|탱글",
+    "soft": r"부드러|촉촉|폭신|말랑|연한",
+}
+
+
+TASTE_NAMES = {key: name for key, (name, _) in TASTES.items()}
+
+
+def tastes(text: str) -> str:
+    """문장에 나온 맛 표현. 바로 뒤에 부정 표현이 오면("느끼한 건 싫어") 피하고 싶은 맛(-키)."""
+    found: dict[str, str] = {}
+    for key, pattern in TASTE_WORDS.items():
+        for match in re.finditer(pattern, text):
+            tail = text[match.end():match.end() + 10]
+            negative = re.match(r"[가-힣]{0,3}\s*(?:거|것|건|게|음식|맛)?" + NEGATIVE, tail)
+            found[key] = "-" + key if negative else key
+    return ",".join(found.values())
+
+
+def taste_note(history: list[str]) -> str:
+    keys = [item.lstrip("-") for item in tastes(" ".join(history)).split(",") if item]
+    if not keys:
+        return ""
+    names = "·".join(TASTE_NAMES[key] for key in keys)
+    return f"{names}은 맛 자료가 없어 메뉴 이름으로 짐작해 반영했어요."
+
+
+def reply(result: dict[str, Any], history: list[str] | None = None) -> str:
+    note = taste_note(history or [])
     candidates = [{"name": f["name"], "reasons": f["best"]["reasons"]}
                   for f in result.get("families", [])[:5]]
     if not candidates:
-        return "현재 조건에서 검증 가능한 메뉴를 찾지 못했어요. 특히 알레르기·원재료 정보가 부족하면 추천에서 제외돼요. 조건을 확인해 주세요."
+        return " ".join(filter(None, (
+            "현재 조건에 맞는 메뉴를 찾지 못했어요. 지역이나 맵기·국물·메뉴 조건을 바꿔 다시 말씀해 주세요.", note)))
     names = [c["name"] for c in candidates]
-    summary = "조건에 맞춰 " + ", ".join(names) + object_particle(names[-1]) + " 골랐어요."
+    summary = " ".join(filter(None, (
+        "조건에 맞춰 " + ", ".join(names) + object_particle(names[-1]) + " 골랐어요.", note,
+        "알레르기·채식 조건은 재료 정보가 없어 확인하지 못했으니 주문 전에 가게에 꼭 확인해 주세요."
+        if any(f["best"].get("needs_check") for f in result["families"][:5]) else "")))
     questions = ["맵기나 국물 선호를 더 바꿔볼까요?", "먹고 싶은 메뉴 이름을 알려주시면 더 좁혀볼게요.",
                  "아래에서 메뉴를 고르면 판매 기록이 있는 매장도 볼 수 있어요."]
     try:

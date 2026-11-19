@@ -366,8 +366,7 @@ function render(data) {
   subtitle.textContent = reviewPeriod ? `${data.region} · ${reviewPeriod} 배달 리뷰 기준` : data.region;
   if (!data.items.length) {
     empty("조건에 맞는 추천 메뉴가 없어요",
-      data.unverified ? "원재료·교차접촉 확인이 필요한 메뉴는 추천 목록에서 제외했어요."
-        : "오늘의 메뉴 검색어 또는 지역을 바꾸어 다시 찾아보세요.");
+      "오늘의 메뉴 검색어 또는 지역을 바꾸어 다시 찾아보세요.");
     status.textContent = `제한 충돌 ${data.excluded.toLocaleString("ko-KR")}종 · 확인 필요 ${data.unverified.toLocaleString("ko-KR")}종`;
     if (data.check_only.length) {
       const note = node("div", undefined, "card");
@@ -474,6 +473,7 @@ function renderFamilies(data) {
   const count = data.families.length;
   const top = data.families[0]?.best.score ?? 0;
   status.textContent = [
+    data.unverified ? "알레르기·채식 조건은 메뉴 재료 정보가 부족해 확인하지 못했어요. '재료 확인 필요' 메뉴는 주문 전에 가게에 꼭 확인해 주세요." : "",
     // 선호 음식군에 조건이 맞는 음식이 없으면 다른 음식군에서 골랐다고 알린다.
     data.category && data.preferred_foods === 0
       ? `선호 음식군 ${data.category}에는 지금 조건에 맞는 메뉴가 없어 다른 음식군에서 골랐어요.` : "",
@@ -498,6 +498,7 @@ function renderFamilies(data) {
     // 추천점수(100점 기준)는 순서를 정한 값 그대로다.
     const score = node("p", undefined, "menu-score");
     score.append(node("strong", `${Math.round(family.best.score)}`), node("span", "점 · 추천점수"));
+    if (family.best.needs_check) score.append(node("span", "재료 확인 필요", "tag warn check-tag"));
     appendMenuCard(card, family.name, button, head, score, family.comment ? node("p", family.comment, "menu-comment")
       : node("p", nutritionSummary(family.best), "muted"));
     results.append(card);
@@ -1307,6 +1308,12 @@ function returnToConditions() {
 document.querySelector("#results-back").addEventListener("click", returnToConditions);
 document.querySelector("#change-conditions").addEventListener("click", returnToConditions);
 
+const tasteLabels = {sweet: "달콤", salty: "짭짤", sour: "새콤", nutty: "고소", plain: "담백", rich: "진하고 기름진",
+  crispy: "바삭", cool: "시원", chewy: "쫄깃", soft: "부드러운"};
+function tasteText(value) {
+  return value.split(",").filter(Boolean)
+    .map(item => item.startsWith("-") ? `${tasteLabels[item.slice(1)] || item.slice(1)} 피하기` : tasteLabels[item] || item).join("·");
+}
 function scrollChat() {
   requestAnimationFrame(() => { scroller.scrollTop = scroller.scrollHeight; });
 }
@@ -1386,7 +1393,7 @@ async function respond(answer) {
     if (data.result.families?.length) rememberFoods(data.result.families.map(family => family.name));
     bubble(data.reply);
     const selected = data.conditions;
-    bubble(`적용 조건: ${goalLabels[selected.goal]} · ${selected.spice === "hot" ? "매콤한 맛 선호" : selected.spice === "mild" ? "안 매운 맛 선호" : "맵기 무관"} · ${selected.soup === "yes" ? "국물 선호" : selected.soup === "no" ? "국물 없는 메뉴 선호" : "국물 무관"}${selected.meal_category ? ` · 음식군: ${selected.meal_category}` : ""}${selected.query ? ` · 검색: ${selected.query}` : ""}. 더 바꾸고 싶은 조건을 말해 주세요.`);
+    bubble(`적용 조건: ${goalLabels[selected.goal]} · ${selected.spice === "hot" ? "매콤한 맛 선호" : selected.spice === "mild" ? "안 매운 맛 선호" : "맵기 무관"} · ${selected.soup === "yes" ? "국물 선호" : selected.soup === "no" ? "국물 없는 메뉴 선호" : "국물 무관"}${selected.meal_category ? ` · 음식군: ${selected.meal_category}` : ""}${selected.query ? ` · 검색: ${selected.query}` : ""}${selected.taste ? ` · 맛: ${tasteText(selected.taste)}` : ""}. 더 바꾸고 싶은 조건을 말해 주세요.`);
     const button = node("button", "추천 결과와 매장 보기 →", "chat-results-link");
     button.type = "button";
     button.addEventListener("click", () => showScreen("results"));

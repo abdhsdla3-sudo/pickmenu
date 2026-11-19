@@ -317,10 +317,10 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 recent = recent_foods(payload)
-                profile, _ = llm.conditions(payload, categories(menus))
+                profile, history = llm.conditions(payload, categories(menus))
                 # 선택지 추천처럼 최근에 본 음식을 조금 뒤로 보내 "다른 거 보여줘"에 다른 메뉴가 나오게 한다.
                 result = self.recommendation(menus, profile, recent)
-                self.send_json(200, {"reply": llm.reply(result), "result": result,
+                self.send_json(200, {"reply": llm.reply(result, history), "result": result,
                                      "conditions": vars(profile)})
             except ValueError as error:
                 self.send_json(400, {"error": str(error)})
