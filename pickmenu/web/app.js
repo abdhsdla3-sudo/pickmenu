@@ -24,6 +24,7 @@ let profile = {...defaults};
 let hasProfile = false;
 let step = 0;
 let sourceMode = "choice";
+const CHAT_TURN_LIMIT = 6;
 let chatMessages = [];
 let chatConditions = {};
 let activeRecommendation = null;
@@ -86,13 +87,16 @@ function cancelRecommendation() {
 
 function setBusy(busy) {
   document.querySelector("#meal button[type=submit]").disabled = busy;
-  document.querySelector("#chat-form button").disabled = busy;
-  chatInput.disabled = busy;
-  for (const button of chatChips.querySelectorAll("button")) button.disabled = busy;
+  const chatDone = chatMessages.length >= CHAT_TURN_LIMIT;
+  document.querySelector("#chat-form button").disabled = busy || chatDone;
+  chatInput.disabled = busy || chatDone;
+  for (const button of chatChips.querySelectorAll("button")) button.disabled = busy || chatDone;
 }
 
 function summary() {
   return [dietLabels[profile.diet], goalLabels[profile.goal], profile.category || "음식군 골고루",
+    {mild: "안 매운 쪽", hot: "매운 쪽"}[profile.spice] || "맵기 상관없음",
+    {yes: "국물 있음", no: "국물 없음"}[profile.soup] || "국물 상관없음",
     profile.allergy ? "알레르기 설정" : "", profile.exclude ? "기피 재료 설정" : ""].filter(Boolean).join(" · ");
 }
 
@@ -101,7 +105,7 @@ function applyProfile() {
     const field = form.elements.namedItem(key);
     const value = profile[key];
     if (field instanceof RadioNodeList) {
-      if (Array.from(field).some(input => input.value === value)) field.value = value;
+      for (const input of field) input.checked = input.value === value;
     } else if (field instanceof HTMLSelectElement) {
       if (Array.from(field.options).some(option => option.value === value)) field.value = value;
     } else {
@@ -339,9 +343,11 @@ let reviewPeriod = "";
 
 function render(data) {
   subtitle.textContent = reviewPeriod ? `${data.region} · ${reviewPeriod} 배달 리뷰 기준` : data.region;
+  lastResult = data;
   if (!data.items.length) {
-    empty("조건에 맞는 추천 메뉴가 없어요",
-      "오늘의 메뉴 검색어 또는 지역을 바꾸어 다시 찾아보세요.");
+    empty("조건에 맞는 추천 메뉴가 없어요", sourceMode === "chat"
+      ? "대화에서 다른 음식이나 지역을 말해 다시 찾아보세요."
+      : "‘조건 바꾸기’에서 음식군이나 지역을 바꿔 다시 찾아보세요.");
     status.textContent = `제한 충돌 ${data.excluded.toLocaleString("ko-KR")}종 · 확인 필요 ${data.unverified.toLocaleString("ko-KR")}종`;
     if (data.check_only.length) {
       const note = node("div", undefined, "card");
@@ -351,12 +357,11 @@ function render(data) {
     }
     return;
   }
-  lastResult = data;
   if (data.families?.length) {
     renderFamilies(data);
     return;
   }
-  status.textContent = data.items.length < 3 ? `현재 조건에서 ${data.items.length}개를 찾았어요. 검색어와 지역은 직접 바꿀 수 있어요.` : "";
+  status.textContent = data.items.length < 3 ? `현재 조건에서 ${data.items.length}개를 찾았어요. 조건을 바꾸면 다시 비교할 수 있어요.` : "";
   results.replaceChildren();
   data.items.forEach((item, index) => {
     const card = node("article", undefined, "card");
@@ -453,9 +458,11 @@ function renderFamilies(data) {
     // 선호 음식군에 조건이 맞는 음식이 없으면 다른 음식군에서 골랐다고 알린다.
     data.category && data.preferred_foods === 0
       ? `선호 음식군 ${data.category}에는 지금 조건에 맞는 메뉴가 없어 다른 음식군에서 골랐어요.` : "",
-    top < 40 ? "조건에 꼭 맞는 메뉴가 적어 점수가 낮아요. 맵기·국물 조건을 '상관없음'으로 바꾸면 더 넓게 찾아요." : "",
+    top < 40 ? (data.active_filters?.spice || data.active_filters?.soup
+      ? "조건에 꼭 맞는 메뉴가 적어요. 지정한 맵기나 국물 조건을 풀면 더 넓게 찾아요."
+      : "지금 조건에서 적합도가 높은 메뉴가 적어요.") : "",
     data.recent_applied ? "최근에 본 메뉴는 조금 뒤로 보내고 다른 메뉴도 올렸어요." : "",
-    count < 3 ? `현재 조건에서 대표 메뉴 ${count}개를 찾았어요. 검색어와 지역은 직접 바꿀 수 있어요.`
+    count < 3 ? `현재 조건에서 대표 메뉴 ${count}개를 찾았어요. 조건을 바꾸면 다시 비교할 수 있어요.`
       : "먹고 싶은 메뉴를 고르면 실제 메뉴와 파는 가게를 보여 드려요.",
   ].filter(Boolean).join(" ");
   results.replaceChildren();
@@ -471,7 +478,7 @@ function renderFamilies(data) {
     button.addEventListener("click", () => showFamily(family, data));
     // 카드는 이름·음식군과 영양 한 줄만 보여 준다. LLM 한 줄 설명(comment)이 오면 영양 대신 보여 준다.
     // 추천 근거와 알레르기 확인 안내는 메뉴 상세에 남는다.
-    // 추천점수(100점 기준)는 순서를 정한 값 그대로다.
+    // 검색 이름과 선호 음식군을 먼저 적용하고, 같은 조건 안에서 추천점수를 비교한다.
     const score = node("p", undefined, "menu-score");
     score.append(node("strong", `${Math.round(family.best.score)}`), node("span", "점 · 추천점수"));
     if (family.best.needs_check) score.append(node("span", "재료 확인 필요", "tag warn check-tag"));
@@ -710,7 +717,7 @@ async function storeMap(holder, stores) {
     const marker = L.marker(store.location, {icon, title: `${at + 1}. ${store.store_name || store.menu_name}`}).addTo(map);
     const popup = node("div", undefined, "map-popup");
     popup.append(node("strong", `${at + 1}. ${store.store_name || "가게 이름 확인 중"}`),
-      node("span", `${store.menu_name} · 리뷰 ${store.reviews.toLocaleString("ko-KR")}건`
+      node("span", `${store.menu_name} · 이 메뉴 리뷰 ${store.reviews.toLocaleString("ko-KR")}건`
         + (store.distance_km != null ? ` · 약 ${store.distance_km}km` : "")));
     if (store.address) popup.append(node("span", store.address));
     marker.bindPopup(popup);
@@ -732,7 +739,7 @@ function familyStoreItem(store, family) {
   name.append(node("strong", store.menu_name), node("span", ` – ${store.store_name || "가게 이름 확인 중"}`));
   const distance = store.distance_km === undefined ? ""
     : store.distance_km === null ? " · 거리 정보 없음" : ` · 약 ${store.distance_km}km`;
-  text.append(name, node("p", `${store.district} · 이 가게 리뷰 ${store.reviews.toLocaleString("ko-KR")}건${distance}`,
+  text.append(name, node("p", `${store.district} · 이 가게의 해당 메뉴 리뷰 ${store.reviews.toLocaleString("ko-KR")}건${distance}`,
     "store-meta"));
   if (store.address) text.append(node("p", store.address, "store-address"));
   if (store.comment) {
@@ -936,6 +943,8 @@ function clearLocalProfile() {
   }
   cancelRecommendation();
   profile = {...defaults};
+  lastRequest = null;
+  lastResult = null;
   storageNotice = "";
   hasProfile = false;
   form.reset();
@@ -1083,6 +1092,13 @@ form.addEventListener("submit", async event => {
   const next = document.querySelector("#step-next");
   next.disabled = true;
   await pushProfile();
+  document.querySelector("#meal-category").value = "";
+  chatMessages = [];
+  chatConditions = {};
+  chatLog.replaceChildren();
+  chatChips.replaceChildren();
+  lastRequest = null;
+  lastResult = null;
   next.disabled = false;
   openModes();
 });
@@ -1112,7 +1128,13 @@ for (const button of document.querySelectorAll("[data-action]")) {
   });
 }
 
-document.querySelector("#delete-profile").addEventListener("click", async () => {
+const deleteProfileDialog = document.querySelector("#delete-profile-dialog");
+document.querySelector("#delete-profile").addEventListener("click", () => {
+  deleteProfileDialog.returnValue = "";
+  deleteProfileDialog.showModal();
+});
+deleteProfileDialog.addEventListener("close", async () => {
+  if (deleteProfileDialog.returnValue !== "delete") return;
   const peek = document.querySelector("#profile-summary");
   if (account) {
     try {
@@ -1141,9 +1163,9 @@ for (const button of document.querySelectorAll(".mode-switch button")) {
 function openChoice() {
   sourceMode = "choice";
   const meal = document.querySelector("#meal");
-  meal.elements.namedItem("goal").value = profile.goal;
-  meal.elements.namedItem("spice").value = profile.spice || "";
-  meal.elements.namedItem("soup").value = profile.soup || "";
+  for (const key of ["goal", "spice", "soup"]) {
+    for (const input of meal.elements.namedItem(key)) input.checked = input.value === profile[key];
+  }
   document.querySelector("#choice-profile").textContent = summary();
   showScreen("choice");
 }
@@ -1159,6 +1181,7 @@ function showPicked(payload) {
     payload.diet && payload.diet !== "general" ? dietLabels[payload.diet] : "",
     payload.query ? `검색어 ${payload.query}` : "",
     payload.allergy ? `알레르기 ${payload.allergy}` : "", payload.exclude ? `기피 ${payload.exclude}` : ""];
+  if (payload.avoid_menus) tags.push("제외 메뉴 " + payload.avoid_menus);
   document.querySelector("#picked-tags").replaceChildren(...tags.filter(Boolean).map(text => node("span", text, "tag")));
   document.querySelector("#picked").hidden = false;
 }
@@ -1262,6 +1285,8 @@ function startChat() {
   chatConditions = {};
   chatLog.replaceChildren();
   chatInput.value = "";
+  updateChatTurns();
+  setBusy(false);
   chatInput.placeholder = "오늘 먹고 싶은 음식이나 조건을 말해 주세요";
   showScreen("chat");
   bubble("오늘은 어떤 식사가 좋으세요? 원하는 메뉴나 맵기·국물·식사 목표를 자유롭게 이야기해 주세요.");
@@ -1270,8 +1295,15 @@ function startChat() {
 
 document.querySelector("#restart-chat").addEventListener("click", startChat);
 
+function updateChatTurns() {
+  const remaining = CHAT_TURN_LIMIT - chatMessages.length;
+  document.querySelector("#chat-turns").textContent = remaining
+    ? "대화 " + chatMessages.length + "/" + CHAT_TURN_LIMIT + " · " + remaining + "회 더 보낼 수 있어요."
+    : "대화 6회를 모두 사용했어요. 새 대화를 시작해 주세요.";
+}
+
 async function respond(answer) {
-  if (activeRecommendation || !answer.trim()) return;
+  if (activeRecommendation || chatMessages.length >= CHAT_TURN_LIMIT || !answer.trim()) return;
   if (!account) return openAccount();
   const text = answer.trim();
   if (text.length > 300) { bubble("300자 이내로 입력해 주세요."); return; }
@@ -1281,13 +1313,6 @@ async function respond(answer) {
   bubble(text, "user");
   chatInput.value = "";
   chatChips.replaceChildren();
-  // 입력은 메모리에서만 유지한다. 과거 대화를 조용히 버려 제한 조건이 사라지지 않게 한다.
-  if (chatMessages.length >= 6) {
-    bubble("대화 6회가 끝났어요. 조건을 정리해 다시 시작해 주세요.");
-    activeRecommendation = null;
-    setBusy(false);
-    return;
-  }
   const pending = [...chatMessages, text];
   const waiting = node("div", "AI가 조건과 추천 근거를 살펴보고 있어요…", "bubble bot");
   chatLog.append(waiting);
@@ -1295,16 +1320,20 @@ async function respond(answer) {
   try {
     const data = await request("/api/chat", {method: "POST",
       headers: {"Content-Type": "application/json"}, signal: controller.signal,
-      body: JSON.stringify({messages: pending,
+      body: JSON.stringify({messages: pending, recent: recentFoods(),
         profile: {...profilePayload(), ...chatConditions, district: document.querySelector("#chat-district").value}}),
     });
     if (controller.signal.aborted) return;
     chatMessages = pending;
     chatConditions = data.conditions;
+    updateChatTurns();
+    lastRequest = null;
+    showPicked(data.conditions);
     render(data.result);
+    if (data.result.families?.length) rememberFoods(data.result.families.map(family => family.name));
     bubble(data.reply);
     const selected = data.conditions;
-    bubble(`적용 조건: ${goalLabels[selected.goal]} · ${selected.spice === "hot" ? "매콤한 맛 선호" : selected.spice === "mild" ? "안 매운 맛 선호" : "맵기 무관"} · ${selected.soup === "yes" ? "국물 선호" : selected.soup === "no" ? "국물 없는 메뉴 선호" : "국물 무관"}${selected.query ? ` · 검색: ${selected.query}` : ""}${selected.taste ? ` · 맛: ${tasteText(selected.taste)}` : ""}. 더 바꾸고 싶은 조건을 말해 주세요.`);
+    bubble(`적용 조건: ${goalLabels[selected.goal]} · ${selected.spice === "hot" ? "매콤한 맛 선호" : selected.spice === "mild" ? "안 매운 맛 선호" : "맵기 무관"} · ${selected.soup === "yes" ? "국물 선호" : selected.soup === "no" ? "국물 없는 메뉴 선호" : "국물 무관"}${selected.query ? ` · 검색: ${selected.query}` : ""}${selected.taste ? ` · 맛: ${tasteText(selected.taste)}` : ""}.`);
     const button = node("button", "추천 결과와 매장 보기 →", "chat-results-link");
     button.type = "button";
     button.addEventListener("click", () => showScreen("results"));

@@ -78,6 +78,7 @@ class Profile:
     meal_category: str = ""
     # 맛 선호(TASTES 키, 쉼표 구분). 앞에 '-'가 붙으면 피하고 싶은 맛.
     taste: str = ""
+    avoid_menus: str = ""
 
     @classmethod
     def parse(cls, data: Any, categories: list[str]) -> "Profile":
@@ -92,12 +93,12 @@ class Profile:
             if not isinstance(value, str) or value not in options:
                 raise ValueError("목록에 있는 조건을 선택해 주세요.")
             values[field] = value
-        for field, maximum in {"query": 40, "exclude": 100, "allergy": 100}.items():
+        for field, maximum in {"query": 40, "exclude": 100, "allergy": 100, "avoid_menus": 300}.items():
             value = data.get(field, "")
             if not isinstance(value, str) or len(value) > maximum or any(ord(c) < 32 for c in value):
                 raise ValueError(f"입력은 {maximum}자 이내로 작성해 주세요.")
             if field != "query" and value.strip() and not re.search(r"[^,;/\s]", value):
-                raise ValueError("제한 재료 이름을 입력해 주세요.")
+                raise ValueError("제외할 재료나 메뉴 이름을 입력해 주세요.")
             values[field] = value.strip()
         taste = data.get("taste", "")
         if not isinstance(taste, str) or any(item.lstrip("-") not in TASTES
@@ -122,11 +123,24 @@ def clip(value: float) -> float:
 def nutrition_score(nutrition: dict[str, Any] | None, goal: str) -> float | None:
     if not nutrition or nutrition["basis"] != 100 or nutrition["unit"] != "g":
         return None
-    kcal, protein, carbs, fat, _ = nutrition["values"]
+    kcal, protein, carbs, fat, sodium = nutrition["values"]
     if goal == "protein":
         return clip(protein / 12) if protein is not None else None
     if goal == "light":
-        return clip(1 - (kcal - 80) / 220) if kcal is not None else None
+        if kcal is None:
+            return None
+        # 공공 자료의 명시된 g 단위 1회 참고량만 쓰고, 기준량(100g)을 한 끼로 보지 않는다.
+        portion = str(nutrition.get("serving_reference") or "").strip()
+        grams = re.fullmatch(r"(?:1인분\s*\(?)?(\d+(?:\.\d+)?)\s*g\)?", portion, re.I)
+        if grams and float(grams[1]) > 0:
+            ratio = float(grams[1]) / 100
+            energy_score = clip(1 - (kcal * ratio - 200) / 550)
+            sodium_score = clip(1 - sodium * ratio / 1800) if sodium is not None else None
+            return 0.7 * energy_score + 0.3 * sodium_score if sodium_score is not None else min(0.85, energy_score)
+        energy_score = clip(1 - (kcal - 80) / 220)
+        if sodium is None:
+            return min(0.85, energy_score)
+        return min(0.9, 0.7 * energy_score + 0.3 * clip(1 - sodium / 750))
     if kcal is None or kcal <= 0 or None in (protein, carbs, fat):
         return None
     total = 4 * protein + 4 * carbs + 9 * fat
@@ -140,9 +154,8 @@ def nutrition_score(nutrition: dict[str, Any] | None, goal: str) -> float | None
 SOUP = {"있음": "yes", "없음": "no"}
 SPICE_TABLE = {"보통 매움": "hot"}
 MIN_SPICE_ROWS = 3
-PREFERRED_FIRST = 1
 # 추천점수 감점(100점 기준). 고른 맵기·국물을 음식에서 확인할 수 없으면 조건마다, 선호 음식군 음식이
-# 있는데 그 밖의 음식이면 한 번 깎는다. 화면 순서는 감점까지 반영한 추천점수 순서와 같다.
+# 있는데 그 밖의 음식이면 한 번 깎는다. 검색 이름과 선호 음식군 우선순위가 같을 때 점수순으로 정렬한다.
 UNKNOWN_TASTE_PENALTY = 15
 OUTSIDE_PREFERRED_PENALTY = 25
 # 같은 조건이면 늘 같은 5개가 나오지 않게, 최근 추천(브라우저가 보낸 최근 3번)에 나온 음식은
@@ -155,6 +168,9 @@ REPEAT_LOW, REPEAT_HIGH = 0.30, 0.65
 # 구 단위 만족도는 리뷰가 이만큼 있을 때만 쓰고, 적으면 수원시 전체 값을 쓴다.
 MIN_QUALITY_REVIEWS = 30
 # 이름 끝이 국물 요리인 음식(매운탕·어묵탕·만둣국·김치찌개·순대전골·뼈해장국 등)은 국물 있음으로 본다.
+KNOWN_HOT = re.compile(r"고추바사삭|불족발|부대찌개")
+OPTION_ONLY = re.compile(r"(?:곱빼기|대곱빼기|사리|면|밥|공깃밥|토핑|치즈|소스|고기|양|육수)"
+                         r"(?:변경|추가|선택|업그레이드)(?:[+＋]?[0-9,]+원?)?")
 SOUP_NAME = re.compile(r"(탕|국|찌개|전골|국밥)$")
 # 이름 끝이 구이·볶음·튀김 등인 음식(삼겹살·목살·제육볶음·치킨·돈가스·덮밥 등)은 국물 없음으로 본다.
 DRY_NAME = re.compile(r"(구이|볶음|튀김|까스|가스|덮밥|볶음밥|김밥|주먹밥|살|바베큐|강정|치킨|윙·봉|텐더|"
@@ -261,11 +277,12 @@ def apply_reference(menus: list[dict[str, Any]], tags: dict[str, dict[str, Any]]
             found[food] = match_column(food, names)
         name, exact = found[food]
         soup = menu["soup"] or ("yes" if SOUP_NAME.search(food) else "no" if DRY_NAME.search(food) else "")
+        spice = menu["spice"] or ("hot" if KNOWN_HOT.search(compact(food + menu["name"])) else "")
         if name is None:
-            result.append({**menu, "soup": soup})
+            result.append({**menu, "soup": soup, "spice": spice})
             continue
         tag = tags[name]
-        result.append({**menu, "spice": menu["spice"] or (tag["spice"] if exact else ""),
+        result.append({**menu, "spice": spice or (tag["spice"] if exact else ""),
                        "soup": soup or tag["soup"], "reference_column": name, "side": tag.get("side", False),
                        "quality": tag.get("quality", {}),
                        "groups": list(dict.fromkeys([menu["category"], *tag["groups"]]))})
@@ -360,7 +377,13 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
                   if unchecked else "")
     region = profile.district or "수원시"
     query = compact(profile.query)
+    avoided = {compact(name) for name in re.split(r"[,;/]", profile.avoid_menus) if name.strip()}
     for menu in menus:
+        if OPTION_ONLY.fullmatch(compact(menu["name"])) or OPTION_ONLY.fullmatch(compact(menu["components"][0])):
+            continue
+        if avoided and any(compact(name) in avoided for name in menu["components"]):
+            excluded += 1
+            continue
         evidence = menu["regions"].get(region)
         groups = menu.get("groups") or [menu["category"]]
         if not evidence or (profile.meal_category and profile.meal_category not in groups):
@@ -375,8 +398,9 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
         # 고른 맵기·국물과 반대로 확인된 메뉴는 뺀다. 메뉴 이름의 단서뿐 아니라 음식 자체의 값도 본다
         # (예: 매운 쪽을 골랐을 때 '매콤한 감자피자'가 있어도 안 매운 음식인 피자는 뺀다).
         # 정보가 없는 메뉴는 남기고 점수만 낮춘다.
+        name_spice = menu["spice"] or ("hot" if KNOWN_HOT.search(compact(menu["components"][0] + menu["name"])) else "")
         if any(value and actual and value != actual
-               for value, actual in ((profile.spice, menu["spice"]), (profile.soup, menu["soup"]),
+               for value, actual in ((profile.spice, name_spice), (profile.soup, menu["soup"]),
                                      (profile.spice, menu.get("family_spice", "")),
                                      (profile.soup, menu.get("family_soup", "")))):
             mismatched += 1
@@ -422,7 +446,7 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
         e = (0.7 * clip(math.log1p(evidence["reviews"]) / math.log1p(150))
              + 0.3 * clip(math.log1p(evidence["stores"]) / math.log1p(10)))
         s, r, quality_text = quality_parts(menu, profile.district)
-        reasons = [f"{region} 리뷰 {evidence['reviews']:,}건 · 매장 {evidence['stores']:,}곳",
+        reasons = [f"{region} 이 메뉴 리뷰 {evidence['reviews']:,}건 · 매장 {evidence['stores']:,}곳",
                    f"{GOALS[profile.goal]} 적합도 {round(n * 100)}점 (일반음식 참고값)"
                    if n is not None else "비교할 참고 영양값 부족", quality_text, *matches]
         if check_note:
@@ -440,7 +464,7 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
     middle_r = median([menu["_parts"][4] for menu in ranked if menu["_parts"][4] is not None])
     # 선호 음식군에 맞는 음식이 하나라도 있으면 그 밖의 음식은 감점한다.
     preferred_foods = len({compact(menu["components"][0]) for menu in ranked if menu["_preferred"]})
-    preferred_first = preferred_foods >= PREFERRED_FIRST
+    preferred_first = bool(preferred_foods)
     for menu in ranked:
         n, t, e, s, r = menu.pop("_parts")
         score = 100 * (WEIGHTS["nutrition"] * (n if n is not None else middle)
@@ -448,8 +472,7 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
                        + WEIGHTS["satisfaction"] * (s if s is not None else middle_s)
                        + WEIGHTS["reorder"] * (r if r is not None else middle_r))
         unknown_taste = menu.pop("_unknown_taste")
-        outside = preferred_first and not menu.pop("_preferred")
-        menu.pop("_preferred", None)
+        menu["_outside"] = outside = preferred_first and not menu.pop("_preferred")
         times = min(RECENT_MAX, seen_count[compact(menu["components"][0])])
         penalty = (UNKNOWN_TASTE_PENALTY * unknown_taste + (OUTSIDE_PREFERRED_PENALTY if outside else 0)
                    + RECENT_PENALTY * times)
@@ -473,10 +496,11 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
             return 0
         return 1 if name.endswith(query) else 2 if query in name else 3
 
-    ranked.sort(key=lambda x: (name_tier(x), -x["score"], x["_unknown_nutrition"], -x["evidence"]["reviews"],
+    ranked.sort(key=lambda x: (name_tier(x), x["_outside"], -x["score"], x["_unknown_nutrition"],
+                               -x["evidence"]["reviews"],
                                x["standard_menu_id"]))
     for menu in ranked:
-        del menu["_unknown_nutrition"]
+        del menu["_unknown_nutrition"], menu["_outside"]
     check.sort(key=lambda x: (-x["review_count"], x["standard_menu_id"]))
     first_choices: list[dict[str, Any]] = []
     alternatives: list[dict[str, Any]] = []
@@ -497,7 +521,7 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
 
 # 결과가 0개일 때 하나씩 빼 보는 조건(앞에서부터). 국밥에 '국물 없음'처럼 서로 맞지 않는 조합이나
 # 그 지역에 메뉴가 없는 경우에 빈 화면 대신 조건을 넓혀 보여 주고 무엇을 뺐는지 알린다.
-# 식단·알레르기·기피 재료·검색어·음식군은 빼지 않는다.
+# 안 매운 쪽·식단·알레르기·기피 재료·검색어·음식군은 빼지 않는다.
 RELAXABLE = (("soup", "국물 조건"), ("spice", "맵기 조건"), ("district", "지역(수원시 전체로 넓힘)"))
 
 
@@ -518,7 +542,8 @@ def recommend_relaxed(menus: list[dict[str, Any]], profile: Profile,
     result["relaxed"] = []
     if good(result):
         return result, profile
-    fields = [(field, label) for field, label in RELAXABLE if getattr(profile, field)]
+    fields = [(field, label) for field, label in RELAXABLE
+              if getattr(profile, field) and not (field == "spice" and profile.spice == "mild")]
     for size in range(1, len(fields) + 1):
         for chosen in combinations(fields, size):
             current = replace(profile, **{field: "" for field, _ in chosen})

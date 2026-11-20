@@ -126,14 +126,13 @@ class StoreApiTest(unittest.TestCase):
         status, found = self.call("/api/recommend/stores", {"menu_ids": ids, "district": ""})
         self.assertEqual(status, 200)
         self.assertEqual([(s["menu_name"], s["store_name"], s["district"], s["reviews"]) for s in found["stores"]],
-                         [("최상급 육회", "가 육회", "권선구", 5), ("최상급 육회", "나 식당", "영통구", 2),
-                          ("[별미한점] 육회", "가 육회", "권선구", 2)])
+                         [("최상급 육회", "가 육회", "권선구", 5), ("최상급 육회", "나 식당", "영통구", 2)])
         self.assertEqual((found["store_count"], found["citywide"], found["names_available"]), (2, False, True))
         status, found = self.call("/api/recommend/stores", {"menu_ids": ids, "district": "영통구"})
         self.assertEqual([s["store_name"] for s in found["stores"]], ["나 식당"])
         # 고른 구에 없으면 수원 전체로 넓히고 알린다.
         status, found = self.call("/api/recommend/stores", {"menu_ids": ids, "district": "장안구"})
-        self.assertEqual((found["citywide"], len(found["stores"])), (True, 3))
+        self.assertEqual((found["citywide"], len(found["stores"])), (True, 2))
         # 매장 이름이 없는 가게는 null로 둔다.
         status, found = self.call("/api/recommend/stores", {"menu_ids": [IDS["제육볶음 200g"]], "district": "장안구"})
         self.assertEqual(found["stores"][0]["store_name"], None)

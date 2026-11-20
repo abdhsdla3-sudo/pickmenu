@@ -8,6 +8,7 @@ PostgreSQL의 매장 자료에서 같은 매장 ID(`SW_…`)로 붙인다. 매�
 import csv
 import math
 import os
+import re
 import sqlite3
 import threading
 import time
@@ -108,7 +109,7 @@ def store_rows(path: Path, menu_ids: list[str], district: str) -> list[tuple[str
     where, params = _filter(menu_ids, district)
     with closing(connect(path)) as db:
         return db.execute(f"""
-            SELECT trace.menu_id, trace.store_id, review.district, count(*)
+            SELECT trace.menu_id, trace.store_id, review.district, count(DISTINCT trace.review_id)
             FROM trace JOIN review USING(review_id) WHERE {where}
             GROUP BY trace.menu_id, trace.store_id, review.district""", params).fetchall()
 
@@ -162,11 +163,27 @@ def stores(path: Path, menus: list[dict[str, Any]], district: str, limit: int = 
     scores = {(row[0], row[1]): store_score(row[3], km.get(row[1])) for row in rows} if origin else {}
     rows.sort(key=lambda row: (order[row[0]], -scores.get((row[0], row[1]), 0), -row[3], row[1]))
     names = store_names()
+    # 정렬한 뒤 같은 매장은 조건에 가장 맞는 메뉴 한 건만 남긴다.
+    shown_ids: set[str] = set()
+    shown_places: set[tuple[str, str]] = set()
+    distinct_rows = []
+    for row in rows:
+        store_id = row[1]
+        name = re.sub(r"[^\w]", "", ((names or {}).get(store_id) or "").casefold())
+        address = re.sub(r"\s+", "", store_address(store_id) or "")
+        key = (name, address)
+        if store_id in shown_ids or (name and address and key in shown_places):
+            continue
+        shown_ids.add(store_id)
+        if name and address:
+            shown_places.add(key)
+        distinct_rows.append(row)
+    rows = distinct_rows
     by_id = {menu["standard_menu_id"]: menu for menu in menus}
     result: dict[str, Any] = {
         "district": district, "citywide": citywide, "names_available": names is not None,
-        "store_count": len(store_ids), "total": len(rows),
-        "location_used": origin is not None, "located": len(km),
+        "store_count": len(rows), "total": len(rows),
+        "location_used": origin is not None, "located": sum(row[1] in km for row in rows),
         "stores": [{"standard_menu_id": mid, "menu_name": by_id[mid]["name"],
                     "store_name": (names or {}).get(store_id), "district": where, "reviews": count}
                    for mid, store_id, where, count in rows[:limit]]}

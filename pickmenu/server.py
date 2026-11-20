@@ -316,7 +316,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 profile, history = llm.conditions(payload, categories(menus), foods(menus))
-                result = self.recommendation(menus, profile)
+                result = self.recommendation(menus, profile, recent_foods(payload))
                 self.send_json(200, {"reply": llm.reply(result, history), "result": result,
                                      "conditions": vars(profile)})
             except ValueError as error:
@@ -368,6 +368,7 @@ class Handler(BaseHTTPRequestHandler):
     def recommendation(self, menus: list[dict[str, Any]], profile: Profile,
                        recent: list[str] | None = None) -> dict[str, Any]:
         result, used = recommend_relaxed(menus, profile, recent or [])
+        result["active_filters"] = {"spice": used.spice, "soup": used.soup}
         result["items"] = [public_menu(menu) for menu in result["items"]]
         result["families"] = [self.family(family, used.district) for family in result["families"]]
         return result

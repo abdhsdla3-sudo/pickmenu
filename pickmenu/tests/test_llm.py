@@ -136,7 +136,14 @@ class LLMTest(unittest.TestCase):
         for text, food in [("햄버거 먹고 싶어", "햄버거"), ("버거 추천해줘", "햄버거"), ("치킨마요덮밥 있어?", "치킨마요덮밥"),
                            ("햄버거 말고 피자", "피자"), ("치킨은 싫어", ""), ("짜장 땡긴다", "짜장면"), ("회사 근처", "")]:
             with self.subTest(text=text):
-                self.assertEqual(llm.named_food(text, list(foods)), food)
+                positive, _ = llm.food_mentions(text, list(foods))
+                self.assertEqual(positive[-1] if positive else "", food)
+        foods.update({"짬뽕": {"중식"}, "짬뽕밥": {"중식"}})
+        with patch.object(llm, "generate", return_value={"query": "짬뽕"}):
+            result, _ = llm.conditions({"messages": ["짬뽕밥 추천해 줘", "짬뽕밥을 빼고"],
+                                       "profile": {"query": "짬뽕밥"}}, ["중식"], foods)
+        self.assertEqual((result.query, result.avoid_menus), ("", "짬뽕밥"))
+        self.assertEqual(llm.food_mentions("짬뽕밥 빼고 짬뽕 먹을래", list(foods)), (["짬뽕"], ["짬뽕밥"]))
         with patch.object(llm, "generate", return_value={"meal_category": "버거·샌드위치"}):
             profile, _ = llm.conditions({"messages": ["햄버거 먹고 싶어"], "profile": {}}, ["버거·샌드위치"], foods)
         self.assertEqual((profile.query, profile.meal_category), ("햄버거", "버거·샌드위치"))

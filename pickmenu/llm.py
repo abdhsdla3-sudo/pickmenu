@@ -106,8 +106,12 @@ def conditions(payload: Any, categories: list[str],
     # 사용자가 메뉴 이름을 말했으면 가장 뒤에 말한(같으면 가장 긴) 이름을 검색어로 쓴다. AI가 음식군만 넘기거나
     # ("햄버거 먹고 싶어" → 버거·샌드위치), 이름을 줄이거나(양념치킨 → 치킨), 앞 턴 메뉴를 남긴 경우
     # ("돈가스 추천해줘 / 아니 칼국수로 바꿔줘")를 바로잡는다.
-    if food := named_food(text, list(foods or {})):
-        values["query"] = food
+    positives, avoided = food_mentions(text, list(foods or {}))
+    values["avoid_menus"] = ",".join(avoided)
+    if positives:
+        values["query"] = positives[-1]
+    elif avoided and any(values["query"] and values["query"] in food for food in avoided):
+        values["query"] = ""
     # 음식군을 가리키는 말("동남아", "분식")만 검색어가 되면 메뉴 이름과 맞지 않아 0개가 된다. 음식군으로 충분하다.
     elif foods and values.get("query") and values["query"] not in foods and any(
             values["query"] in category_words(category) or values["query"] == category for category in categories):
@@ -195,7 +199,7 @@ def menu_query(value: Any) -> str:
 FOOD_ALIASES = {"버거": "햄버거", "돈까스": "돈가스", "짜장": "짜장면", "자장면": "짜장면", "후라이드": "후라이드치킨",
                 "양념통닭": "양념치킨", "통닭": "치킨", "떡볶기": "떡볶이", "김치찌게": "김치찌개", "된장찌게": "된장찌개",
                 "부침개": "전", "전 요리": "전", "전요리": "전"}
-FOOD_NEGATIVE = re.compile(r"^\s*(?:은|는|이|가|도)?\s*(?:말고|빼고|싫|별로|말구|아니|안\s*먹|못\s*먹|질려|물려)")
+FOOD_NEGATIVE = re.compile(r"^\s*(?:은|는|이|가|도|을|를)?\s*(?:말고|빼|싫|별로|말구|아니|안\s*먹|못\s*먹|질려|물려)")
 
 
 def without_foods(text: str, foods: dict[str, set[str]]) -> str:
@@ -205,8 +209,8 @@ def without_foods(text: str, foods: dict[str, set[str]]) -> str:
     return text
 
 
-def named_food(text: str, foods: list[str]) -> str:
-    """문장에서 사용자가 원한다고 말한 대표 음식명. 가장 뒤에 나온 것, 같으면 더 긴 이름. 부정한 것은 뺀다."""
+def food_mentions(text: str, foods: list[str]) -> tuple[list[str], list[str]]:
+    """긴 메뉴 이름을 먼저 확정하고, 같은 메뉴의 마지막 요청을 적용한다."""
     found: list[tuple[int, int, str]] = []
     names = {food: food for food in foods if len(food) >= 2}
     names.update({alias: food for alias, food in FOOD_ALIASES.items() if food in foods})
@@ -215,13 +219,14 @@ def named_food(text: str, foods: list[str]) -> str:
         pattern = (rf"(?<![가-힣]){re.escape(word)}(?=으로|로|이|은|을|도|\s|$|[!?.,])" if len(word) == 1
                    else re.escape(word))
         for match in re.finditer(pattern, text):
-            if not FOOD_NEGATIVE.match(text[match.end():match.end() + 8]):
-                found.append((match.end(), len(word), food))
-    if not found:
-        return ""
-    # 더 긴 이름 안에 든 짧은 이름(치킨마요덮밥 안의 치킨)은 버린다.
+            found.append((match.end(), len(word), food))
     found = [f for f in found if not any(o[0] >= f[0] and o[0] - o[1] <= f[0] - f[1] and o[1] > f[1] for o in found)]
-    return max(found)[2]
+    latest: dict[str, bool] = {}
+    for end, _, food in sorted(found):
+        latest.pop(food, None)
+        latest[food] = not FOOD_NEGATIVE.match(text[end:])
+    return ([food for food, wanted in latest.items() if wanted],
+            [food for food, wanted in latest.items() if not wanted])
 
 
 def category_words(category: str) -> tuple[str, ...]:

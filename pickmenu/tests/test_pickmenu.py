@@ -75,6 +75,27 @@ class RulesTest(unittest.TestCase):
         names = [item["name"] for item in recommend(menus, Profile.parse({"query": "치킨", "goal": "protein"}, []))["items"]]
         self.assertEqual(names, ["치킨", "양념치킨", "치킨마요덮밥"])
 
+    def test_saved_group_first_and_options_removed(self):
+        menus = [fixture("육회", "MN_1"), {**fixture("샐러드", "MN_2"), "category": "샐러드·건강식"},
+                 fixture("곱빼기 추가", "MN_3")]
+        profile = Profile.parse({"category": "샐러드·건강식", "goal": "light"}, ["샐러드·건강식"])
+        found = recommend(menus, profile, ["샐러드", "샐러드"])
+        self.assertEqual([row["name"] for row in found["families"]], ["샐러드", "육회"])
+        self.assertEqual(recommend(menus, Profile.parse({"avoid_menus": "육회"}, []))["eligible"], 1)
+
+    def test_mild_excludes_inferred_hot_without_relaxing(self):
+        menus = [fixture(name, str(i)) for i, name in enumerate(("불족발", "고추바사삭", "부대찌개"))]
+        result, used = recommend_relaxed(menus, Profile.parse({"spice": "mild"}, []))
+        self.assertEqual((used.spice, result["items"]), ("mild", []))
+        self.assertEqual(recommend(menus, Profile.parse({"spice": ""}, []))["eligible"], 3)
+
+    def test_light_meal_checks_sodium_and_serving(self):
+        stew = {"basis": 100, "unit": "g", "values": [61, 3.8, 3, 3.8, 491]}
+        lighter = {**stew, "values": [61, 3.8, 3, 3.8, 40]}
+        serving = {**stew, "serving_reference": "1인분(400g)"}
+        self.assertLess(nutrition_score(stew, "light"), nutrition_score(lighter, "light"))
+        self.assertLess(nutrition_score(serving, "light"), nutrition_score(stew, "light"))
+
     def test_relax_impossible_combination(self):
         menus = [fixture("비빔밥", "MN_1")]  # 국물 없는 밥·덮밥
         result, used = recommend_relaxed(menus, Profile.parse({"soup": "yes"}, []))
