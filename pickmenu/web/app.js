@@ -448,6 +448,7 @@ function renderFamilies(data) {
   const count = data.families.length;
   const top = data.families[0]?.best.score ?? 0;
   status.textContent = [
+    data.relaxed?.length ? `고른 조건에 맞는 메뉴가 없어 ${data.relaxed.join("·")}을 빼고 찾았어요.` : "",
     data.unverified ? "알레르기·채식 조건은 메뉴 재료 정보가 부족해 확인하지 못했어요. '재료 확인 필요' 메뉴는 주문 전에 가게에 꼭 확인해 주세요." : "",
     // 선호 음식군에 조건이 맞는 음식이 없으면 다른 음식군에서 골랐다고 알린다.
     data.category && data.preferred_foods === 0

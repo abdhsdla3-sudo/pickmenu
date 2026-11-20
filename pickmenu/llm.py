@@ -44,7 +44,9 @@ def generate(instruction: str, data: Any, schema: dict[str, Any] | None = None,
         _slot.release()
 
 
-def conditions(payload: Any, categories: list[str]) -> tuple[Profile, list[str]]:
+def conditions(payload: Any, categories: list[str],
+               foods: dict[str, set[str]] | None = None) -> tuple[Profile, list[str]]:
+    """foods: 대표 음식명 → 그 음식이 속한 음식군. 사용자가 말한 메뉴 이름을 찾는 데 쓴다."""
     if not isinstance(payload, dict):
         raise ValueError("대화 입력을 확인해 주세요.")
     history = payload.get("messages")
@@ -64,11 +66,13 @@ def conditions(payload: Any, categories: list[str]) -> tuple[Profile, list[str]]
     values = dict(vars(profile))
     # 작은 모델이 말하지 않은 음식군·조건까지 채우는 것을 막는다.
     text = " ".join(history)
+    # 맵기·국물·맛 단서는 메뉴 이름을 지운 문장에서 찾는다("감자탕"의 '탕'을 국물 조건으로 보지 않는다).
+    cue_text = without_foods(text, foods or {})
     for key, options in SUPPORT.items():
         # 문장에서 가장 뒤에 나온 표현을 따른다. 부정 표현("매운 건 싫어")은 긍정 표현("매운")을 포함해
         # 더 길고 더 뒤에서 끝나므로 이긴다.
         matched = [(match.end(), len(match.group()), value) for value, pattern in options.items()
-                   for match in re.finditer(pattern, text)]
+                   for match in re.finditer(pattern, cue_text)]
         if matched:
             result[key] = max(matched)[2]
         else:
@@ -86,12 +90,31 @@ def conditions(payload: Any, categories: list[str]) -> tuple[Profile, list[str]]
     category = result.get("meal_category")
     if category in categories and any(word in text for word in category_words(category)):
         values["meal_category"] = category
+    elif not category:
+        for hint, pattern in CATEGORY_HINTS.items():
+            if hint in categories and re.search(pattern, cue_text):
+                values["meal_category"] = hint
+                break
     allergy, exclude = ingredients(text, result.get("allergy", ""), result.get("exclude", ""))
     for field, model_terms in (("allergy", allergy), ("exclude", exclude)):
         terms = [term.strip() for term in re.split(r"[,;/]", f"{values[field]},{model_terms}") if term.strip()]
         terms.extend(match.group(1) for message in history for match in EXPLICIT_INGREDIENT[field].finditer(message))
         values[field] = ",".join(dict.fromkeys(terms))
-    values["taste"] = tastes(text)
+    allergic = set(values["allergy"].split(","))
+    values["exclude"] = ",".join(term for term in values["exclude"].split(",") if term and term not in allergic)
+    values["taste"] = tastes(cue_text)
+    # 사용자가 메뉴 이름을 말했으면 가장 뒤에 말한(같으면 가장 긴) 이름을 검색어로 쓴다. AI가 음식군만 넘기거나
+    # ("햄버거 먹고 싶어" → 버거·샌드위치), 이름을 줄이거나(양념치킨 → 치킨), 앞 턴 메뉴를 남긴 경우
+    # ("돈가스 추천해줘 / 아니 칼국수로 바꿔줘")를 바로잡는다.
+    if food := named_food(text, list(foods or {})):
+        values["query"] = food
+    # 음식군을 가리키는 말("동남아", "분식")만 검색어가 되면 메뉴 이름과 맞지 않아 0개가 된다. 음식군으로 충분하다.
+    elif foods and values.get("query") and values["query"] not in foods and any(
+            values["query"] in category_words(category) or values["query"] == category for category in categories):
+        values["query"] = ""
+    # 말한 메뉴가 속하지 않은 음식군은 버린다("김밥"을 밥·덮밥으로 보면 결과가 0개가 된다).
+    if foods and values.get("query") in foods and values.get("meal_category") not in foods[values["query"]]:
+        values["meal_category"] = ""
     for message in history:
         if EXPLICIT_VEGAN.search(message):
             values["diet"] = "vegan"
@@ -121,15 +144,27 @@ CATEGORY_WORDS = {"국밥·해장국": ("국밥", "해장국", "해장"), "닭�
                   "양식": ("양식", "파스타", "스테이크", "pasta"), "중식": ("중식", "중국", "짜장", "짬뽕"),
                   "해산물": ("해산물", "해물", "생선"), "전·부침": ("부침", "전 ", "전요리", "파전", "전을"),
                   "찌개·탕": ("찌개", "탕"), "면": ("면", "국수"), "죽": ("죽",)}
+# AI가 음식군을 넘기지 않았을 때만 쓰는 분명한 단서(메뉴 이름을 지운 문장에서 찾는다).
+CATEGORY_HINTS = {"닭요리": r"닭\s*요리", "면": r"(?<![가-힣])국수|면\s*요리", "국밥·해장국": r"해장",
+                  "샐러드·건강식": r"건강식", "전·부침": r"부침|(?<![가-힣])전\s*요리"}
 ALLERGY_CUE = r"알레르기|알러지|앨러지"
 EXCLUDE_CUE = r"싫|빼|말고|안\s*들어|못\s*먹|안\s*먹|별로|제외|없이|넣지|피하고\s*싶"
-# 모델이 명시적인 제한을 누락해도 이전 대화에서 확인한 제한은 이어간다.
-KNOWN_INGREDIENTS = "|".join(sorted({word for aliases in ALIASES for word in aliases} | {"해물", "해산물"},
+# '못 먹어'는 알레르기일 수도 있지만 이 말들은 분명한 기피다(AI가 알레르기로 넘겨도 기피로 둔다).
+DISLIKE_CUE = r"싫|빼|말고|안\s*들어|별로|제외|없이|넣지"
+# 재료 뒤의 단서는 같은 마디 안에서만 본다("라면 먹고 싶은데 가지 싫어"의 '싫어'는 라면이 아니라 가지에 걸린다).
+CLAUSE_END = r"[,.!?\n]|[은는인]데|지만|하고\s|고\s"
+# 알레르기·기피로 자주 말하는 재료. 모델이 누락해도 문장에서 직접 찾는다.
+COMMON_INGREDIENTS = {"해물", "해산물", "게", "꽃게", "오이", "가지", "버섯", "피망", "파프리카", "당근", "고수", "양파", "파",
+                      "대파", "마늘", "생강", "셀러리", "토마토", "생선", "고등어", "연어", "참치", "굴", "조개", "홍합", "전복",
+                      "오징어", "문어", "낙지", "견과", "호두", "아몬드", "잣", "메밀", "복숭아", "키위", "참깨", "깨", "내장",
+                      "곱창", "닭고기", "소고기", "양고기", "순대", "날것", "회", "고기"}
+# 모델이 이전 대화에서 확인한 제한을 누락해도 문장에 명시한 제한은 이어간다.
+KNOWN_INGREDIENTS = "|".join(sorted({word for aliases in ALIASES for word in aliases} | COMMON_INGREDIENTS,
                                     key=lambda word: (-len(word), word)))
 EXPLICIT_INGREDIENT = {
     "allergy": re.compile(rf"(?<![가-힣])({KNOWN_INGREDIENTS})(?:에|은|는|이|가)?\s*(?:{ALLERGY_CUE})"),
-    "exclude": re.compile(rf"(?<![가-힣])({KNOWN_INGREDIENTS})(?:은|는|이|가|을|를|도)?\s*"
-                          r"(?:못\s*먹|빼\s*줘|제외해|피하고\s*싶)"),
+    "exclude": re.compile(rf"(?<![가-힣])({KNOWN_INGREDIENTS})(?:은|는|이|가|을|를|도|랑|이랑)?\s*"
+                          r"(?:못\s*먹|빼|제외|피하고\s*싶|싫|별로|안\s*들어|말고|없이|넣지)"),
 }
 EXPLICIT_VEGAN = re.compile(r"(?<![가-힣])비건(?:주의자)?(?:이야|이에요|입니다)(?=$|\s|[,.!?])")
 EXPLICIT_VEGETARIAN = re.compile(r"(?<![가-힣])채식주의자(?:야|예요|입니다)(?=$|\s|[,.!?])")
@@ -139,7 +174,8 @@ EXPLICIT_DISTRICT = re.compile(rf"({'|'.join(sorted(DISTRICTS - {''}))})\s*(?:�
 # 검색어는 메뉴 이름만 받는다. "시원한 거", "야식으로 먹을 만한 거", "싸고 양 많은 거" 같은 말은
 # 검색어가 되면 아무 메뉴와도 맞지 않아 추천이 0개가 된다.
 NOT_MENU = re.compile(r"[거것]$|먹|싶|만한|같은|좋은|많은|낮은|높은|싸고|싼|으로|처럼|말고|^.{13,}$|"
-                      r"국물|단백질|매운|맵|가볍|가벼|순한|알레르기")
+                      r"국물|단백질|매운|맵|가볍|가벼|순한|알레르기|단백|다이어트|균형|골고루|칼로리|주의자|채식|"
+                      r"[가-힣]구에서|구\s*근처|해장하")
 
 
 def menu_query(value: Any) -> str:
@@ -148,9 +184,44 @@ def menu_query(value: Any) -> str:
     # "국밥 중에서" → 국밥, "족발 쪽으로" → 족발
     value = re.sub(r"\s*(?:중에서|중|쪽으로|쪽|위주로|위주|메뉴|종류|요리|음식)$", "", value.strip())
     # "새콤한"처럼 맛 표현만 있으면 검색어가 아니다(맛은 taste로 따로 반영한다).
-    if not value or NOT_MENU.search(value) or any(re.search(p, value) for p in TASTE_WORDS.values()):
+    # 지역 이름("권선구")은 검색어가 아니다(지역은 district로 따로 반영한다).
+    if (not value or value in DISTRICTS or NOT_MENU.search(value)
+            or any(re.search(p, value) for p in TASTE_WORDS.values())):
         return ""
     return value
+
+
+# 사용자가 줄여 부르거나 다르게 쓰는 메뉴 이름 → 대표 음식명
+FOOD_ALIASES = {"버거": "햄버거", "돈까스": "돈가스", "짜장": "짜장면", "자장면": "짜장면", "후라이드": "후라이드치킨",
+                "양념통닭": "양념치킨", "통닭": "치킨", "떡볶기": "떡볶이", "김치찌게": "김치찌개", "된장찌게": "된장찌개",
+                "부침개": "전", "전 요리": "전", "전요리": "전"}
+FOOD_NEGATIVE = re.compile(r"^\s*(?:은|는|이|가|도)?\s*(?:말고|빼고|싫|별로|말구|아니|안\s*먹|못\s*먹|질려|물려)")
+
+
+def without_foods(text: str, foods: dict[str, set[str]]) -> str:
+    """문장에서 메뉴 이름(2자 이상, 긴 것부터)을 공백으로 지운다."""
+    for food in sorted((f for f in foods if len(f) >= 2), key=len, reverse=True):
+        text = text.replace(food, " ")
+    return text
+
+
+def named_food(text: str, foods: list[str]) -> str:
+    """문장에서 사용자가 원한다고 말한 대표 음식명. 가장 뒤에 나온 것, 같으면 더 긴 이름. 부정한 것은 뺀다."""
+    found: list[tuple[int, int, str]] = []
+    names = {food: food for food in foods if len(food) >= 2}
+    names.update({alias: food for alias, food in FOOD_ALIASES.items() if food in foods})
+    single = {food: food for food in foods if len(food) == 1 and food not in {"전"}}
+    for word, food in [*names.items(), *single.items()]:
+        pattern = (rf"(?<![가-힣]){re.escape(word)}(?=으로|로|이|은|을|도|\s|$|[!?.,])" if len(word) == 1
+                   else re.escape(word))
+        for match in re.finditer(pattern, text):
+            if not FOOD_NEGATIVE.match(text[match.end():match.end() + 8]):
+                found.append((match.end(), len(word), food))
+    if not found:
+        return ""
+    # 더 긴 이름 안에 든 짧은 이름(치킨마요덮밥 안의 치킨)은 버린다.
+    found = [f for f in found if not any(o[0] >= f[0] and o[0] - o[1] <= f[0] - f[1] and o[1] > f[1] for o in found)]
+    return max(found)[2]
 
 
 def category_words(category: str) -> tuple[str, ...]:
@@ -165,12 +236,19 @@ def ingredients(text: str, allergy: str, exclude: str) -> tuple[str, str]:
     """
     kept: dict[str, list[str]] = {"allergy": [], "exclude": []}
     for term in dict.fromkeys(t.strip() for t in re.split(r"[,;/]", f"{allergy},{exclude}")):
-        if not term or term not in text:
+        # 맛·맵기 표현("기름진", "매운")은 재료가 아니다. 맛은 taste, 맵기는 spice로 따로 반영한다.
+        if (not term or term not in text or re.search(r"매운|맵|매콤", term)
+                or any(re.fullmatch(rf"(?:{p})[가-힣]?", term) for p in TASTE_WORDS.values())):
             continue
         for at in (m.end() for m in re.finditer(re.escape(term), text)):
-            tail = re.split(r"[,.!?\n]", text[at:at + 14])[0]
+            if re.match(r"[가-힣]", text[at:at + 1]) and not re.match(r"이랑|랑|은|는|이|가|을|를|도|에|만", text[at:]):
+                continue
+            tail = re.split(CLAUSE_END, text[at:at + 14])[0]
             if re.search(ALLERGY_CUE, tail):
                 kept["allergy"].append(term)
+                break
+            if re.search(DISLIKE_CUE, tail):
+                kept["exclude"].append(term)
                 break
             if re.search(EXCLUDE_CUE, tail):
                 kept["exclude" if term not in re.split(r"[,;/]", allergy) else "allergy"].append(term)
@@ -187,7 +265,7 @@ def object_particle(word: str) -> str:
 
 # 맛 표현(키는 recommend.TASTES). 맵기는 SUPPORT의 spice가 맡는다.
 TASTE_WORDS = {
-    "sweet": r"달달|달콤|달짝|달게|달고|단\s*(?:거|것|게|음식|맛|걸)|단짠|들큰",
+    "sweet": r"달달|달콤|달짝|달게|달고|(?<![가-힣])단\s*(?:거|것|건|게|음식|맛|걸)|(?<![가-힣])단고(?=\s)|단짠|들큰",
     "salty": r"짠|짜고|짜게|짭짤|짭조름|단짠|간이\s*(?:센|세|쎈|강한)|간간",
     "sour": r"새콤|새큼|시큼|상큼|신맛|시큰|새콤달콤",
     "nutty": r"고소",
@@ -209,7 +287,8 @@ def tastes(text: str) -> str:
     for key, pattern in TASTE_WORDS.items():
         for match in re.finditer(pattern, text):
             tail = text[match.end():match.end() + 10]
-            negative = re.match(r"[가-힣]{0,3}\s*(?:거|것|건|게|음식|맛)?" + NEGATIVE, tail)
+            negative = (re.match(r"[가-힣]{0,3}\s*(?:거|것|건|게|음식|맛)?" + NEGATIVE, tail)
+                        or re.match(r"[가-힣]{0,2}지\s*(?:않|말)", tail))
             found[key] = "-" + key if negative else key
     return ",".join(found.values())
 
@@ -230,7 +309,9 @@ def reply(result: dict[str, Any], history: list[str] | None = None) -> str:
         return " ".join(filter(None, (
             "현재 조건에 맞는 메뉴를 찾지 못했어요. 지역이나 맵기·국물·메뉴 조건을 바꿔 다시 말씀해 주세요.", note)))
     names = [c["name"] for c in candidates]
+    relaxed = result.get("relaxed") or []
     summary = " ".join(filter(None, (
+        f"말씀하신 조건에 맞는 메뉴가 없어 {'·'.join(relaxed)}을 빼고 찾았어요." if relaxed else "",
         "조건에 맞춰 " + ", ".join(names) + object_particle(names[-1]) + " 골랐어요.", note,
         "알레르기·채식 조건은 재료 정보가 없어 확인하지 못했으니 주문 전에 가게에 꼭 확인해 주세요."
         if any(f["best"].get("needs_check") for f in result["families"][:5]) else "")))

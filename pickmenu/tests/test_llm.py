@@ -52,13 +52,14 @@ class LLMTest(unittest.TestCase):
                 self.assertEqual(getattr(profile, key), want)
 
     def test_category_kept_when_words_point_to_it(self):
-        cats = ["국밥·해장국", "족발·보쌈", "밥·덮밥", "해산물", "찌개·탕"]
+        cats = ["국밥·해장국", "족발·보쌈", "밥·덮밥", "해산물", "찌개·탕", "닭요리", "면"]
         for text, model, want in [("국밥 중에서", "국밥·해장국", "국밥·해장국"),
                                   ("족발 쪽으로", "족발·보쌈", "족발·보쌈"),
                                   ("면 말고 밥", "밥·덮밥", "밥·덮밥"),
                                   ("국물 없는 거", "국밥·해장국", ""),     # 말하지 않은 음식군
                                   ("뜨끈한 거 먹고 싶다", "찌개·탕", ""),
-                                  ("국밥 먹고 싶어", "없는음식군", "")]:
+                                  ("국밥 먹고 싶어", "없는음식군", ""), ("닭요리 먹고 싶어", "", "닭요리"),
+                                  ("국수", "", "면"), ("해장하고 싶어", "", "국밥·해장국")]:
             with self.subTest(text=text), patch.object(llm, "generate", return_value={"meal_category": model}):
                 profile, _ = llm.conditions({"messages": [text], "profile": {}}, cats)
                 self.assertEqual(profile.meal_category, want)
@@ -70,7 +71,13 @@ class LLMTest(unittest.TestCase):
                 ("짬뽕 먹고 싶어 근데 안 매운 걸로", {"exclude": "매운"}, "", ""),
                 ("채식주의자야", {"allergy": "채식주의자"}, "", ""),
                 ("오이랑 고수 둘 다 싫어", {"exclude": "오이, 고수"}, "", "오이,고수"),
-                ("파는 빼 줘! 새우 알레르기 있어", {"exclude": "새우"}, "새우", ""),
+                ("파는 빼 줘! 새우 알레르기 있어", {"exclude": "새우"}, "새우", "파"),
+                ("게 알레르기 있어 오이 싫어", {"allergy": "오이"}, "게", "오이"),
+                ("새우 알레르기 있어 가지 안 들어간 걸로", {"allergy": "새우"}, "새우", "가지"),
+                ("라면 먹고 싶은데 가지 싫어", {"exclude": "라면"}, "", "가지"),
+                ("기름진 건 별로", {"exclude": "기름진"}, "", ""),
+                ("곱창볶음 매운 건 못 먹어", {"exclude": "곱창"}, "", ""),
+                ("칼칼한 거 / 아니 매운 건 못 먹어", {"exclude": "매운"}, "", ""),
                 ("회 먹고 싶다 근데 날것은 별로", {"exclude": "날것"}, "", "날것")]:
             with self.subTest(text=text), patch.object(llm, "generate", return_value=dict(model)):
                 profile, _ = llm.conditions({"messages": [text], "profile": {}}, [])
@@ -90,7 +97,11 @@ class LLMTest(unittest.TestCase):
                                   ("싸고 양 많은 거", "싸고 양 많은 거", ""), ("비건 메뉴 추천해 줘", "비건 메뉴", "비건"),
                                   ("탕 말고 볶음 종류", "볶음 종류", "볶음"), ("돈까스", "돈가스", ""),
                                   ("국밥 중에서", "국밥 중에서", "국밥"), ("족발 쪽으로", "족발 쪽으로", "족발"),
-                                  ("국물 없는 거", "국물 없는", ""), ("단백질 위주로", "단백질 위주", "")]:
+                                  ("국물 없는 거", "국물 없는", ""), ("단백질 위주로", "단백질 위주", ""),
+                                  ("고단백으로 뭐 있어?", "고단백", ""), ("다이어트 중이야", "다이어트", ""),
+                                  ("골고루 균형 잡힌 걸로", "골고루 균형 잡힌 걸로", ""),
+                                  ("채식주의자야 권선구에서", "채식주의자야 권선구에서", ""),
+                                  ("채식주의자야 권선구에서", "권선구", "")]:
             with self.subTest(text=text), patch.object(llm, "generate", return_value={"query": query}):
                 profile, _ = llm.conditions({"messages": [text], "profile": {}}, [])
                 self.assertEqual(profile.query, want)
@@ -104,6 +115,9 @@ class LLMTest(unittest.TestCase):
         self.assertEqual(llm.tastes("새콤하고 바삭한 거, 느끼한 건 싫어"), "sour,-rich,crispy")
         self.assertEqual(llm.tastes("담백하고 시원한 국물"), "plain,cool")
         self.assertEqual(llm.tastes("단백질 위주로 간단하게"), "")
+        self.assertEqual(llm.tastes("단 건 싫어"), "-sweet")
+        self.assertEqual(llm.tastes("단고 고소한 거"), "sweet,nutty")
+        self.assertEqual(llm.tastes("느끼하지 않고 담백한 거"), "plain,-rich")
         self.assertEqual(llm.menu_query("새콤한"), "")
         self.assertIn("짭짤한 맛", llm.taste_note(["맵고 짜고 단거"]))
         self.assertEqual(llm.taste_note(["단백질 위주로"]), "")
@@ -115,6 +129,40 @@ class LLMTest(unittest.TestCase):
         with patch.object(llm, "generate", side_effect=llm.Unavailable("x")):
             self.assertIn("가게에 꼭 확인", llm.reply({"families": [family]}))
             self.assertNotIn("가게에 꼭 확인", llm.reply({"families": [{**family, "best": {"reasons": []}}]}))
+
+    def test_named_food(self):
+        foods = {"햄버거": {"버거·샌드위치"}, "치킨": {"치킨"}, "치킨마요덮밥": {"밥·덮밥"}, "피자": {"피자"},
+                 "짜장면": {"면", "중식"}, "회": {"해산물"}, "김밥": {"분식"}, "감자탕": {"찌개·탕"}}
+        for text, food in [("햄버거 먹고 싶어", "햄버거"), ("버거 추천해줘", "햄버거"), ("치킨마요덮밥 있어?", "치킨마요덮밥"),
+                           ("햄버거 말고 피자", "피자"), ("치킨은 싫어", ""), ("짜장 땡긴다", "짜장면"), ("회사 근처", "")]:
+            with self.subTest(text=text):
+                self.assertEqual(llm.named_food(text, list(foods)), food)
+        with patch.object(llm, "generate", return_value={"meal_category": "버거·샌드위치"}):
+            profile, _ = llm.conditions({"messages": ["햄버거 먹고 싶어"], "profile": {}}, ["버거·샌드위치"], foods)
+        self.assertEqual((profile.query, profile.meal_category), ("햄버거", "버거·샌드위치"))
+        # 메뉴가 속하지 않은 음식군은 버리고, 메뉴 이름의 '탕'은 국물 조건이 아니다.
+        with patch.object(llm, "generate", return_value={"meal_category": "밥·덮밥"}):
+            profile, _ = llm.conditions({"messages": ["김밥 먹고 싶어"], "profile": {}}, ["밥·덮밥", "분식"], foods)
+        self.assertEqual((profile.query, profile.meal_category), ("김밥", ""))
+        with patch.object(llm, "generate", return_value={}):
+            profile, _ = llm.conditions({"messages": ["감자탕 땡긴다"], "profile": {}}, [], foods)
+            self.assertEqual((profile.query, profile.soup), ("감자탕", ""))
+            profile, _ = llm.conditions({"messages": ["얼큰한 감자탕 국물 있는 걸로"], "profile": {}}, [], foods)
+            self.assertEqual((profile.spice, profile.soup), ("hot", "yes"))
+        foods = {**foods, "양념치킨": {"치킨"}, "칼국수": {"면"}, "돈가스": {"양식"}, "죽": {"죽"}, "전": {"전·부침"}}
+        for messages, model, query in [(["양념치킨 추천해줘"], {"query": "치킨"}, "양념치킨"),
+                                       (["돈가스 추천해줘", "매운 건 못 먹어", "아니 칼국수로 바꿔줘"], {"query": "돈가스"}, "칼국수"),
+                                       (["동남아 음식 추천"], {"query": "동남아", "meal_category": "아시안"}, ""),
+                                       (["칼국수 땡긴다", "아니 죽으로 바꿔줘"], {"query": "칼국수"}, "죽"),
+                                       (["전 매운 거 좋아해"], {}, "")]:
+            with self.subTest(messages=messages), patch.object(llm, "generate", return_value=model):
+                profile, _ = llm.conditions({"messages": messages, "profile": {}}, ["아시안", "면", "치킨"], foods)
+                self.assertEqual(profile.query, query)
+
+    def test_reply_mentions_relaxed(self):
+        family = {"name": "비빔밥", "best": {"reasons": []}}
+        with patch.object(llm, "generate", side_effect=llm.Unavailable("x")):
+            self.assertIn("국물 조건을 빼고", llm.reply({"families": [family], "relaxed": ["국물 조건"]}))
 
     def test_reply_particle(self):
         def fam(name):

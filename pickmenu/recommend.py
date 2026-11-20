@@ -5,7 +5,8 @@ import re
 import unicodedata
 from collections import Counter, defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from itertools import combinations
 from typing import Any
 
 # 추천점수 = 100 × (영양 0.40 + 취향 0.30 + 리뷰 근거 0.10 + 리뷰 만족도 0.12 + 단골 주문 0.08) − 감점
@@ -163,8 +164,10 @@ DRY_NAME = re.compile(r"(구이|볶음|튀김|까스|가스|덮밥|볶음밥|김
 def column_spice(rows: list[dict[str, Any]]) -> dict[str, str]:
     """참고자료 매장 메뉴 행의 맵기(안 매움·약간 매움·매움·일부 매운 옵션)를 컬럼별로 모은다.
 
-    판정이 있는 행이 3건 이상일 때만 정한다. `안 매움`이 80% 이상이면 mild, `매움`·`약간 매움`이
-    절반 이상이면 hot, 섞여 있으면(일부 매운 옵션 포함) 정하지 않는다. `명시 없음`은 세지 않는다.
+    판정이 있는 행이 3건 이상일 때만 정한다. `매움`·`약간 매움`이 절반 이상이면 hot, `안 매움`이
+    (`일부 매운 옵션`을 뺀 행의) 80% 이상이면 mild, 섞여 있으면 정하지 않는다. `일부 매운 옵션`은 기본 메뉴는
+    안 맵고 매운 선택지가 따로 있다는 뜻이라 mild 판단에서는 빼고 센다(햄버거 안 매움 20·옵션 10·약간 2 → mild).
+    `명시 없음`은 세지 않는다.
     """
     counts: dict[str, Counter[str]] = defaultdict(Counter)
     for row in rows:
@@ -176,10 +179,10 @@ def column_spice(rows: list[dict[str, Any]]) -> dict[str, str]:
         total = sum(count.values())
         if total < MIN_SPICE_ROWS:
             continue
-        if count["안 매움"] >= 0.8 * total:
-            result[column] = "mild"
-        elif count["매움"] + count["약간 매움"] >= 0.5 * total:
+        if count["매움"] + count["약간 매움"] >= 0.5 * total:
             result[column] = "hot"
+        elif count["안 매움"] >= 0.8 * (total - count["일부 매운 옵션"]):
+            result[column] = "mild"
     return result
 
 
@@ -245,8 +248,8 @@ def apply_reference(menus: list[dict[str, Any]], tags: dict[str, dict[str, Any]]
     """참고자료 맵기·국물·선호음식군을 표준 음식명(components[0])이 맞는 메뉴에 붙인다.
 
     카탈로그가 메뉴 이름으로 정한 맵기·국물은 그대로 두고 빈 값만 채운다. 이름 끝이 국물 요리면
-    국물 있음으로 본다. 끝만 같은 컬럼(로제떡볶이 → 떡볶이)에서는 국물·음식군만 가져오고 맵기는
-    가져오지 않는다. 음식군은 카탈로그 음식군 하나에 컬럼의 선호음식군(예: 짬뽕 → 중식·면)을 더한다.
+    국물 있음으로 본다. 끝만 같은 컬럼(로제떡볶이 → 떡볶이)에서는 메뉴 단위로는 국물·음식군만 가져오고,
+    맵기는 대표 메뉴 단위에서 다른 근거가 없을 때만 near_spice 규칙으로 빌린다(food_tags). 음식군은 카탈로그 음식군 하나에 컬럼의 선호음식군(예: 짬뽕 → 중식·면)을 더한다.
     """
     tags = tags or {}
     names = sorted(tags)
@@ -269,6 +272,25 @@ def apply_reference(menus: list[dict[str, Any]], tags: dict[str, dict[str, Any]]
     return food_tags(result, tags, found)
 
 
+# 끝이 같은 컬럼(김치볶음밥 → 볶음밥)의 맵기를 빌려 쓸 때, 앞에 붙은 말이 맵기를 바꾸면 빌리지 않는다.
+MILDER = re.compile(r"로제|크림|까르보|간장|치즈|짜장|궁중|순한|안매운|허니|버터|마요|데리야끼")
+HOTTER = re.compile(r"매운|매콤|불|마라|김치|짬뽕|고추|얼큰|칼칼|핫|청양|양념|닭갈비|낙지|쭈꾸미|주꾸미|제육")
+
+
+# 여러 음식을 묶은 일반 컬럼. 이런 컬럼의 맵기는 개별 음식(계란덮밥·제육덮밥)에 빌려 쓰지 않는다.
+GENERIC_COLUMNS = {"덮밥", "볶음", "찌개", "탕", "찜", "구이", "전골", "국수", "면", "밥", "정식", "세트", "튀김", "전"}
+
+
+def near_spice(food: str, column: str, column_spice: str) -> str:
+    """대표 메뉴 이름과 끝만 같은 참고자료 컬럼의 맵기. 일반 컬럼이거나 이름 앞부분이 맵기를 바꿀 수
+    있으면 비워 둔다(로제떡볶이는 떡볶이의 hot을, 김치볶음밥은 볶음밥의 mild를 빌리지 않는다)."""
+    if column in GENERIC_COLUMNS:
+        return ""
+    if column_spice == "hot" and MILDER.search(food) or column_spice == "mild" and HOTTER.search(food):
+        return ""
+    return column_spice
+
+
 def food_tags(menus: list[dict[str, Any]], tags: dict[str, dict[str, Any]],
               found: dict[str, tuple[str | None, bool]]) -> list[dict[str, Any]]:
     """표준 음식(대표 메뉴) 자체의 맵기·국물을 `family_spice`·`family_soup`로 붙인다.
@@ -289,6 +311,8 @@ def food_tags(menus: list[dict[str, Any]], tags: dict[str, dict[str, Any]],
                 top, count = Counter(menu[key] for menu in group if menu[key]).most_common(1)[0] \
                     if any(menu[key] for menu in group) else ("", 0)
                 value = top if count * 2 > len(group) else ""
+            if not value and key == "spice" and name and not exact:
+                value = near_spice(food, name, tags[name]["spice"])
             values[key] = value
         decided[food] = values
     return [{**menu, "family_spice": decided[menu["components"][0]]["spice"],
@@ -441,7 +465,16 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
             menu["reasons"].append(f"최근 추천에 {times}번 나와 {RECENT_PENALTY * times}점 감점 (다른 메뉴도 보여 드려요)")
         menu["_unknown_nutrition"] = n is None
     # 점수가 같으면 영양 자료가 있는 메뉴를 앞에 둔다.
-    ranked.sort(key=lambda x: (-x["score"], x["_unknown_nutrition"], -x["evidence"]["reviews"], x["standard_menu_id"]))
+    # 검색어가 있으면 대표 음식명이 검색어와 같은 메뉴 → 검색어로 끝나는 대표 음식(양념치킨: 치킨의 한 종류)
+    # → 검색어가 든 다른 대표 음식(치킨마요덮밥) → 나머지(세트 메뉴 이름에만 든 경우) 순으로 둔다.
+    def name_tier(menu: dict[str, Any]) -> int:
+        name = compact(menu["components"][0])
+        if not query or name == query:
+            return 0
+        return 1 if name.endswith(query) else 2 if query in name else 3
+
+    ranked.sort(key=lambda x: (name_tier(x), -x["score"], x["_unknown_nutrition"], -x["evidence"]["reviews"],
+                               x["standard_menu_id"]))
     for menu in ranked:
         del menu["_unknown_nutrition"]
     check.sort(key=lambda x: (-x["review_count"], x["standard_menu_id"]))
@@ -460,6 +493,40 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
             "category": profile.category, "preferred_foods": preferred_foods,
             "recent_applied": sum(1 for food in {compact(m["components"][0]) for m in ranked} if seen_count[food]),
             "unverified": unknown, "check_only": check[:3], "region": region}
+
+
+# 결과가 0개일 때 하나씩 빼 보는 조건(앞에서부터). 국밥에 '국물 없음'처럼 서로 맞지 않는 조합이나
+# 그 지역에 메뉴가 없는 경우에 빈 화면 대신 조건을 넓혀 보여 주고 무엇을 뺐는지 알린다.
+# 식단·알레르기·기피 재료·검색어·음식군은 빼지 않는다.
+RELAXABLE = (("soup", "국물 조건"), ("spice", "맵기 조건"), ("district", "지역(수원시 전체로 넓힘)"))
+
+
+def recommend_relaxed(menus: list[dict[str, Any]], profile: Profile,
+                      recent: Sequence[str] = ()) -> tuple[dict[str, Any], Profile]:
+    """recommend와 같고, 결과가 없거나 말한 메뉴 자체가 없으면 RELAXABLE 조건을 적게 빼는 것부터 차례로 빼서
+    다시 찾는다. (결과, 실제로 쓴 조건)"""
+    query = compact(profile.query)
+
+    def good(result: dict[str, Any]) -> bool:
+        # 검색어가 메뉴 이름이면 그 메뉴(또는 그 종류, 예: 양념치킨)가 1위여야 한다.
+        if not result["families"]:
+            return False
+        first = compact(result["families"][0]["name"])
+        return not query or not any(query == compact(m["components"][0]) for m in menus) or first.endswith(query)
+
+    result = recommend(menus, profile, recent)
+    result["relaxed"] = []
+    if good(result):
+        return result, profile
+    fields = [(field, label) for field, label in RELAXABLE if getattr(profile, field)]
+    for size in range(1, len(fields) + 1):
+        for chosen in combinations(fields, size):
+            current = replace(profile, **{field: "" for field, _ in chosen})
+            retry = recommend(menus, current, recent)
+            if good(retry):
+                retry["relaxed"] = [label for _, label in chosen]
+                return retry, current
+    return result, profile
 
 
 def families(ranked: list[dict[str, Any]], limit: int = 5, members: int = 30) -> list[dict[str, Any]]:

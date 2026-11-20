@@ -22,7 +22,13 @@ import menu_reco
 import menu_stores
 import naver_maps
 from raw import BASE, LOCAL
-from recommend import DISTRICTS, Profile, apply_reference, recommend, reference_tags
+from recommend import (
+    DISTRICTS,
+    Profile,
+    apply_reference,
+    recommend_relaxed,
+    reference_tags,
+)
 
 CATALOG = LOCAL / "catalog.sqlite3"
 MENU_ID = re.compile(r"MN_[0-9a-f]{16}")
@@ -104,6 +110,15 @@ def recent_foods(payload: Any) -> list[str]:
 
 def categories(menus: list[dict[str, Any]]) -> list[str]:
     return sorted({menu["category"] for menu in menus})
+
+
+def foods(menus: list[dict[str, Any]]) -> dict[str, set[str]]:
+    """대표 음식명(표준 음식명) → 속한 음식군. 이야기 추천에서 사용자가 말한 메뉴 이름을 찾는 데 쓴다."""
+    result: dict[str, set[str]] = {}
+    for menu in menus:
+        if menu.get("components"):
+            result.setdefault(menu["components"][0], set()).update(menu.get("groups") or [menu["category"]])
+    return result
 
 
 def public_menu(menu: dict[str, Any]) -> dict[str, Any]:
@@ -300,7 +315,7 @@ class Handler(BaseHTTPRequestHandler):
             if (menus := self.load()) is None:
                 return
             try:
-                profile, history = llm.conditions(payload, categories(menus))
+                profile, history = llm.conditions(payload, categories(menus), foods(menus))
                 result = self.recommendation(menus, profile)
                 self.send_json(200, {"reply": llm.reply(result, history), "result": result,
                                      "conditions": vars(profile)})
@@ -352,9 +367,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def recommendation(self, menus: list[dict[str, Any]], profile: Profile,
                        recent: list[str] | None = None) -> dict[str, Any]:
-        result = recommend(menus, profile, recent or [])
+        result, used = recommend_relaxed(menus, profile, recent or [])
         result["items"] = [public_menu(menu) for menu in result["items"]]
-        result["families"] = [self.family(family, profile.district) for family in result["families"]]
+        result["families"] = [self.family(family, used.district) for family in result["families"]]
         return result
 
     def family(self, family: dict[str, Any], district: str) -> dict[str, Any]:
