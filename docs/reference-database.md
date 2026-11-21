@@ -69,3 +69,30 @@ SELECT file_name, document
 FROM pickmenu_data.source_files
 WHERE document IS NOT NULL;
 ```
+
+## 프랜차이즈 영양정보 검토
+
+2026-11-21에 받은 엑셀은 PostgreSQL `pickmenu_dev`의 `pickmenu_franchise` 스키마에 보관한다. 엑셀 6개 시트의 행과 열 값, 영양 기준량, 출처 URL, 승인 상태를 남긴다. 수치가 없는 셀은 `NULL`로 유지한다.
+
+`nutrition`에서 제품 영양값을, `menu_candidates`에서 단일·복수 후보를 확인한다. `store_candidates`는 단일 후보와 카탈로그 원본 메뉴 키가 일치하고 같은 매장 ID에서 판매 리뷰 기록이 있는 연결이다. `approved_store_nutrition`은 원본에서 승인된 단일 후보만 내보낸다. 현재 원본에는 승인 행이 0건이다.
+
+```sql
+SELECT brand, product_name, basis, energy_kcal, protein_g, sodium_mg
+FROM pickmenu_franchise.nutrition
+WHERE product_name LIKE '%고추바사삭%';
+
+SELECT store_id, original_name, product_name, basis, approval_status
+FROM pickmenu_franchise.store_candidates
+WHERE brand = '굽네치킨';
+```
+
+같은 파일의 SHA-256으로 원본 행을 식별하므로 재적재해도 행이 늘어나지 않는다. 단계마다 다른 카탈로그를 비교할 때는 Ubuntu의 실행용 SQLite와 함께 적재 SQL을 만든다. 생성 SQL과 엑셀은 Git에 올리지 않는다.
+
+```sh
+cd ~/pickmenu/pickmenu
+umask 077
+.venv/bin/python import_franchise_nutrition.py \
+  ~/.local/share/pickmenu/franchise-source/픽메뉴_프랜차이즈_영양정보_통합.xlsx \
+  ~/.local/share/pickmenu/catalog-v03.sqlite3 ~/.cache/pickmenu-franchise-import.sql
+sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d pickmenu_dev < ~/.cache/pickmenu-franchise-import.sql
+```
