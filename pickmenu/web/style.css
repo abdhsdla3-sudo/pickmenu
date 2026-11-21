@@ -144,6 +144,9 @@ legend { font-size: 12px; font-weight: 650; margin-bottom: 10px; }
 .store-meta { color: #7e896e; font-size: 10px; line-height: 1.8; margin-top: 2px; }
 .franchise-nutrition { margin-top: 6px; padding: 6px 9px; border-radius: 8px; background: #edf0e4; }
 .franchise-nutrition summary { color: var(--green); cursor: pointer; font-size: 11px; font-weight: 700; }
+.franchise-nutrition-options { margin-top: 6px; font-size: 11px; }
+.franchise-nutrition-options > summary { color: var(--green); cursor: pointer; font-weight: 700; }
+.franchise-menu-name { margin-top: 8px; font-weight: 700; }
 .more-stores { border: 0; background: transparent; color: var(--green); font-size: 11px; font-weight: 700; padding: 8px 0 0; }
 .expand-box { border: 1px dashed #c9b48f; background: #fbf6ec; border-radius: 15px; padding: 14px; margin-top: 16px; font-size: 11px; color: #7a6243; }
 .expand-box ul { margin: 8px 0 10px; padding-left: 16px; line-height: 1.8; }

@@ -166,6 +166,25 @@ class StoreApiTest(unittest.TestCase):
                 family = next(f for f in result["families"] if f["name"] == "육회")
                 self.assertIs(family["has_franchise_nutrition"], expected)
 
+    def test_store_keeps_linked_alternative_nutrition_after_deduplication(self):
+        mid = IDS["최상급 육회"]
+        other = IDS["[별미한점] 육회"]
+        reference = {"product_name": "별미한점 육회", "basis": "100g", "energy_kcal": 230.0}
+        self.nutrition.return_value = {("SW_a", other): reference}
+        status, result = self.call("/api/recommend/stores", {"menu_ids": [mid, other]})
+        self.assertEqual(status, 200)
+        first, second = result["stores"]
+        self.assertEqual(first["menu_name"], "최상급 육회")
+        self.assertNotIn("franchise_nutrition", first)
+        self.assertEqual(first["franchise_menu_options"], [
+            {"menu_name": "[별미한점] 육회", "franchise_nutrition": reference},
+        ])
+        self.assertNotIn("franchise_menu_options", second)
+        self.nutrition.return_value[("SW_a", mid)] = reference
+        _, result = self.call("/api/recommend/stores", {"menu_ids": [mid, other]})
+        self.assertEqual(result["stores"][0]["franchise_nutrition"], reference)
+        self.assertNotIn("franchise_menu_options", result["stores"][0])
+
     def test_step_two_rejects_bad_input(self):
         for body in ({}, {"menu_ids": []}, {"menu_ids": ["x"]}, {"menu_ids": [IDS["최상급 육회"]], "district": "서울"},
                      {"menu_ids": [IDS["최상급 육회"]] * 31}, ["MN_"]):

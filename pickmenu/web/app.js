@@ -286,6 +286,17 @@ function franchiseNutrition(nutrition) {
   return details;
 }
 
+function appendFranchiseNutrition(parent, item) {
+  if (item.franchise_nutrition) parent.append(franchiseNutrition(item.franchise_nutrition));
+  if (!item.franchise_menu_options?.length) return;
+  const group = node("details", undefined, "franchise-nutrition-options");
+  group.append(node("summary", `같은 매장의 다른 메뉴 영양정보 (${item.franchise_menu_options.length}개)`));
+  for (const option of item.franchise_menu_options) {
+    group.append(node("p", option.menu_name, "franchise-menu-name"), franchiseNutrition(option.franchise_nutrition));
+  }
+  parent.append(group);
+}
+
 function currentDistrict() {
   return sourceMode === "chat" ? document.querySelector("#chat-district").value
     : document.querySelector("#meal").elements.namedItem("district").value;
@@ -338,13 +349,13 @@ async function openDetail(item, button) {
     body.replaceChildren(node("p", [menu.category, ...menu.components].join(" · "), "muted"));
     addReasons(body, item.reasons);
     body.append(node("p", "실제 매장 레시피와 원재료, 알레르기 및 교차접촉 정보는 확인이 필요해요.", "muted"));
-    if (item.franchise_nutrition) body.append(franchiseNutrition(item.franchise_nutrition));
+    appendFranchiseNutrition(body, item);
     if (menu.references.length) {
       body.append(node("p", menu.compound
         ? "구성 음식별 참고값입니다. 전체 메뉴나 매장 1인분의 영양량은 확인되지 않았어요."
         : "공개 일반음식 참고값입니다. 실제 매장 제공량과 조리법에 따라 달라요.", "muted"));
       for (const ref of menu.references) showReference(body, ref);
-    } else if (!item.franchise_nutrition) {
+    } else if (!item.franchise_nutrition && !item.franchise_menu_options?.length) {
       body.append(node("p", "일반 메뉴 영양정보 없음", "muted"));
     }
     const storeBox = node("section", undefined, "detail-stores");
@@ -755,7 +766,7 @@ function familyStoreItem(store, family) {
   text.append(name, node("p", `${store.district} · 이 가게의 해당 메뉴 리뷰 ${store.reviews.toLocaleString("ko-KR")}건${distance}`,
     "store-meta"));
   if (store.address) text.append(node("p", store.address, "store-address"));
-  if (store.franchise_nutrition) text.append(franchiseNutrition(store.franchise_nutrition));
+  appendFranchiseNutrition(text, store);
   if (store.comment) {
     const reason = node("p", undefined, "menu-comment store-reason");
     reason.append(node("strong", "추천이유"), node("span", store.comment));
@@ -766,7 +777,8 @@ function familyStoreItem(store, family) {
   button.setAttribute("aria-label", `${store.menu_name} 상세 보기`);
   const member = family.members.find(m => m.standard_menu_id === store.standard_menu_id);
   button.addEventListener("click", () => openDetail({standard_menu_id: store.standard_menu_id,
-    reasons: member ? member.reasons : [], franchise_nutrition: store.franchise_nutrition}, button));
+    reasons: member ? member.reasons : [], franchise_nutrition: store.franchise_nutrition,
+    franchise_menu_options: store.franchise_menu_options}, button));
   item.append(text, button);
   return item;
 }
@@ -829,10 +841,26 @@ async function showFamily(family, data) {
     if (found.stores.length > 10) {
       const more = node("button", `${found.stores.length - 10}개 더 보기`, "more-stores");
       more.type = "button";
-      more.addEventListener("click", () => {
+      const firstLinked = found.stores.findIndex(store => store.franchise_nutrition || store.franchise_menu_options?.length);
+      const reveal = () => {
         for (const item of list.children) item.hidden = false;
         more.remove();
-      });
+      };
+      more.addEventListener("click", reveal);
+      if (firstLinked >= 10) {
+        const jump = node("button", "영양정보 있는 매장 보기", "small-link");
+        jump.type = "button";
+        jump.addEventListener("click", () => {
+          reveal();
+          const linked = list.children[firstLinked];
+          const options = linked.querySelector(".franchise-nutrition-options");
+          if (options) options.open = true;
+          linked.tabIndex = -1;
+          linked.focus({preventScroll: true});
+          linked.scrollIntoView({block: "nearest"});
+        });
+        results.insertBefore(jump, list);
+      }
       results.append(more);
     }
     if (!found.names_available) results.append(node("p", "가게 이름 자료를 지금 불러올 수 없어요. 잠시 뒤 다시 시도해 주세요.", "muted"));

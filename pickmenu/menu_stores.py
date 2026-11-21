@@ -12,6 +12,7 @@ import re
 import sqlite3
 import threading
 import time
+from collections import defaultdict
 from contextlib import closing
 from pathlib import Path
 from typing import Any
@@ -204,6 +205,11 @@ def stores(path: Path, menus: list[dict[str, Any]], district: str, limit: int = 
     scores = {(row[0], row[1]): store_score(row[3], km.get(row[1])) for row in rows} if origin else {}
     rows.sort(key=lambda row: (order[row[0]], -scores.get((row[0], row[1]), 0), -row[3], row[1]))
     names = store_names()
+    nutrition = franchise_nutrition() if rows else {}
+    products_by_store: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+    for mid, store_id, _, _ in rows:
+        if reference := nutrition.get((store_id, mid)):
+            products_by_store[store_id][mid] = reference
     # 정렬한 뒤 같은 매장은 조건에 가장 맞는 메뉴 한 건만 남긴다.
     shown_ids: set[str] = set()
     shown_places: set[tuple[str, str]] = set()
@@ -228,10 +234,20 @@ def stores(path: Path, menus: list[dict[str, Any]], district: str, limit: int = 
         "stores": [{"standard_menu_id": mid, "menu_name": by_id[mid]["name"],
                     "store_name": (names or {}).get(store_id), "district": where, "reviews": count}
                    for mid, store_id, where, count in rows[:limit]]}
-    nutrition = franchise_nutrition() if result["stores"] else {}
     for store, row in zip(result["stores"], rows[:limit], strict=True):
-        if reference := nutrition.get((row[1], row[0])):
+        mid, store_id, _, _ = row
+        products = products_by_store.get(store_id, {})
+        reference = products.get(mid)
+        if reference:
             store["franchise_nutrition"] = reference
+        seen_products = [reference] if reference else []
+        options = []
+        for other_id, other in products.items():
+            if other not in seen_products:
+                options.append({"menu_name": by_id[other_id]["name"], "franchise_nutrition": other})
+                seen_products.append(other)
+        if options:
+            store["franchise_menu_options"] = options
         # 지도 표시용 가게 위치(도로명 주소를 바꾼 공개 좌표). 없으면 지도에서 빠진다.
         store["location"] = list(places[row[1]]) if row[1] in places else None
         store["address"] = store_address(row[1]) or None
