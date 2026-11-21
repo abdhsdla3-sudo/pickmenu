@@ -175,6 +175,16 @@ def franchise_nutrition() -> dict[tuple[str, str], dict[str, Any]]:
         return _nutrition["value"] or {}
 
 
+def has_franchise_nutrition(path: Path, menu_ids: list[str], district: str) -> bool:
+    nutrition = franchise_nutrition()
+    if not {menu_id for _, menu_id in nutrition}.intersection(menu_ids):
+        return False
+    rows = store_rows(path, menu_ids, district)
+    if district and not rows:
+        rows = store_rows(path, menu_ids, "")
+    return any((store_id, menu_id) in nutrition for menu_id, store_id, _, _ in rows)
+
+
 def stores(path: Path, menus: list[dict[str, Any]], district: str, limit: int = 50,
            origin: tuple[float, float] | None = None) -> dict[str, Any]:
     """고른 순서의 실제 메뉴별 판매 매장. 고른 구에 없으면 수원 전체로 넓힌다.

@@ -157,6 +157,15 @@ class StoreApiTest(unittest.TestCase):
         self.assertEqual(first["franchise_nutrition"], product)
         self.assertNotIn("franchise_nutrition", second)
 
+    def test_family_indicates_franchise_nutrition_only_in_matching_region(self):
+        self.nutrition.return_value = {("SW_a", IDS["최상급 육회"]): {"energy_kcal": 230.0}}
+        for district, expected in (("권선구", True), ("영통구", False)):
+            with self.subTest(district=district):
+                status, result = self.call("/api/recommend", {"district": district})
+                self.assertEqual(status, 200)
+                family = next(f for f in result["families"] if f["name"] == "육회")
+                self.assertIs(family["has_franchise_nutrition"], expected)
+
     def test_step_two_rejects_bad_input(self):
         for body in ({}, {"menu_ids": []}, {"menu_ids": ["x"]}, {"menu_ids": [IDS["최상급 육회"]], "district": "서울"},
                      {"menu_ids": [IDS["최상급 육회"]] * 31}, ["MN_"]):

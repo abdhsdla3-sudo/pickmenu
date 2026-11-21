@@ -243,7 +243,7 @@ function addReasons(parent, reasons) {
 function nutritionSummary(menu) {
   if (!menu.nutrition) {
     return menu.references.length ? "구성 음식의 100g 참고값 · 메뉴 전체값 미확인"
-      : `영양정보 없음 · ${menu.nutrition_status}`;
+      : "일반 메뉴 영양정보 없음";
   }
   const ref = menu.nutrition;
   return `${ref.name} 100g 참고 · ${ref.values[0]} kcal · 단백질 ${ref.values[1]} g · ${ref.source} · 자동 연결`;
@@ -266,6 +266,24 @@ function showReference(parent, ref) {
   if (ref.serving_reference) {
     parent.append(node("p", `공공 DB 1회분량 참고 표기 ${ref.serving_reference}`, "muted"));
   }
+}
+
+function franchiseNutrition(nutrition) {
+  const details = node("details", undefined, "franchise-nutrition");
+  details.open = true;
+  const nutrients = [
+    ["energy_kcal", "열량", "kcal"], ["protein_g", "단백질", "g"], ["carbohydrate_g", "탄수화물", "g"],
+    ["fat_g", "지방", "g"], ["sugar_g", "당류", "g"], ["sodium_mg", "나트륨", "mg"],
+  ].filter(([key]) => nutrition[key] != null)
+    .map(([key, label, unit]) => `${label} ${nutrition[key].toLocaleString("ko-KR")}${unit}`);
+  const basis = nutrition.basis || "기준량 정보 없음";
+  const status = nutrition.approved ? "" : " · 제품 연결 검토 중";
+  details.append(
+    node("summary", `프랜차이즈 영양정보 (${basis})`),
+    node("p", `${nutrition.brand} · ${nutrition.product_name}${status}`, "store-meta"),
+    node("p", nutrients.join(" · "), "store-meta"),
+  );
+  return details;
 }
 
 function currentDistrict() {
@@ -320,13 +338,14 @@ async function openDetail(item, button) {
     body.replaceChildren(node("p", [menu.category, ...menu.components].join(" · "), "muted"));
     addReasons(body, item.reasons);
     body.append(node("p", "실제 매장 레시피와 원재료, 알레르기 및 교차접촉 정보는 확인이 필요해요.", "muted"));
+    if (item.franchise_nutrition) body.append(franchiseNutrition(item.franchise_nutrition));
     if (menu.references.length) {
       body.append(node("p", menu.compound
         ? "구성 음식별 참고값입니다. 전체 메뉴나 매장 1인분의 영양량은 확인되지 않았어요."
         : "공개 일반음식 참고값입니다. 실제 매장 제공량과 조리법에 따라 달라요.", "muted"));
       for (const ref of menu.references) showReference(body, ref);
-    } else {
-      body.append(node("p", `영양정보 없음 · ${menu.nutrition_status}`, "muted"));
+    } else if (!item.franchise_nutrition) {
+      body.append(node("p", "일반 메뉴 영양정보 없음", "muted"));
     }
     const storeBox = node("section", undefined, "detail-stores");
     storeBox.append(node("h3", "이 메뉴를 파는 가게"), node("p", "가게를 찾고 있어요.", "muted"));
@@ -474,8 +493,11 @@ function renderFamilies(data) {
     const score = node("p", undefined, "menu-score");
     score.append(node("strong", `${Math.round(family.best.score)}`), node("span", "점 · 추천점수"));
     if (family.best.needs_check) score.append(node("span", "재료 확인 필요", "tag warn check-tag"));
-    appendMenuCard(card, family.name, button, head, score, family.comment ? node("p", family.comment, "menu-comment")
-      : node("p", nutritionSummary(family.best), "muted"));
+    const note = family.comment ? node("p", family.comment, "menu-comment")
+      : node("p", nutritionSummary(family.best), "muted");
+    const hint = node("p", "프랜차이즈 제품 영양정보가 연결된 매장이 있어요.", "muted");
+    const notes = family.has_franchise_nutrition ? (family.comment ? [note, hint] : [hint]) : [note];
+    appendMenuCard(card, family.name, button, head, score, ...notes);
     results.append(card);
   });
   if (count && lastRequest) {
@@ -733,23 +755,7 @@ function familyStoreItem(store, family) {
   text.append(name, node("p", `${store.district} · 이 가게의 해당 메뉴 리뷰 ${store.reviews.toLocaleString("ko-KR")}건${distance}`,
     "store-meta"));
   if (store.address) text.append(node("p", store.address, "store-address"));
-  const nutrition = store.franchise_nutrition;
-  if (nutrition) {
-    const details = node("details", undefined, "franchise-nutrition");
-    const nutrients = [
-      ["energy_kcal", "열량", "kcal"], ["protein_g", "단백질", "g"], ["carbohydrate_g", "탄수화물", "g"],
-      ["fat_g", "지방", "g"], ["sugar_g", "당류", "g"], ["sodium_mg", "나트륨", "mg"],
-    ].filter(([key]) => nutrition[key] != null)
-      .map(([key, label, unit]) => `${label} ${nutrition[key].toLocaleString("ko-KR")}${unit}`);
-    const basis = nutrition.basis || "기준량 정보 없음";
-    const status = nutrition.approved ? "" : " · 제품 연결 검토 중";
-    details.append(
-      node("summary", `프랜차이즈 영양정보 (${basis})`),
-      node("p", `${nutrition.brand} · ${nutrition.product_name}${status}`, "store-meta"),
-      node("p", nutrients.join(" · "), "store-meta"),
-    );
-    text.append(details);
-  }
+  if (store.franchise_nutrition) text.append(franchiseNutrition(store.franchise_nutrition));
   if (store.comment) {
     const reason = node("p", undefined, "menu-comment store-reason");
     reason.append(node("strong", "추천이유"), node("span", store.comment));
@@ -760,7 +766,7 @@ function familyStoreItem(store, family) {
   button.setAttribute("aria-label", `${store.menu_name} 상세 보기`);
   const member = family.members.find(m => m.standard_menu_id === store.standard_menu_id);
   button.addEventListener("click", () => openDetail({standard_menu_id: store.standard_menu_id,
-    reasons: member ? member.reasons : []}, button));
+    reasons: member ? member.reasons : [], franchise_nutrition: store.franchise_nutrition}, button));
   item.append(text, button);
   return item;
 }

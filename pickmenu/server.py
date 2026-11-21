@@ -376,12 +376,16 @@ class Handler(BaseHTTPRequestHandler):
     def family(self, family: dict[str, Any], district: str) -> dict[str, Any]:
         """대표 메뉴에 중복 없는 리뷰·매장 수를 붙인다. trace가 없으면 null로 둔다."""
         ids = [member["standard_menu_id"] for member in family["members"]]
+        best = public_menu(family["best"])
+        has_franchise = False
         try:
             evidence: dict[str, int] | None = menu_stores.evidence(catalog_path(), ids, district)
+            if not (best["nutrition"] or best["references"]):
+                has_franchise = menu_stores.has_franchise_nutrition(catalog_path(), ids, district)
         except sqlite3.Error as error:
             self.log_error("대표 메뉴 집계 오류 %s", type(error).__name__)
             evidence = None
-        return {**family, "best": public_menu(family["best"]), "evidence": evidence}
+        return {**family, "best": best, "evidence": evidence, "has_franchise_nutrition": has_franchise}
 
     def menu_stores(self, payload: Any, menus: list[dict[str, Any]]) -> None:
         """2단계: 고른 대표 메뉴의 실제 메뉴 이름과 판매 매장을 돌려준다."""
