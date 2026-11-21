@@ -50,7 +50,7 @@ if __name__ == "__main__":
     for old in (HERE / "web").glob("menu-photos*.webp"):  # 예전 시트 파일 정리
         old.unlink()
     photo_assets = sorted((LOCAL / "web" / "menu-photos").glob("[0-9][0-9][0-9].webp"))
-    assets = ["index.html", "app.js", "style.css", "mark.svg",
+    assets = ["index.html", "app.js", "style.css", "mark.svg", "meal-category-icons.webp",
               *(f"menu-photos/{p.name}" for p in photo_assets)]
     for asset in assets:
         shutil.copyfile(LOCAL / "web" / asset, HERE / "web" / asset)

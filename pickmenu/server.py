@@ -39,6 +39,7 @@ ASSETS = {
     "/style.css": ("style.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/mark.svg": ("mark.svg", "image/svg+xml"),
+    "/meal-category-icons.webp": ("meal-category-icons.webp", "image/webp"),
 }
 ASSETS.update({f"/menu-photos/{path.name}": (f"menu-photos/{path.name}", "image/webp")
                for path in (BASE / "web" / "menu-photos").glob("[0-9][0-9][0-9].webp")})

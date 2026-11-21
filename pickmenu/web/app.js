@@ -1133,7 +1133,7 @@ form.addEventListener("submit", async event => {
   const next = document.querySelector("#step-next");
   next.disabled = true;
   await pushProfile();
-  document.querySelector("#meal-category").value = "";
+  document.querySelector("#meal-category-profile").checked = true;
   chatMessages = [];
   chatConditions = {};
   chatLog.replaceChildren();
@@ -1410,6 +1410,34 @@ function storeItem(store) {
 }
 
 
+// 음식군 아이콘 시트의 왼쪽에서 오른쪽, 위에서 아래 순서.
+const mealCategoryIcons = [
+  "고기", "국밥·해장국", "닭요리", "면", "밥·덮밥",
+  "버거·샌드위치", "분식", "샐러드·건강식", "아시안", "양식",
+  "일식", "전·부침", "족발·보쌈", "죽", "중식",
+  "찌개·탕", "찜·조림", "치킨", "피자", "해산물",
+];
+
+function renderMealCategories(categories) {
+  const cards = categories.map(category => {
+    const card = node("label", undefined, "meal-category-option");
+    const input = node("input");
+    input.type = "radio";
+    input.name = "meal_category";
+    input.value = category;
+    const index = mealCategoryIcons.indexOf(category);
+    const icon = node("span", index < 0 ? "🍽️" : "", "meal-category-icon");
+    icon.setAttribute("aria-hidden", "true");
+    if (index >= 0) {
+      icon.classList.add("meal-category-art");
+      icon.style.backgroundPosition = `${(index % 5) * 25}% ${Math.floor(index / 5) / 3 * 100}%`;
+    }
+    card.append(input, icon, node("span", category));
+    return card;
+  });
+  document.querySelector("#meal-category").replaceChildren(...cards);
+}
+
 async function initialize() {
   updateAgeLabels();
   persistLocal();
@@ -1437,9 +1465,7 @@ async function initialize() {
     const select = document.querySelector("#category");
     for (const label of data.categories) select.add(new Option(label, label));
     for (const label of data.categories) document.querySelector("#signup-category").add(new Option(label, label));
-    const mealCategory = document.querySelector("#meal-category");
-    for (const label of data.categories) mealCategory.add(new Option(label, label));
-    mealCategory.disabled = false;
+    renderMealCategories(data.categories);
     if (!categoryTouched && data.categories.includes(profile.category)) select.value = profile.category;
     if (!data.categories.includes(profile.category)) profile.category = "";
   } catch {

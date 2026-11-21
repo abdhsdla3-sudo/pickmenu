@@ -6,10 +6,13 @@ const urls = {
   "/app.js": ["app.js", "text/javascript; charset=utf-8"],
   "/style.css": ["style.css", "text/css; charset=utf-8"],
   "/mark.svg": ["mark.svg", "image/svg+xml"],
+  "/meal-category-icons.webp": ["meal-category-icons.webp", "image/webp", true],
 };
 const assets = {};
-for (const [url, [name, type]] of Object.entries(urls)) {
-  assets[url] = [type, await read(`web/${name}`)];
+for (const [url, [name, type, binary]] of Object.entries(urls)) {
+  assets[url] = binary
+    ? [type, await readFile(new URL(`web/${name}`, import.meta.url), "base64"), true]
+    : [type, await read(`web/${name}`)];
 }
 const photos = (await readdir(new URL("web/menu-photos/", import.meta.url)))
   .filter(name => /^\d{3}\.webp$/.test(name))
