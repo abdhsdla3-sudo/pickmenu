@@ -1061,6 +1061,7 @@ function clearLocalProfile() {
   hasProfile = false;
   form.reset();
   document.querySelector("#meal").reset();
+  setMealCategory("");
   chatMessages = [];
   chatConditions = {};
   chatLog.replaceChildren();
@@ -1207,7 +1208,7 @@ form.addEventListener("submit", async event => {
   const next = document.querySelector("#step-next");
   next.disabled = true;
   await pushProfile();
-  document.querySelector("#meal-category").value = "";
+  setMealCategory("");
   chatMessages = [];
   chatConditions = {};
   chatLog.replaceChildren();
@@ -1352,6 +1353,47 @@ async function recommendNow(conditions, mode) {
       if (mode === "chat") scrollChat();
     }
   }
+}
+
+// 선택지 화면의 음식군: 3열 아이콘 타일. 하나만 고르고, 고른 타일을 다시 누르면 풀린다(프로필 취향대로).
+const CATEGORY_ICONS = {"고기": "🥩", "국밥·해장국": "🍲", "닭요리": "🐔", "면": "🍜", "밥·덮밥": "🍚",
+  "버거·샌드위치": "🍔", "분식": "🍢", "샐러드·건강식": "🥗", "아시안": "🍛", "양식": "🍝", "일식": "🍣",
+  "전·부침": "🥞", "족발·보쌈": "🍖", "죽": "🥣", "중식": "🥟", "찌개·탕": "🥘", "찜·조림": "🫕", "치킨": "🍗",
+  "피자": "🍕", "해산물": "🦐", "디저트": "🍰", "카페·음료": "🥤"};
+function setMealCategory(value) {
+  document.querySelector("#meal-category").value = value;
+  for (const tile of document.querySelectorAll("#meal-category-grid .category-tile")) {
+    const on = tile.dataset.value === value;
+    tile.setAttribute("aria-checked", String(on));
+    tile.tabIndex = on || (!value && tile === tile.parentElement.firstElementChild) ? 0 : -1;
+  }
+  const help = document.querySelector("#meal-category-help");
+  help.textContent = value ? `${value} 안에서 찾아요. 다시 누르면 풀려요.` : "고르지 않으면 프로필 취향대로 찾아요.";
+}
+function buildCategoryGrid(categories) {
+  const grid = document.querySelector("#meal-category-grid");
+  grid.replaceChildren(...categories.map(label => {
+    const tile = node("button", undefined, "category-tile");
+    tile.type = "button";
+    tile.dataset.value = label;
+    tile.setAttribute("role", "radio");
+    tile.append(node("span", CATEGORY_ICONS[label] || "🍽️", "category-icon"), node("span", label, "category-name"));
+    tile.querySelector(".category-icon").setAttribute("aria-hidden", "true");
+    tile.addEventListener("click", () => setMealCategory(tile.getAttribute("aria-checked") === "true" ? "" : label));
+    return tile;
+  }));
+  // 화살표 키로 타일 사이를 옮긴다(라디오 그룹 동작).
+  grid.addEventListener("keydown", event => {
+    const tiles = [...grid.querySelectorAll(".category-tile")];
+    const at = tiles.indexOf(document.activeElement);
+    const step = {ArrowRight: 1, ArrowDown: 3, ArrowLeft: -1, ArrowUp: -3}[event.key];
+    if (at < 0 || !step) return;
+    event.preventDefault();
+    const next = tiles[Math.max(0, Math.min(tiles.length - 1, at + step))];
+    next.tabIndex = 0;
+    next.focus();
+  });
+  setMealCategory(document.querySelector("#meal-category").value);
 }
 
 document.querySelector("#meal").addEventListener("submit", event => {
@@ -1512,9 +1554,7 @@ async function initialize() {
     const select = document.querySelector("#category");
     for (const label of data.categories) select.add(new Option(label, label));
     for (const label of data.categories) document.querySelector("#signup-category").add(new Option(label, label));
-    const mealCategory = document.querySelector("#meal-category");
-    for (const label of data.categories) mealCategory.add(new Option(label, label));
-    mealCategory.disabled = false;
+    buildCategoryGrid(data.categories);
     if (!categoryTouched && data.categories.includes(profile.category)) select.value = profile.category;
     if (!data.categories.includes(profile.category)) profile.category = "";
   } catch {
