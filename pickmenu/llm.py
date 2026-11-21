@@ -5,6 +5,7 @@ import os
 import re
 import threading
 from collections import Counter
+from collections.abc import Iterable
 from difflib import SequenceMatcher
 from typing import Any
 from urllib.error import URLError
@@ -115,7 +116,7 @@ def conditions(payload: Any, categories: list[str],
     # 실제 대표 메뉴이고 문장에 근거가 있을 때만 받는다. 사용자가 메뉴 이름을 그대로 말했으면 그 이름이 우선이고,
     # 그 이름을 꾸민 메뉴(치킨 → 양념치킨)일 때만 AI 이름을 쓴다. 없는 이름(매운죽)은 받지 않는다.
     fixed = (ai_query if foods and ai_query in foods and ai_query not in text and ai_query not in avoided
-             and supported_query(ai_query, text, positives) else "")
+             and supported_query(ai_query, text, positives, foods) else "")
     # AI가 없는 이름을 지었지만 그 안에 사용자가 말한 메뉴가 있으면 그 메뉴로 찾는다(죽인데 매운 거 → 매운죽 → 죽).
     named = result.get("query") if isinstance(result.get("query"), str) else ""
     inside = ([food for food in foods if food in named and food in text and food not in avoided]
@@ -254,21 +255,35 @@ def jamo(text: str) -> str:
     return "".join(out).translate(LOOSE)
 
 
-def typo_wanted(food: str, text: str) -> bool:
-    """문장에 이 메뉴 이름의 오타·띄어쓰기·끝 글자 빠짐(떡뽁이, 비빔 냉면, 떡볶)이 있고, 마지막 것이 부정되지 않았는가."""
+def typo_wanted(food: str, text: str, foods: Iterable[str] = ()) -> bool:
+    """문장에 이 메뉴 이름의 오타·띄어쓰기·끝 글자 빠짐(떡뽁이, 비빔 냉면, 떡볶)이 있고, 마지막 것이 부정되지 않았는가.
+
+    오타는 글자 수가 같을 때만 본다(소고기 → 소불고기, 돼지고기 → 돼지불고기는 오타가 아니다).
+    끝 글자 빠짐은 3글자 이상 메뉴에서, 그 앞부분으로 시작하는 대표 메뉴가 이 메뉴 하나일 때만 본다
+    (떡볶 → 떡볶이는 받고, 볶음밥·볶음면이 함께 있는 '볶음'은 받지 않는다). 3글자 메뉴의 두 글자 앞부분은
+    흔한 낱말과 겹치므로(매운 → 매운탕, 감자 → 감자탕) 띄어쓰기를 뺀 문장에서 그 뒤에 다른 글자가 이어지지 않을 때만
+    받는다(떡볶 ㄱ?는 받고 매운 거는 받지 않는다).
+    """
     compact = re.sub(r"\s+", "", text)
     target = jamo(food)
+    head = jamo(food[:-1])
+    unique_head = len(food) >= 3 and sum(jamo(other[:len(food) - 1]) == head for other in foods) <= 1
     best: tuple[float, int] | None = None  # (가장 비슷한 정도, 끝 위치): 가장 비슷한 것 중 가장 뒤의 것
-    for size in range(max(2, len(food) - 1), len(food) + 2):
+    for size in (len(food), len(food) - 1) if unique_head else (len(food),):
         for start in range(len(compact) - size + 1):
             window = jamo(compact[start:start + size])
-            score = 1.0 if window == target else SequenceMatcher(None, window, target).ratio() if len(food) >= 3 else 0
+            if size < len(food):
+                ends = len(food) >= 4 or not re.match(r"[가-힣]", compact[start + size:start + size + 1])
+                score = 1.0 if window == head and ends else 0.0
+            else:
+                score = (1.0 if window == target
+                         else SequenceMatcher(None, window, target).ratio() if len(food) >= 3 else 0.0)
             if score >= 0.8 and (best is None or (score, start + size) > best):
                 best = (score, start + size)
     return best is not None and not FOOD_NEGATIVE.match(compact[best[1]:])
 
 
-def supported_query(query: str, text: str, positives: list[str]) -> bool:
+def supported_query(query: str, text: str, positives: list[str], foods: Iterable[str] = ()) -> bool:
     """AI가 고친 메뉴 이름에 문장 근거가 있는가."""
     # 앞에서 말한 메뉴 + 꾸밈말: 치킨 / 양념으로 → 양념치킨, 고기구이 / 소고기로 → 소고기구이
     for food in positives:
@@ -278,7 +293,7 @@ def supported_query(query: str, text: str, positives: list[str]) -> bool:
             matches = list(re.finditer(re.escape(modifier), rest))
             if matches and not FOOD_NEGATIVE.match(rest[matches[-1].end():]):
                 return True
-    if typo_wanted(query, text):
+    if typo_wanted(query, text, foods):
         return True
     # 일반 영단어만으로 메뉴를 짐작하지 않는다. 확인된 메뉴 별칭의 마지막 요청을 따른다.
     if positives:
