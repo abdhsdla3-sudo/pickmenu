@@ -281,4 +281,9 @@ dialog h3 { font-size: 14px; margin-top: 20px; }
 .menu-score { margin-top: 8px; color: #6c7f55; font-size: 11px; }
 .menu-score strong { font-size: 20px; font-weight: 800; color: var(--green); margin-right: 3px; }
 .store-reason strong { display: inline-block; margin-right: 6px; font-size: 11px; color: var(--green); }
+.store-mood { font-size: 12px; line-height: 1.5; color: var(--muted, #6b6b6b); margin-top: 4px; font-style: italic; }
+.store-actions { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.store-actions .small-link { display: inline-flex; width: auto; padding: 6px 10px; }
+.store-actions a.small-link { text-decoration: none; }
+.mode-switch button.locked { opacity: .5; }
 .menu-comment { font-size: 12px; line-height: 1.6; color: var(--ink); margin-top: 10px; }

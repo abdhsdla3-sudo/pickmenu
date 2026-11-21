@@ -59,6 +59,27 @@ class ReferenceTagTest(unittest.TestCase):
         self.assertEqual(fishcake["soup"], "yes")  # 이름 끝이 탕이면 국물 있음
         self.assertEqual(apply_reference([menu("짬뽕")], None)[0]["soup"], "")
 
+    def test_meat_label_from_reference_and_names(self):
+        columns = {"제육볶음": {"groups": "고기", "broth": "없음", "meat_preferred": True},
+                   "햄버거": {"groups": "버거·샌드위치", "broth": "없음", "meat_preferred": False},
+                   "콩고기구이": {"groups": "샐러드·건강식", "broth": "없음", "meat_preferred": False},
+                   "회": {"groups": "해산물", "broth": "없음", "meat_preferred": True}}
+        tags = reference_tags(columns, [])
+        self.assertEqual((tags["제육볶음"]["meat"], tags["햄버거"]["meat"]), (True, False))
+        menus = apply_reference([menu("제육볶음", "고기", menu_id="MN_1"), menu("햄버거", "버거", menu_id="MN_2"),
+                                 menu("콩고기구이", "건강식", menu_id="MN_3"), menu("모듬회", "해산물", menu_id="MN_4", food="회"),
+                                 menu("탕수육", menu_id="MN_5"), menu("비빔밥", "밥", menu_id="MN_6")], tags)
+        reasons = {m["name"]: m["reasons"] for m in recommend(menus, Profile.parse({"diet": "meat"}, []))["items"]}
+        # 라벨이 있으면 라벨대로(햄버거는 육식 선호 대상 아님). 라벨이 없으면 이름 단서(MEAT)만 본다.
+        self.assertIn("육식 선호 일치", reasons["제육볶음"])
+        self.assertIn("육식 선호 일치", reasons["모듬회"])
+        self.assertNotIn("육식 선호 일치", reasons["햄버거"])
+        # 채식: 충돌 메뉴만 빼고 나머지는 '재료 확인 필요'로 추천한다. 모듬회는 이름 단서가 없어도
+        # 참고자료 육식 라벨로 빠지고, 콩고기는 고기로 보지 않는다.
+        result = recommend(menus, Profile.parse({"diet": "vegetarian"}, []))
+        self.assertEqual({m["name"] for m in result["items"]}, {"콩고기구이", "비빔밥"})
+        self.assertEqual(result["excluded"], 4)
+
     def test_clashing_spice_or_soup_is_dropped(self):
         menus = apply_reference([menu("짬뽕", menu_id="MN_1"), menu("피자", "피자", menu_id="MN_2"),
                                  menu("탕수육", menu_id="MN_3")], TAGS)

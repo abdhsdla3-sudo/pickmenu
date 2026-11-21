@@ -226,8 +226,8 @@ def signup(payload: Any) -> tuple[str, dict[str, Any]]:
     if not PASSWORD_MIN <= len(password) <= PASSWORD_MAX:
         raise AuthError(f"비밀번호는 {PASSWORD_MIN}~{PASSWORD_MAX}자로 정해 주세요.")
     profile = clean_profile(payload.get("profile"))
-    if any(not profile[key] for key in ("age", "height", "weight", "gender")):
-        raise AuthError("생년월일·키·몸무게·성별을 입력해 주세요.")
+    # 생년월일·키·몸무게·성별은 선택이다. 추천 점수에 쓰지 않는 정보를 가입 때 요구하지 않는다.
+    # 입력한 값은 clean_profile이 범위를 검사한다.
     password_hash = hash_password(password)
     with closing(connect()) as db, db:
         owner = privacy.lookup(username, users_path())

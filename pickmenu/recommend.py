@@ -20,7 +20,7 @@ ANIMAL = re.compile(r"생선|새우|해물|해산물|오징어|아귀|아구|참
 # MEAT는 육식 선호 점수에도 쓰여 따로 둔다. 여기 없는 메뉴도 안전하다는 뜻은 아니다('재료 확인 필요').
 PLANT_CONFLICT = re.compile(
     r"제육|목살|두루치기|순대|감자탕|뼈|곰탕|설렁탕|내장|국밥|해장국|선지|육개장|사태|대창|삼계|부대|햄|스팸|"
-    r"고기|가츠|카츠|깐풍|탕수|육사시미|깐풍육|가라아게|치밥|짜장|짜글이|김치찜|김치찌개|고추장찌개|만두|만둣|"
+    r"(?<!콩)고기|가츠|카츠|깐풍|탕수|육사시미|깐풍육|가라아게|치밥|짜장|짜글이|김치찜|김치찌개|고추장찌개|만두|만둣|"
     r"라멘|마제소바|탄탄면|유산슬|양장피|팔보채|짬뽕|마라|똠얌|알탕|알곤이|알밥|매운탕|어묵|오뎅|북엇|북어|"
     r"황태|동태|코다리|명란|낙지|쭈꾸미|주꾸미|문어|오삼|꽃게|대게|홍합|초밥|마키|사시미|포케|물회|회덮밥|"
     r"(?:^|\s)회(?:\s|$)|카레|커리|팟타이|피시|어육|멸치|육수|쌀국수|초계|물냉면|(?:^|\s)냉면(?:\s|$)")
@@ -239,6 +239,8 @@ def reference_tags(columns: dict[str, dict[str, Any]], rows: list[dict[str, Any]
                    "soup": SOUP.get(column.get("broth") or "", ""),
                    # 컬럼표에서 식사가 아니거나 곁들임인 음식(만두·튀김·핫도그·주먹밥 등)
                    "side": column.get("is_meal") is False or bool(column.get("is_side")),
+                   # 컬럼표 '육식'(추천 기준표의 육식 선호 대상, 고기·해산물 중심 음식). 값이 없으면 None.
+                   "meat": None if column.get("meat_preferred") is None else bool(column["meat_preferred"]),
                    "groups": [group.strip() for group in (column.get("groups") or "").split(";") if group.strip()]}
             for name, column in columns.items()}
 
@@ -284,6 +286,7 @@ def apply_reference(menus: list[dict[str, Any]], tags: dict[str, dict[str, Any]]
         tag = tags[name]
         result.append({**menu, "spice": spice or (tag["spice"] if exact else ""),
                        "soup": soup or tag["soup"], "reference_column": name, "side": tag.get("side", False),
+                       "meat_preferred": tag.get("meat"),
                        "quality": tag.get("quality", {}),
                        "groups": list(dict.fromkeys([menu["category"], *tag["groups"]]))})
     return food_tags(result, tags, found)
@@ -405,10 +408,14 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
                                      (profile.soup, menu.get("family_soup", "")))):
             mismatched += 1
             continue
-        meat = bool(MEAT.search(signal))
+        # 육식 선호 일치는 참고자료 컬럼표의 '육식' 라벨(menu_reco와 같은 기준)을 먼저 쓰고, 연결된 컬럼이
+        # 없을 때만 이름 단서를 쓴다. 채식 제외는 라벨·이름 단서·채식 충돌 음식 이름 중 하나라도 걸리면 뺀다.
+        label = menu.get("meat_preferred")
+        named_meat = bool(MEAT.search(signal))
+        meat = label if label is not None else named_meat
         conflict = any(term in normalized_signal for term in terms) or bool(
             allergy_dishes and re.search(allergy_dishes, signal)) or (
-            plant and (meat or ANIMAL.search(signal) or PLANT_CONFLICT.search(signal) or
+            plant and (named_meat or label is True or ANIMAL.search(signal) or PLANT_CONFLICT.search(signal) or
                        (profile.diet == "vegan" and VEGAN_EXCLUDE.search(signal))))
         if conflict:
             excluded += 1
