@@ -44,7 +44,9 @@
 <div class="slide" data-step="2" hidden><p class="eyebrow">03 · 나의 입맛</p><h2 tabindex="-1">좋아하는 맛을<br>담아볼까요?</h2><p class="lead">자주 손이 가는 메뉴에 가까워지도록.</p>
 <fieldset><legend>맵기 취향</legend><div class="pills"><label class="pill"><input type="radio" name="spice" value="" checked><span>상관없어요</span></label><label class="pill"><input type="radio" name="spice" value="mild"><span><span class="pill-icon" aria-hidden="true">🍚</span>안 매운 맛</span></label><label class="pill"><input type="radio" name="spice" value="hot"><span><span class="pill-icon" aria-hidden="true">🌶️</span>매운 맛</span></label></div></fieldset>
 <fieldset><legend>국물 취향</legend><div class="pills"><label class="pill"><input type="radio" name="soup" value="" checked><span>상관없어요</span></label><label class="pill"><input type="radio" name="soup" value="yes"><span><span class="pill-icon" aria-hidden="true">🍲</span>국물 있어요</span></label><label class="pill"><input type="radio" name="soup" value="no"><span><span class="pill-icon" aria-hidden="true">🍽️</span>국물 없어요</span></label></div></fieldset>
-<label class="field">선호 음식군<select name="category" id="category"><option value="">골고루 좋아해요</option></select></label></div>
+<fieldset class="meal-category-field" id="profile-category"><legend>선호 음식군</legend>
+<label class="meal-category-option meal-category-profile"><input type="radio" name="category" value="" checked><span>골고루 좋아해요</span></label>
+<div class="meal-category-grid"></div><p class="tiny" data-category-help role="status"></p></fieldset></div>
 <div class="slide" data-step="3" hidden><p class="eyebrow">04 · 꼭 챙겨야 할 것</p><h2 tabindex="-1">이 재료는<br>피하고 싶어요.</h2><p class="lead">알레르기와 기피 재료를 알려주세요.<br>여러 재료는 쉼표로 나눠 적으면 돼요.</p>
 <label class="field">알레르기<input name="allergy" maxlength="100" placeholder="예. 땅콩, 우유"></label><label class="field">기피 식재료<input name="exclude" maxlength="100" placeholder="예. 오이, 고수"></label>
 <div class="soft-note caution"><span>!</span><p>매장별 원재료 정보가 부족하면 추천이 제한될 수 있어요. 실제 원재료와 교차접촉은 주문 전 확인해 주세요.</p></div></div>
@@ -59,7 +61,7 @@
 <fieldset><legend>국물</legend><div class="pills"><label class="pill"><input type="radio" name="soup" value="" checked><span>상관없음</span></label><label class="pill"><input type="radio" name="soup" value="yes"><span><span class="pill-icon" aria-hidden="true">🍲</span>국물 있음</span></label><label class="pill"><input type="radio" name="soup" value="no"><span><span class="pill-icon" aria-hidden="true">🍽️</span>국물 없음</span></label></div></fieldset>
 <fieldset class="meal-category-field"><legend>오늘 먹고 싶은 음식군</legend>
 <label class="meal-category-option meal-category-profile"><input type="radio" name="meal_category" id="meal-category-profile" value="" checked><span>프로필 취향대로</span></label>
-<div class="meal-category-grid" id="meal-category"></div><p class="tiny" id="meal-category-help" role="status"></p></fieldset>
+<div class="meal-category-grid" id="meal-category"></div><p class="tiny" data-category-help role="status"></p></fieldset>
 <div class="meal-submit"><button class="primary" type="submit">내 메뉴 찾아보기 <span>→</span></button></div></form></section>
 <section class="screen chat-screen" data-screen="chat" hidden aria-labelledby="chat-title">
 <div class="page-top mode-bar"><div class="mode-switch" role="group" aria-label="추천 방식"><button type="button" data-mode="chat" aria-pressed="false">이야기</button><button type="button" data-mode="choice" aria-pressed="false">선택지</button></div><span id="chat-title" class="sr-only">픽메뉴와 이야기하기</span><button class="text-button" id="restart-chat">다시 시작</button></div>
@@ -80,7 +82,9 @@
 <div class="signup-grid"><label class="field">키 (cm)<input name="height" required type="number" min="50" max="250" step="0.1" inputmode="decimal"></label><label class="field">몸무게 (kg)<input name="weight" required type="number" min="10" max="350" step="0.1" inputmode="decimal"></label></div>
 <fieldset><legend>성별</legend><div class="gender-options"><label class="gender-option"><input type="radio" name="gender" value="male" required><span class="gender-symbol" aria-hidden="true">♂</span><span>남성</span></label><label class="gender-option"><input type="radio" name="gender" value="female"><span class="gender-symbol" aria-hidden="true">♀</span><span>여성</span></label><label class="gender-option"><input type="radio" name="gender" value="other"><span class="gender-symbol" aria-hidden="true">⋯</span><span>그 외</span></label></div></fieldset>
 <details class="signup-preferences"><summary>식사 선호·주의사항 <span>선택</span></summary><p class="tiny">음식 선호와 피해야 할 재료를 알려주세요. 지금 입력하지 않아도 가입할 수 있어요.</p>
-<label class="field">선호 음식군<select name="category" id="signup-category"><option value="">선택하지 않음</option></select></label>
+<fieldset class="meal-category-field" id="signup-category"><legend>선호 음식군</legend>
+<label class="meal-category-option meal-category-profile"><input type="radio" name="category" value="" checked><span>선택하지 않음</span></label>
+<div class="meal-category-grid"></div><p class="tiny" data-category-help role="status"></p></fieldset>
 <label class="field">영양 목표<select name="goal"><option value="">선택하지 않음 · 기본 균형 식사</option><option value="balance">균형 식사</option><option value="protein">단백질 중심</option><option value="light">가벼운 식사</option></select></label>
 <label class="field">맵기 취향<select name="spice"><option value="">상관없어요</option><option value="mild">안 매운 맛</option><option value="hot">매운 맛</option></select></label>
 <label class="field">국물 취향<select name="soup"><option value="">상관없어요</option><option value="yes">국물 있어요</option><option value="no">국물 없어요</option></select></label>

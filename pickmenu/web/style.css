@@ -180,7 +180,7 @@ legend { font-size: 12px; font-weight: 650; margin-bottom: 10px; }
 .info-card .secondary { margin-top: 10px; width: 100%; }
 .info-card .danger { float: none; display: block; margin: 12px auto 0; }
 .info-card .danger[hidden] { display: none; }
-#meal-category-help:empty { display: none; }
+[data-category-help]:empty { display: none; }
 .info-label { margin: 0 0 6px; font-size: 12px; font-weight: 700; color: var(--green); }
 .home-indicator { width: 93px; height: 4px; border-radius: 5px; background: #dce1d2; margin: 9px auto 7px; flex-shrink: 0; }
 .profile-current { background: #eef1e7; padding: 13px; margin: 20px 0; border-radius: 11px; }
