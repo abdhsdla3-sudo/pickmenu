@@ -75,6 +75,16 @@ class RulesTest(unittest.TestCase):
         names = [item["name"] for item in recommend(menus, Profile.parse({"query": "치킨", "goal": "protein"}, []))["items"]]
         self.assertEqual(names, ["치킨", "양념치킨", "치킨마요덮밥"])
 
+    def test_less_greasy_uses_comparable_fat_values(self):
+        lean = {"basis": 100, "unit": "g", "values": [140, 8, 16, 3, 250]}
+        rich = {**lean, "values": [140, 8, 16, 14, 250]}
+        menus = [fixture("돼지고기덮밥", "MN_1", rich), fixture("채소덮밥", "MN_2", lean),
+                 fixture("버섯덮밥", "MN_3", {**lean, "basis": 200})]
+        result = recommend(menus, Profile.parse({"goal": "light", "taste": "-rich"}, []))
+        self.assertEqual([item["name"] for item in result["items"]], ["채소덮밥", "버섯덮밥", "돼지고기덮밥"])
+        self.assertIn("지방 100g당 3g (일반음식 참고값)", result["items"][0]["reasons"])
+        self.assertIn("지방 참고값 없음 · 메뉴 이름 단서만 참고", result["items"][1]["reasons"])
+
     def test_saved_group_first_and_options_removed(self):
         menus = [fixture("육회", "MN_1"), {**fixture("샐러드", "MN_2"), "category": "샐러드·건강식"},
                  fixture("곱빼기 추가", "MN_3")]

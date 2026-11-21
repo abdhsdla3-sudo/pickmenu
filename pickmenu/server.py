@@ -334,7 +334,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 profile, history = llm.conditions(payload, categories(menus), foods(menus))
                 result = self.recommendation(menus, profile, recent_foods(payload))
-                self.send_json(200, {"reply": llm.reply(result, history), "result": result,
+                self.send_json(200, {"reply": llm.reply(result, history, taste=profile.taste), "result": result,
                                      "conditions": vars(profile)})
             except ValueError as error:
                 self.send_json(400, {"error": str(error)})

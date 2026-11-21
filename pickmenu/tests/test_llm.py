@@ -25,6 +25,39 @@ class LLMTest(unittest.TestCase):
                     llm.conditions({"messages": messages, "profile": {}}, [])
                 generate.assert_not_called()
 
+    def test_past_meals_are_not_dinner_requests(self):
+        foods = {"짜장면": {"중식"}, "순대국밥": {"국밥·해장국"}, "칼국수": {"면"}}
+        categories = ["중식", "국밥·해장국", "면"]
+        cases = [
+            (["어제는 짜장면을 먹었고, 오늘 점심으로는 순대국밥을 먹었어. "
+              "오늘 저녁은 좀 가볍고 기름지지 않은 음식을 먹고 싶어."], "", "짜장면,순대국밥", "light", "-rich"),
+            (["어제는 짜장면, 오늘 점심엔 매운 순대국밥을 먹었는데 저녁엔 칼국수 먹고 싶어"],
+             "칼국수", "짜장면,순대국밥", "balance", ""),
+            (["점심엔 순대국밥 먹었어", "저녁에도 순대국밥으로 골라줘"], "순대국밥", "", "balance", ""),
+            (["어제 먹은 순대국밥을 저녁에 또 먹고 싶어"], "순대국밥", "", "balance", ""),
+            (["점심에 순대국밥을 안 먹었어. 저녁은 가벼운 걸로"], "", "", "light", ""),
+        ]
+        for messages, query, avoided, goal, taste in cases:
+            with self.subTest(messages=messages), patch.object(llm, "generate", return_value={
+                "query": "순대국밥", "meal_category": "국밥·해장국", "spice": "hot",
+            }):
+                profile, _ = llm.conditions({"messages": messages, "profile": {}}, categories, foods)
+                self.assertEqual((profile.query, profile.avoid_menus, profile.goal, profile.taste, profile.spice),
+                                 (query, avoided, goal, taste, ""))
+                if query != "순대국밥":
+                    self.assertNotEqual(profile.meal_category, "국밥·해장국")
+
+    def test_reply_distinguishes_measured_fat_and_name_cues(self):
+        info = {"basis": 100, "unit": "g", "values": [120, 10, 15, 2, None]}
+        result = {"families": [
+            {"name": "비빔밥", "best": {"reasons": [], "nutrition": info}},
+            {"name": "샐러드", "best": {"reasons": [], "nutrition": None}},
+        ]}
+        with patch.object(llm, "generate", return_value={}):
+            reply = llm.reply(result, taste="-rich")
+        self.assertIn("100g당 지방 참고값", reply)
+        self.assertIn("지방 참고값이 없는 메뉴", reply)
+
     def test_unspoken_conditions_and_negation(self):
         with patch.object(llm, "generate", return_value={"goal": "balance", "spice": "hot",
                                                         "soup": "yes", "meal_category": "해산물"}):

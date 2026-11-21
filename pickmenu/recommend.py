@@ -120,6 +120,12 @@ def clip(value: float) -> float:
     return max(0.0, min(1.0, value))
 
 
+def reference_fat(nutrition: dict[str, Any] | None) -> float | None:
+    if not nutrition or nutrition["basis"] != 100 or nutrition["unit"] != "g":
+        return None
+    return nutrition["values"][3]
+
+
 def nutrition_score(nutrition: dict[str, Any] | None, goal: str) -> float | None:
     if not nutrition or nutrition["basis"] != 100 or nutrition["unit"] != "g":
         return None
@@ -437,12 +443,21 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
             if value:
                 preferences.append(1 if value == actual else (0.35 if not actual else 0))
                 matches.append(f"{label} {'일치' if value == actual else '정보 부족' if not actual else '불일치'}")
-        # 맛은 대표 음식명과 분류로만 짐작한다. 세트 메뉴 이름("돈까스김밥 세트")의 다른 음식에 끌려가지 않게 한다.
+        # 이름 단서는 세트 메뉴명이 아닌 대표 음식명과 분류를 본다.
         taste_signal = f"{menu['components'][0]} {menu['category']}"
         for item in filter(None, profile.taste.split(",")):
             name, clue = TASTES[item.lstrip("-")]
             found = bool(re.search(clue, taste_signal))
-            if item.startswith("-"):
+            if item == "-rich":
+                fat = reference_fat(menu["nutrition"])
+                if fat is None:
+                    preferences.append(0 if found else 0.35)
+                    matches.append("지방 참고값 없음 · 메뉴 이름 단서만 참고")
+                else:
+                    # 20g은 점수 환산에 쓰는 범위다.
+                    preferences.append(clip(1 - fat / 20))
+                    matches.append(f"지방 100g당 {fat:g}g (일반음식 참고값)")
+            elif item.startswith("-"):
                 preferences.append(0 if found else 1)
                 matches.append(f"{name} 피하기 {'불일치' if found else '일치'} (메뉴 이름으로 짐작)")
             else:

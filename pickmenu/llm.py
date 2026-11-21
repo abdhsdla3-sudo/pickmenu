@@ -11,7 +11,7 @@ from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-from recommend import ALIASES, DISTRICTS, TASTES, Profile
+from recommend import ALIASES, DISTRICTS, TASTES, Profile, reference_fat
 
 _slot = threading.BoundedSemaphore(1)
 
@@ -68,9 +68,13 @@ def conditions(payload: Any, categories: list[str],
         {"messages": history, "categories": categories})
     values = dict(vars(profile))
     # 작은 모델이 말하지 않은 음식군·조건까지 채우는 것을 막는다.
-    text = " ".join(history)
+    text = "\n".join(history)
+    past = past_meal_spans(text)
+    current = text
+    for start, end in reversed(past):
+        current = current[:start] + " " + current[end:]
     # 맵기·국물·맛 단서는 메뉴 이름을 지운 문장에서 찾는다("감자탕"의 '탕'을 국물 조건으로 보지 않는다).
-    cue_text = without_foods(text, foods or {})
+    cue_text = without_foods(current, foods or {})
     for key, options in SUPPORT.items():
         # 문장에서 가장 뒤에 나온 표현을 따른다. 부정 표현("매운 건 싫어")은 긍정 표현("매운")을 포함해
         # 더 길고 더 뒤에서 끝나므로 이긴다.
@@ -86,15 +90,15 @@ def conditions(payload: Any, categories: list[str],
     for key in ("goal", "spice", "soup"):
         if result.get(key):
             values[key] = result[key]
-    if (ai_query := menu_query(result.get("query"))) and ai_query in text:
+    if (ai_query := menu_query(result.get("query"))) and ai_query in current:
         values["query"] = ai_query
     # 음식군은 정해진 목록 값이라 문장에 이름이 그대로 없어도 된다("국밥 중에서" → 국밥·해장국).
     # 대신 그 음식군을 가리키는 말이 문장에 있어야 한다.
     category = result.get("meal_category")
-    if category in categories and any(not FOOD_NEGATIVE.match(text[m.end():m.end() + 8])
-                                      for word in category_words(category) for m in re.finditer(re.escape(word), text)):
+    if category in categories and any(not FOOD_NEGATIVE.match(current[m.end():m.end() + 8])
+                                      for word in category_words(category) for m in re.finditer(re.escape(word), current)):
         values["meal_category"] = category
-    elif not category:
+    elif not category or past:
         for hint, pattern in CATEGORY_HINTS.items():
             if hint in categories and re.search(pattern, cue_text):
                 values["meal_category"] = hint
@@ -110,16 +114,16 @@ def conditions(payload: Any, categories: list[str],
     # 사용자가 메뉴 이름을 말했으면 가장 뒤에 말한(같으면 가장 긴) 이름을 검색어로 쓴다. AI가 음식군만 넘기거나
     # ("햄버거 먹고 싶어" → 버거·샌드위치), 이름을 줄이거나(양념치킨 → 치킨), 앞 턴 메뉴를 남긴 경우
     # ("돈가스 추천해줘 / 아니 칼국수로 바꿔줘")를 바로잡는다.
-    positives, avoided = food_mentions(text, list(foods or {}))
+    positives, avoided = food_mentions(text, list(foods or {}), past=past)
     values["avoid_menus"] = ",".join(avoided)
     # AI가 문장에 없는 대표 메뉴 이름으로 고쳐 준 경우(떡뽁이 → 떡볶이, pizza → 피자, 치킨 / 양념으로 → 양념치킨)는
     # 실제 대표 메뉴이고 문장에 근거가 있을 때만 받는다. 사용자가 메뉴 이름을 그대로 말했으면 그 이름이 우선이고,
     # 그 이름을 꾸민 메뉴(치킨 → 양념치킨)일 때만 AI 이름을 쓴다. 없는 이름(매운죽)은 받지 않는다.
-    fixed = (ai_query if foods and ai_query in foods and ai_query not in text and ai_query not in avoided
-             and supported_query(ai_query, text, positives, foods) else "")
+    fixed = (ai_query if foods and ai_query in foods and ai_query not in current and ai_query not in avoided
+             and supported_query(ai_query, current, positives, foods) else "")
     # AI가 없는 이름을 지었지만 그 안에 사용자가 말한 메뉴가 있으면 그 메뉴로 찾는다(죽인데 매운 거 → 매운죽 → 죽).
     named = result.get("query") if isinstance(result.get("query"), str) else ""
-    inside = ([food for food in foods if food in named and food in text and food not in avoided]
+    inside = ([food for food in foods if food in named and food in current and food not in avoided]
               if foods and named and named not in foods and not positives else [])
     if fixed and (not positives or positives[-1] in fixed):
         values["query"] = fixed
@@ -312,7 +316,29 @@ def without_foods(text: str, foods: dict[str, set[str]]) -> str:
     return text
 
 
-def food_mentions(text: str, foods: list[str]) -> tuple[list[str], list[str]]:
+MEAL_CLAUSE_BREAK = re.compile(
+    r"[.!?;,\n]+|(?<=먹었고)\s+|(?<=먹었는데)\s+|(?<=먹었지만)\s+"
+    r"|(?<=먹었어)\s+(?=오늘|이번|저녁|지금|내일)|(?<=먹었음)\s+(?=오늘|이번|저녁|지금|내일)"
+)
+PAST_MEAL = re.compile(r"먹었|먹은\s|먹고\s*왔|먹어\s*봤|먹고\s*나서|먹음(?:\s|$)|마셨|식사했")
+PAST_MEAL_SHORT = re.compile(r"\s*(?:어제|그제|지난번|아까|방금)(?:는|도|에)?\s+\S+\s*")
+MEAL_REQUEST = re.compile(r"먹고\s*싶|먹을\s*래|추천해|추천받고\s*싶|골라|먹을까|먹을게")
+
+
+def past_meal_spans(text: str) -> list[tuple[int, int]]:
+    """먹은 음식이 들어 있는 절의 범위를 반환한다."""
+    spans = []
+    start = 0
+    for boundary in MEAL_CLAUSE_BREAK.finditer(text + "\n"):
+        clause = text[start:boundary.start()]
+        if not MEAL_REQUEST.search(clause) and (PAST_MEAL.search(clause) or PAST_MEAL_SHORT.fullmatch(clause)):
+            spans.append((start, boundary.start()))
+        start = boundary.end()
+    return spans
+
+
+def food_mentions(text: str, foods: list[str], *,
+                  past: list[tuple[int, int]] | None = None) -> tuple[list[str], list[str]]:
     """긴 메뉴 이름을 먼저 확정하고, 같은 메뉴의 마지막 요청을 적용한다."""
     found: list[tuple[int, int, str]] = []
     names = {food: food for food in foods if len(food) >= 2}
@@ -326,8 +352,11 @@ def food_mentions(text: str, foods: list[str]) -> tuple[list[str], list[str]]:
     found = [f for f in found if not any(o[0] >= f[0] and o[0] - o[1] <= f[0] - f[1] and o[1] > f[1] for o in found)]
     latest: dict[str, bool] = {}
     for end, _, food in sorted(found):
+        past_clause = next((text[start:stop] for start, stop in past or () if start < end <= stop), "")
+        if past_clause and re.search(r"(?:안|못)\s*먹었|먹지\s*않았", past_clause):
+            continue
         latest.pop(food, None)
-        latest[food] = not FOOD_NEGATIVE.match(text[end:])
+        latest[food] = not (past_clause or FOOD_NEGATIVE.match(text[end:]))
     return ([food for food, wanted in latest.items() if wanted],
             [food for food, wanted in latest.items() if not wanted])
 
@@ -401,16 +430,24 @@ def tastes(text: str) -> str:
     return ",".join(found.values())
 
 
-def taste_note(history: list[str]) -> str:
-    keys = [item.lstrip("-") for item in tastes(" ".join(history)).split(",") if item]
-    if not keys:
-        return ""
-    names = "·".join(TASTE_NAMES[key] for key in keys)
-    return f"{names}은 맛 자료가 없어 메뉴 이름으로 짐작해 반영했어요."
+def taste_note(history: list[str], result: dict[str, Any] | None = None, *,
+               taste: str | None = None) -> str:
+    choices = (tastes(" ".join(history)) if taste is None else taste).split(",")
+    notes = []
+    if "-rich" in choices and (families := (result or {}).get("families")):
+        fats = [reference_fat(family["best"].get("nutrition")) for family in families[:5]]
+        if any(fat is not None for fat in fats):
+            notes.append("기름지지 않은 쪽은 100g당 지방 참고값이 낮을수록 점수를 높였어요. 실제 매장 메뉴와 다를 수 있어요.")
+        if any(fat is None for fat in fats):
+            notes.append("지방 참고값이 없는 메뉴는 이름에서 기름진 음식의 단서를 살폈어요.")
+    names = "·".join(TASTE_NAMES[item.lstrip("-")] for item in choices if item and item != "-rich")
+    if names:
+        notes.append(f"{names}은 맛 자료가 없어 메뉴 이름으로 짐작해 반영했어요.")
+    return " ".join(notes)
 
 
-def reply(result: dict[str, Any], history: list[str] | None = None) -> str:
-    note = taste_note(history or [])
+def reply(result: dict[str, Any], history: list[str] | None = None, *, taste: str | None = None) -> str:
+    note = taste_note(history or [], result, taste=taste)
     candidates = [{"name": f["name"], "reasons": f["best"]["reasons"]}
                   for f in result.get("families", [])[:5]]
     if not candidates:
