@@ -733,6 +733,23 @@ function familyStoreItem(store, family) {
   text.append(name, node("p", `${store.district} · 이 가게의 해당 메뉴 리뷰 ${store.reviews.toLocaleString("ko-KR")}건${distance}`,
     "store-meta"));
   if (store.address) text.append(node("p", store.address, "store-address"));
+  const nutrition = store.franchise_nutrition;
+  if (nutrition) {
+    const details = node("details", undefined, "franchise-nutrition");
+    const nutrients = [
+      ["energy_kcal", "열량", "kcal"], ["protein_g", "단백질", "g"], ["carbohydrate_g", "탄수화물", "g"],
+      ["fat_g", "지방", "g"], ["sugar_g", "당류", "g"], ["sodium_mg", "나트륨", "mg"],
+    ].filter(([key]) => nutrition[key] != null)
+      .map(([key, label, unit]) => `${label} ${nutrition[key].toLocaleString("ko-KR")}${unit}`);
+    const basis = nutrition.basis || "기준량 정보 없음";
+    const status = nutrition.approved ? "" : " · 제품 연결 검토 중";
+    details.append(
+      node("summary", `프랜차이즈 영양정보 (${basis})`),
+      node("p", `${nutrition.brand} · ${nutrition.product_name}${status}`, "store-meta"),
+      node("p", nutrients.join(" · "), "store-meta"),
+    );
+    text.append(details);
+  }
   if (store.comment) {
     const reason = node("p", undefined, "menu-comment store-reason");
     reason.append(node("strong", "추천이유"), node("span", store.comment));

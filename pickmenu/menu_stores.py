@@ -22,6 +22,8 @@ CACHE_SECONDS = 300
 RETRY_SECONDS = 60
 _lock = threading.Lock()
 _names: dict[str, Any] = {"value": None, "checked": float("-inf")}
+_nutrition: dict[str, Any] = {"value": None, "checked": float("-inf")}
+_nutrition_lock = threading.Lock()
 
 
 # 가게 점수 = 100 × (리뷰 0.6 + 거리 0.4). 위치를 고르지 않으면 지금처럼 리뷰 수 순서다.
@@ -144,6 +146,35 @@ def store_names() -> dict[str, str] | None:
         return _names["value"]
 
 
+def franchise_nutrition() -> dict[tuple[str, str], dict[str, Any]]:
+    """공개 조회 뷰의 매장·메뉴 쌍별 영양 정보를 캐시한다."""
+    with _nutrition_lock:
+        age = time.monotonic() - _nutrition["checked"]
+        if age < (CACHE_SECONDS if _nutrition["value"] is not None else RETRY_SECONDS):
+            return _nutrition["value"] or {}
+        try:
+            import psycopg
+            from psycopg.rows import dict_row
+
+            with psycopg.connect(menu_reco.dsn(), connect_timeout=5, row_factory=dict_row) as db:
+                db.read_only = True
+                rows = db.execute("SELECT * FROM pickmenu_franchise.public_store_nutrition").fetchall()
+            values = {}
+            for row in rows:
+                key = (row.pop("store_id"), row.pop("standard_menu_id"))
+                for field in ("energy_kcal", "protein_g", "carbohydrate_g", "fat_g", "sugar_g", "sodium_mg"):
+                    if row[field] is not None:
+                        row[field] = float(row[field])
+                values[key] = row
+            _nutrition["value"] = values
+        except ImportError:  # PostgreSQL 드라이버 없이 실행하는 로컬 환경
+            _nutrition["value"] = None
+        except psycopg.Error:
+            _nutrition["value"] = None
+        _nutrition["checked"] = time.monotonic()
+        return _nutrition["value"] or {}
+
+
 def stores(path: Path, menus: list[dict[str, Any]], district: str, limit: int = 50,
            origin: tuple[float, float] | None = None) -> dict[str, Any]:
     """고른 순서의 실제 메뉴별 판매 매장. 고른 구에 없으면 수원 전체로 넓힌다.
@@ -187,7 +218,10 @@ def stores(path: Path, menus: list[dict[str, Any]], district: str, limit: int = 
         "stores": [{"standard_menu_id": mid, "menu_name": by_id[mid]["name"],
                     "store_name": (names or {}).get(store_id), "district": where, "reviews": count}
                    for mid, store_id, where, count in rows[:limit]]}
+    nutrition = franchise_nutrition() if result["stores"] else {}
     for store, row in zip(result["stores"], rows[:limit], strict=True):
+        if reference := nutrition.get((row[1], row[0])):
+            store["franchise_nutrition"] = reference
         # 지도 표시용 가게 위치(도로명 주소를 바꾼 공개 좌표). 없으면 지도에서 빠진다.
         store["location"] = list(places[row[1]]) if row[1] in places else None
         store["address"] = store_address(row[1]) or None

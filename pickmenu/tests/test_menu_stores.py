@@ -109,6 +109,9 @@ class StoreApiTest(unittest.TestCase):
         names = patch.object(menu_stores, "store_names", lambda: {"SW_a": "가 육회", "SW_b": "나 식당", "SW_c": "다 제육"})
         names.start()
         self.addCleanup(names.stop)
+        nutrition = patch.object(menu_stores, "franchise_nutrition", return_value={})
+        self.nutrition = nutrition.start()
+        self.addCleanup(nutrition.stop)
 
     def test_step_one_has_exact_family_evidence(self):
         status, result = self.call("/api/recommend", {})
@@ -141,6 +144,18 @@ class StoreApiTest(unittest.TestCase):
         with patch.object(menu_stores, "store_names", lambda: None):
             status, found = self.call("/api/recommend/stores", {"menu_ids": [IDS["불향가득제육"]], "district": ""})
         self.assertEqual((status, found["names_available"], found["stores"][0]["store_name"]), (200, False, None))
+
+    def test_franchise_nutrition_matches_the_exact_store_and_menu(self):
+        mid = IDS["최상급 육회"]
+        other = IDS["[별미한점] 육회"]
+        product = {"brand": "테스트", "product_name": "테스트 제품", "basis": "100g",
+                   "energy_kcal": 230.0, "protein_g": None, "approved": False}
+        self.nutrition.return_value = {("SW_a", mid): product, ("SW_b", other): product}
+        status, found = self.call("/api/recommend/stores", {"menu_ids": [mid, other]})
+        self.assertEqual(status, 200)
+        first, second = found["stores"]
+        self.assertEqual(first["franchise_nutrition"], product)
+        self.assertNotIn("franchise_nutrition", second)
 
     def test_step_two_rejects_bad_input(self):
         for body in ({}, {"menu_ids": []}, {"menu_ids": ["x"]}, {"menu_ids": [IDS["최상급 육회"]], "district": "서울"},
