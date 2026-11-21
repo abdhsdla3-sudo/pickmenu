@@ -10,7 +10,13 @@ from unittest.mock import patch
 from drive_data import EXPECTED
 from prepare import CATALOG, reference, taste_tags
 from raw import LOCAL, ordered_menus
-from recommend import Profile, ingredient_terms, nutrition_score, recommend
+from recommend import (
+    Profile,
+    ingredient_terms,
+    nutrition_score,
+    recommend,
+    recommend_relaxed,
+)
 from server import catalog, categories, public_menu
 
 
@@ -62,6 +68,60 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(recommend(menus, Profile.parse({"taste": "-crispy"}, []))["items"][0]["name"], "물냉면")
         with self.assertRaises(ValueError):
             Profile.parse({"taste": "umami"}, [])
+
+    def test_exact_name_search_first(self):
+        info = {"basis": 100, "unit": "g", "values": [120, 20, 13, 4, None]}
+        menus = [fixture("치킨마요덮밥", "MN_1", info), fixture("양념치킨", "MN_2"), fixture("치킨", "MN_3")]
+        names = [item["name"] for item in recommend(menus, Profile.parse({"query": "치킨", "goal": "protein"}, []))["items"]]
+        self.assertEqual(names, ["치킨", "양념치킨", "치킨마요덮밥"])
+
+    def test_saved_group_first_and_options_removed(self):
+        menus = [fixture("육회", "MN_1"), {**fixture("샐러드", "MN_2"), "category": "샐러드·건강식"},
+                 fixture("곱빼기 추가", "MN_3")]
+        profile = Profile.parse({"category": "샐러드·건강식", "goal": "light"}, ["샐러드·건강식"])
+        found = recommend(menus, profile, ["샐러드", "샐러드"])
+        self.assertEqual([row["name"] for row in found["families"]], ["샐러드", "육회"])
+        self.assertEqual(recommend(menus, Profile.parse({"avoid_menus": "육회"}, []))["eligible"], 1)
+
+    def test_mild_excludes_inferred_hot_without_relaxing(self):
+        menus = [fixture(name, str(i)) for i, name in enumerate(("불족발", "고추바사삭", "부대찌개"))]
+        result, used = recommend_relaxed(menus, Profile.parse({"spice": "mild"}, []))
+        self.assertEqual((used.spice, result["items"]), ("mild", []))
+        self.assertEqual(recommend(menus, Profile.parse({"spice": ""}, []))["eligible"], 3)
+
+    def test_light_meal_checks_sodium_and_serving(self):
+        stew = {"basis": 100, "unit": "g", "values": [61, 3.8, 3, 3.8, 491]}
+        lighter = {**stew, "values": [61, 3.8, 3, 3.8, 40]}
+        serving = {**stew, "serving_reference": "1인분(400g)"}
+        self.assertLess(nutrition_score(stew, "light"), nutrition_score(lighter, "light"))
+        self.assertLess(nutrition_score(serving, "light"), nutrition_score(stew, "light"))
+
+    def test_relax_impossible_combination(self):
+        menus = [fixture("비빔밥", "MN_1")]  # 국물 없는 밥·덮밥
+        result, used = recommend_relaxed(menus, Profile.parse({"soup": "yes"}, []))
+        self.assertEqual((result["relaxed"], used.soup, result["items"][0]["name"]), (["국물 조건"], "", "비빔밥"))
+        result, used = recommend_relaxed(menus, Profile.parse({"soup": "no"}, []))
+        self.assertEqual(result["relaxed"], [])
+        result, _ = recommend_relaxed(menus, Profile.parse({"diet": "vegan", "query": "돼지"}, []))
+        self.assertEqual((result["relaxed"], result["items"]), ([], []))
+        # 고른 지역에 말한 메뉴가 없으면(이름만 비슷한 닭갈비덮밥만 있으면) 지역만 넓힌다. 국물 조건은 남긴다.
+        near = {"권선구": {"reviews": 3, "stores": 1}, "수원시": {"reviews": 3, "stores": 1}}
+        far = {"영통구": {"reviews": 9, "stores": 2}, "수원시": {"reviews": 9, "stores": 2}}
+        menus = [{**fixture("닭갈비덮밥", "MN_1"), "regions": near}, {**fixture("닭갈비", "MN_2"), "regions": far}]
+        result, used = recommend_relaxed(menus, Profile.parse({"query": "닭갈비", "district": "권선구", "soup": "no"}, []))
+        self.assertEqual((result["relaxed"], used.soup, result["items"][0]["name"]),
+                         (["지역(수원시 전체로 넓힘)"], "no", "닭갈비"))
+
+    def test_near_column_spice(self):
+        from recommend import column_spice, near_spice
+        self.assertEqual(near_spice("치즈버거", "햄버거", "mild"), "mild")
+        self.assertEqual(near_spice("김치볶음밥", "볶음밥", "mild"), "")
+        self.assertEqual(near_spice("로제떡볶이", "떡볶이", "hot"), "")
+        self.assertEqual(near_spice("국물떡볶이", "떡볶이", "hot"), "hot")
+        self.assertEqual(near_spice("계란덮밥", "덮밥", "hot"), "")
+        rows = ([{"column_name": "햄버거", "spiciness": "안 매움"}] * 20 + [{"column_name": "햄버거", "spiciness":
+                "일부 매운 옵션"}] * 10 + [{"column_name": "햄버거", "spiciness": "약간 매움"}] * 2)
+        self.assertEqual(column_spice(rows), {"햄버거": "mild"})
 
     def test_nutrition_missing_units_and_scoring(self):
         info = {"basis": 100, "unit": "g", "values": [120, 6, 13, 4, None]}

@@ -4,7 +4,6 @@ const form = document.querySelector("#profile");
 const status = document.querySelector("#result-status");
 const profileStatus = document.querySelector("#profile-status");
 const results = document.querySelector("#results");
-const subtitle = document.querySelector("#results-sub");
 const dialog = document.querySelector("#detail");
 const scroller = document.querySelector("#app-scroll");
 const chatLog = document.querySelector("#chat-log");
@@ -24,6 +23,7 @@ let profile = {...defaults};
 let hasProfile = false;
 let step = 0;
 let sourceMode = "choice";
+const CHAT_TURN_LIMIT = 6;
 let chatMessages = [];
 let chatConditions = {};
 let activeRecommendation = null;
@@ -59,7 +59,7 @@ let account = null;
 // 둘러보기: 서버가 허용하면(PICKMENU_GUEST=1) 로그인 없이 선택지 추천과 가게 목록만 쓴다. 취향은 저장하지 않는다.
 let guestAllowed = false;
 let guest = false;
-const guestScreens = ["modes", "choice", "results"];
+const guestScreens = ["choice", "results"];
 let accountReturn = "welcome";
 let syncNotice = "";
 document.querySelector("#category").addEventListener("change", () => { categoryTouched = true; });
@@ -77,6 +77,12 @@ function showScreen(name) {
   for (const button of document.querySelectorAll(".mode-switch button")) {
     button.setAttribute("aria-pressed", String(button.dataset.mode === name));
   }
+  // 하단 탭: 지금 보고 있는 화면의 탭을 표시한다(메뉴 찾기 = 선택지·이야기·결과, 내 정보 = 계정).
+  const tab = name === "account" ? "nav-account" : ["choice", "chat", "results"].includes(name) ? "nav-home" : "";
+  for (const button of document.querySelectorAll(".bottom-nav button")) {
+    if (button.id === tab) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  }
   scroller.scrollTop = 0;
   const title = document.querySelector(`[data-screen="${name}"] h2`);
   if (title) title.focus({preventScroll: true});
@@ -90,13 +96,16 @@ function cancelRecommendation() {
 
 function setBusy(busy) {
   document.querySelector("#meal button[type=submit]").disabled = busy;
-  document.querySelector("#chat-form button").disabled = busy;
-  chatInput.disabled = busy;
-  for (const button of chatChips.querySelectorAll("button")) button.disabled = busy;
+  const chatDone = chatMessages.length >= CHAT_TURN_LIMIT;
+  document.querySelector("#chat-form button").disabled = busy || chatDone;
+  chatInput.disabled = busy || chatDone;
+  for (const button of chatChips.querySelectorAll("button")) button.disabled = busy || chatDone;
 }
 
 function summary() {
   return [dietLabels[profile.diet], goalLabels[profile.goal], profile.category || "음식군 골고루",
+    {mild: "안 매운 쪽", hot: "매운 쪽"}[profile.spice] || "맵기 상관없음",
+    {yes: "국물 있음", no: "국물 없음"}[profile.soup] || "국물 상관없음",
     profile.allergy ? "알레르기 설정" : "", profile.exclude ? "기피 재료 설정" : ""].filter(Boolean).join(" · ");
 }
 
@@ -105,7 +114,7 @@ function applyProfile() {
     const field = form.elements.namedItem(key);
     const value = profile[key];
     if (field instanceof RadioNodeList) {
-      if (Array.from(field).some(input => input.value === value)) field.value = value;
+      for (const input of field) input.checked = input.value === value;
     } else if (field instanceof HTMLSelectElement) {
       if (Array.from(field.options).some(option => option.value === value)) field.value = value;
     } else {
@@ -163,17 +172,19 @@ function startOnboarding() {
 function openModes() {
   if (!account && !guest) return openAccount();
   updateAccountUI();
-  // 신체정보는 선택(1.7.0)이라 취향 프로필이 있으면 바로 추천 방식으로 간다.
+  // 신체정보는 선택 입력이라 취향 프로필이 있으면 바로 추천 화면으로 간다.
   if (account && !hasProfile) return startOnboarding();
   cancelRecommendation();
-  document.querySelector("#profile-summary").textContent = guest
-    ? "둘러보기 중이에요. 가입하면 취향을 저장하고 이야기 추천도 쓸 수 있어요."
-    : [summary(), storageNotice, syncNotice].filter(Boolean).join(" · ");
-  document.querySelector("#delete-profile").hidden = guest;
-  document.querySelector('.profile-peek [data-action="edit-profile"]').textContent = guest ? "가입하고 취향 저장하기 →" : "프로필 수정 →";
   document.querySelector("#open-location").hidden = guest;
   for (const button of document.querySelectorAll('.mode-switch [data-mode="chat"]')) button.classList.toggle("locked", guest);
   openMode(guest ? "choice" : savedMode());
+}
+
+function startGuest() {
+  if (!guestAllowed) return openAccount("signup");
+  clearLocalProfile();
+  guest = true;
+  openModes();
 }
 
 // 추천 방식(이야기/선택지)은 화면 위 전환 버튼으로 바꾸고, 마지막에 쓴 방식을 이 브라우저에 기억한다.
@@ -204,13 +215,6 @@ function openMode(mode) {
     sourceMode = "chat";
     showScreen("chat");
   }
-}
-
-function startGuest() {
-  if (!guestAllowed) return openAccount("signup");
-  clearLocalProfile();
-  guest = true;
-  openModes();
 }
 
 function profilePayload() {
@@ -260,7 +264,7 @@ function addReasons(parent, reasons) {
 function nutritionSummary(menu) {
   if (!menu.nutrition) {
     return menu.references.length ? "구성 음식의 100g 참고값 · 메뉴 전체값 미확인"
-      : `영양정보 없음 · ${menu.nutrition_status}`;
+      : "일반 메뉴 영양정보 없음";
   }
   const ref = menu.nutrition;
   return `${ref.name} 100g 참고 · ${ref.values[0]} kcal · 단백질 ${ref.values[1]} g · ${ref.source} · 자동 연결`;
@@ -283,6 +287,35 @@ function showReference(parent, ref) {
   if (ref.serving_reference) {
     parent.append(node("p", `공공 DB 1회분량 참고 표기 ${ref.serving_reference}`, "muted"));
   }
+}
+
+function franchiseNutrition(nutrition) {
+  const details = node("details", undefined, "franchise-nutrition");
+  details.open = true;
+  const nutrients = [
+    ["energy_kcal", "열량", "kcal"], ["protein_g", "단백질", "g"], ["carbohydrate_g", "탄수화물", "g"],
+    ["fat_g", "지방", "g"], ["sugar_g", "당류", "g"], ["sodium_mg", "나트륨", "mg"],
+  ].filter(([key]) => nutrition[key] != null)
+    .map(([key, label, unit]) => `${label} ${nutrition[key].toLocaleString("ko-KR")}${unit}`);
+  const basis = nutrition.basis || "기준량 정보 없음";
+  const status = nutrition.approved ? "" : " · 제품 연결 검토 중";
+  details.append(
+    node("summary", `프랜차이즈 영양정보 (${basis})`),
+    node("p", `${nutrition.brand} · ${nutrition.product_name}${status}`, "store-meta"),
+    node("p", nutrients.join(" · "), "store-meta"),
+  );
+  return details;
+}
+
+function appendFranchiseNutrition(parent, item) {
+  if (item.franchise_nutrition) parent.append(franchiseNutrition(item.franchise_nutrition));
+  if (!item.franchise_menu_options?.length) return;
+  const group = node("details", undefined, "franchise-nutrition-options");
+  group.append(node("summary", `같은 매장의 다른 메뉴 영양정보 (${item.franchise_menu_options.length}개)`));
+  for (const option of item.franchise_menu_options) {
+    group.append(node("p", option.menu_name, "franchise-menu-name"), franchiseNutrition(option.franchise_nutrition));
+  }
+  parent.append(group);
 }
 
 function currentDistrict() {
@@ -322,7 +355,7 @@ async function loadDetailStores(menu, box) {
       });
       box.append(more);
     }
-    box.append(node("p", "별점은 리뷰 내용을 분석한 만족도예요 (플랫폼 별점과 달라요). 가게 메뉴 이름이 달라도 같은 음식으로 분류된 메뉴를 보여 줘요.", "muted"));
+    box.append(node("p", "별점은 리뷰 내용을 분석한 만족도예요 (플랫폼 별점과 달라요).", "muted"));
   } catch (error) {
     box.replaceChildren(heading, node("p", `가게 목록을 불러오지 못했어요. ${error.message}`, "muted"));
   }
@@ -337,15 +370,15 @@ async function openDetail(item, button) {
     body.replaceChildren(node("p", [menu.category, ...menu.components].join(" · "), "muted"));
     addReasons(body, item.reasons);
     body.append(node("p", "실제 매장 레시피와 원재료, 알레르기 및 교차접촉 정보는 확인이 필요해요.", "muted"));
+    appendFranchiseNutrition(body, item);
     if (menu.references.length) {
       body.append(node("p", menu.compound
         ? "구성 음식별 참고값입니다. 전체 메뉴나 매장 1인분의 영양량은 확인되지 않았어요."
         : "공개 일반음식 참고값입니다. 실제 매장 제공량과 조리법에 따라 달라요.", "muted"));
       for (const ref of menu.references) showReference(body, ref);
-    } else {
-      body.append(node("p", `영양정보 없음 · ${menu.nutrition_status}`, "muted"));
+    } else if (!item.franchise_nutrition && !item.franchise_menu_options?.length) {
+      body.append(node("p", "일반 메뉴 영양정보 없음", "muted"));
     }
-    body.append(node("p", `표준 메뉴 ID ${menu.standard_menu_id} · 음식 분류 ${menu.mapping_method || "제공 자료"}`, "muted"));
     const storeBox = node("section", undefined, "detail-stores");
     storeBox.append(node("h3", "이 메뉴를 파는 가게"), node("p", "가게를 찾고 있어요.", "muted"));
     // 가게 목록은 메뉴 정보 바로 아래, 다른 정보보다 먼저 보이게 둔다.
@@ -359,14 +392,12 @@ async function openDetail(item, button) {
   }
 }
 
-// 리뷰 수집 기간. /api/catalog 응답으로 채운다.
-let reviewPeriod = "";
-
 function render(data) {
-  subtitle.textContent = reviewPeriod ? `${data.region} · ${reviewPeriod} 배달 리뷰 기준` : data.region;
+  lastResult = data;
   if (!data.items.length) {
-    empty("조건에 맞는 추천 메뉴가 없어요",
-      "오늘의 메뉴 검색어 또는 지역을 바꾸어 다시 찾아보세요.");
+    empty("조건에 맞는 추천 메뉴가 없어요", sourceMode === "chat"
+      ? "대화에서 다른 음식이나 지역을 말해 다시 찾아보세요."
+      : "‘조건 바꾸기’에서 음식군이나 지역을 바꿔 다시 찾아보세요.");
     status.textContent = `제한 충돌 ${data.excluded.toLocaleString("ko-KR")}종 · 확인 필요 ${data.unverified.toLocaleString("ko-KR")}종`;
     if (data.check_only.length) {
       const note = node("div", undefined, "card");
@@ -376,12 +407,11 @@ function render(data) {
     }
     return;
   }
-  lastResult = data;
   if (data.families?.length) {
     renderFamilies(data);
     return;
   }
-  status.textContent = data.items.length < 3 ? `현재 조건에서 ${data.items.length}개를 찾았어요. 검색어와 지역은 직접 바꿀 수 있어요.` : "";
+  status.textContent = "";
   results.replaceChildren();
   data.items.forEach((item, index) => {
     const card = node("article", undefined, "card");
@@ -471,16 +501,12 @@ function appendMenuCard(card, foodName, button, ...details) {
 // 1단계: 가게마다 다른 메뉴 이름을 표준 음식명(대표 메뉴)으로 묶어 고르게 한다.
 function renderFamilies(data) {
   const count = data.families.length;
-  const top = data.families[0]?.best.score ?? 0;
   status.textContent = [
+    data.relaxed?.length ? `고른 조건에 맞는 메뉴가 없어 ${data.relaxed.join("·")}을 빼고 찾았어요.` : "",
     data.unverified ? "알레르기·채식 조건은 메뉴 재료 정보가 부족해 확인하지 못했어요. '재료 확인 필요' 메뉴는 주문 전에 가게에 꼭 확인해 주세요." : "",
     // 선호 음식군에 조건이 맞는 음식이 없으면 다른 음식군에서 골랐다고 알린다.
     data.category && data.preferred_foods === 0
       ? `선호 음식군 ${data.category}에는 지금 조건에 맞는 메뉴가 없어 다른 음식군에서 골랐어요.` : "",
-    top < 40 ? "조건에 꼭 맞는 메뉴가 적어 점수가 낮아요. 맵기·국물 조건을 '상관없음'으로 바꾸면 더 넓게 찾아요." : "",
-    data.recent_applied ? "최근에 본 메뉴는 조금 뒤로 보내고 다른 메뉴도 올렸어요." : "",
-    count < 3 ? `현재 조건에서 대표 메뉴 ${count}개를 찾았어요. 검색어와 지역은 직접 바꿀 수 있어요.`
-      : "먹고 싶은 메뉴를 고르면 실제 메뉴와 파는 가게를 보여 드려요.",
   ].filter(Boolean).join(" ");
   results.replaceChildren();
   data.families.forEach((family, index) => {
@@ -495,12 +521,15 @@ function renderFamilies(data) {
     button.addEventListener("click", () => showFamily(family, data));
     // 카드는 이름·음식군과 영양 한 줄만 보여 준다. LLM 한 줄 설명(comment)이 오면 영양 대신 보여 준다.
     // 추천 근거와 알레르기 확인 안내는 메뉴 상세에 남는다.
-    // 추천점수(100점 기준)는 순서를 정한 값 그대로다.
+    // 검색 이름과 선호 음식군을 먼저 적용하고, 같은 조건 안에서 추천점수를 비교한다.
     const score = node("p", undefined, "menu-score");
     score.append(node("strong", `${Math.round(family.best.score)}`), node("span", "점 · 추천점수"));
     if (family.best.needs_check) score.append(node("span", "재료 확인 필요", "tag warn check-tag"));
-    appendMenuCard(card, family.name, button, head, score, family.comment ? node("p", family.comment, "menu-comment")
-      : node("p", nutritionSummary(family.best), "muted"));
+    const note = family.comment ? node("p", family.comment, "menu-comment")
+      : node("p", nutritionSummary(family.best), "muted");
+    const hint = node("p", "프랜차이즈 제품 영양정보가 연결된 매장이 있어요.", "muted");
+    const notes = family.has_franchise_nutrition ? (family.comment ? [note, hint] : [hint]) : [note];
+    appendMenuCard(card, family.name, button, head, score, ...notes);
     results.append(card);
   });
   if (count && lastRequest) {
@@ -510,7 +539,6 @@ function renderFamilies(data) {
     more.addEventListener("click", () => recommendNow(lastRequest.conditions, lastRequest.mode));
     results.append(more);
   }
-  results.append(node("p", "가게마다 다른 메뉴 이름을 같은 음식으로 묶었어요 (자동 분류 · 사람 미검수).", "muted family-note"));
 }
 
 // 배달 위치는 이 페이지의 현재 로그인에서만 사용한다.
@@ -734,7 +762,7 @@ async function storeMap(holder, stores) {
     const marker = L.marker(store.location, {icon, title: `${at + 1}. ${store.store_name || store.menu_name}`}).addTo(map);
     const popup = node("div", undefined, "map-popup");
     popup.append(node("strong", `${at + 1}. ${store.store_name || "가게 이름 확인 중"}`),
-      node("span", `${store.menu_name} · 리뷰 ${store.reviews.toLocaleString("ko-KR")}건`
+      node("span", `${store.menu_name} · 이 메뉴 리뷰 ${store.reviews.toLocaleString("ko-KR")}건`
         + (store.distance_km != null ? ` · 약 ${store.distance_km}km` : "")));
     if (store.address) popup.append(node("span", store.address));
     marker.bindPopup(popup);
@@ -749,8 +777,6 @@ async function storeMap(holder, stores) {
   setTimeout(() => map.invalidateSize(), 50);
 }
 
-// 추천 결과에서 주문까지 이어지게: 가게 이름 복사(배달앱 검색용)와 네이버 지도 검색 링크.
-// 지도 링크에는 공개된 가게 이름과 구만 넣고, 사용자 위치·계정 정보는 넣지 않는다.
 // 클립보드 API가 막힌 환경(권한·일부 인앱 브라우저)에서는 선택 후 복사 명령으로 한 번 더 시도한다.
 async function copyText(text) {
   try {
@@ -775,6 +801,8 @@ async function copyText(text) {
   }
 }
 
+// 추천 결과에서 주문까지 이어지게: 가게 이름 복사(배달앱 검색용)와 네이버 지도 검색 링크.
+// 지도 링크에는 공개된 가게 이름과 구만 넣고, 사용자 위치·계정 정보는 넣지 않는다.
 function storeActions(store) {
   const actions = node("div", undefined, "store-actions");
   const copy = node("button", "가게 이름 복사", "small-link");
@@ -801,12 +829,13 @@ function familyStoreItem(store, family) {
   name.append(node("strong", store.menu_name), node("span", ` – ${store.store_name || "가게 이름 확인 중"}`));
   const distance = store.distance_km === undefined ? ""
     : store.distance_km === null ? " · 거리 정보 없음" : ` · 약 ${store.distance_km}km`;
-  text.append(name, node("p", `${store.district} · 이 가게 리뷰 ${store.reviews.toLocaleString("ko-KR")}건${distance}`,
+  text.append(name, node("p", `${store.district} · 이 가게의 해당 메뉴 리뷰 ${store.reviews.toLocaleString("ko-KR")}건${distance}`,
     "store-meta"));
   if (store.address) text.append(node("p", store.address, "store-address"));
+  appendFranchiseNutrition(text, store);
   if (store.comment) {
-    const reason = node("p", undefined, "menu-comment store-reason");
     // 사실 문장(서버 작성)과 AI 한마디를 나눠 보여 준다. 예전 응답은 comment 한 줄만 있다.
+    const reason = node("p", undefined, "menu-comment store-reason");
     reason.append(node("strong", "추천이유"), node("span", store.comment_facts || store.comment));
     text.append(reason);
     if (store.comment_mood) text.append(node("p", store.comment_mood, "store-mood"));
@@ -817,7 +846,8 @@ function familyStoreItem(store, family) {
   button.setAttribute("aria-label", `${store.menu_name} 상세 보기`);
   const member = family.members.find(m => m.standard_menu_id === store.standard_menu_id);
   button.addEventListener("click", () => openDetail({standard_menu_id: store.standard_menu_id,
-    reasons: member ? member.reasons : []}, button));
+    reasons: member ? member.reasons : [], franchise_nutrition: store.franchise_nutrition,
+    franchise_menu_options: store.franchise_menu_options}, button));
   item.append(text, button);
   return item;
 }
@@ -850,9 +880,7 @@ async function showFamily(family, data) {
       return;
     }
     const where = found.citywide ? `${district}에는 없어 수원 전체 기준` : (district || "수원 전체");
-    const order = found.location_used ? "메뉴 적합도, 그다음 가게 점수(리뷰 수 60% · 고른 위치와의 거리 40%)"
-      : "메뉴 적합도, 그다음 가게 리뷰 수";
-    results.append(node("p", `${where} · 가게 ${found.store_count}곳 · 추천 순서는 ${order}예요.`, "muted"));
+    results.append(node("p", `${where} · 가게 ${found.store_count}곳`, "muted"));
     const place = node("div", undefined, "location-bar");
     place.append(node("span", found.location_used
       ? (found.located ? `📍 ${locationText(sessionLocation)}에서 가까운 가게를 앞에 두었어요.`
@@ -883,14 +911,29 @@ async function showFamily(family, data) {
     if (found.stores.length > 10) {
       const more = node("button", `${found.stores.length - 10}개 더 보기`, "more-stores");
       more.type = "button";
-      more.addEventListener("click", () => {
+      const firstLinked = found.stores.findIndex(store => store.franchise_nutrition || store.franchise_menu_options?.length);
+      const reveal = () => {
         for (const item of list.children) item.hidden = false;
         more.remove();
-      });
+      };
+      more.addEventListener("click", reveal);
+      if (firstLinked >= 10) {
+        const jump = node("button", "영양정보 있는 매장 보기", "small-link");
+        jump.type = "button";
+        jump.addEventListener("click", () => {
+          reveal();
+          const linked = list.children[firstLinked];
+          const options = linked.querySelector(".franchise-nutrition-options");
+          if (options) options.open = true;
+          linked.tabIndex = -1;
+          linked.focus({preventScroll: true});
+          linked.scrollIntoView({block: "nearest"});
+        });
+        results.insertBefore(jump, list);
+      }
       results.append(more);
     }
     if (!found.names_available) results.append(node("p", "가게 이름 자료를 지금 불러올 수 없어요. 잠시 뒤 다시 시도해 주세요.", "muted"));
-    results.append(node("p", "과거 리뷰에 등장한 메뉴와 가게예요. 현재 판매 여부·가격은 주문 전 확인해 주세요.", "muted"));
   } catch (error) {
     if (!results.contains(heading)) return;
     status.textContent = "";
@@ -967,10 +1010,12 @@ function openAccount(mode = "login") {
   }
   if (account) {
     document.querySelector("#account-name").textContent = profile.nickname || account.username;
+    document.querySelector("#account-profile-summary").textContent = hasProfile
+      ? summary() : "아직 프로필이 없어요. 취향을 알려주면 추천에 반영해요.";
     document.querySelector("#account-settings").elements.namedItem("nickname").value = profile.nickname;
     document.querySelector("#settings-status").textContent = "";
-    document.querySelector("#account-sync").textContent = syncNotice
-      || (hasProfile ? "내 식사 프로필이 계정에 저장되어 있어요." : "프로필을 만들면 계정에 자동으로 저장돼요.");
+    document.querySelector("#account-sync").textContent = [storageNotice, syncNotice].filter(Boolean).join(" ");
+    document.querySelector("#delete-profile").hidden = !hasProfile;
   }
   authStatus.textContent = "";
   showScreen("account");
@@ -1010,6 +1055,8 @@ function clearLocalProfile() {
   }
   cancelRecommendation();
   profile = {...defaults};
+  lastRequest = null;
+  lastResult = null;
   storageNotice = "";
   hasProfile = false;
   form.reset();
@@ -1074,6 +1121,7 @@ authForm.addEventListener("submit", async event => {
 document.querySelector("#account-open").addEventListener("click", openAccount);
 document.querySelector("#welcome-login").addEventListener("click", openAccount);
 document.querySelector("#welcome-signup").addEventListener("click", () => openAccount("signup"));
+document.querySelector("#welcome-guest").addEventListener("click", startGuest);
 document.querySelector("#signup-open").addEventListener("click", () => openAccount("signup"));
 document.querySelector("#nav-account").addEventListener("click", openAccount);
 document.querySelector("#account-edit-profile").addEventListener("click", startOnboarding);
@@ -1159,6 +1207,13 @@ form.addEventListener("submit", async event => {
   const next = document.querySelector("#step-next");
   next.disabled = true;
   await pushProfile();
+  document.querySelector("#meal-category").value = "";
+  chatMessages = [];
+  chatConditions = {};
+  chatLog.replaceChildren();
+  chatChips.replaceChildren();
+  lastRequest = null;
+  lastResult = null;
   next.disabled = false;
   openModes();
 });
@@ -1188,8 +1243,14 @@ for (const button of document.querySelectorAll("[data-action]")) {
   });
 }
 
-document.querySelector("#delete-profile").addEventListener("click", async () => {
-  const peek = document.querySelector("#profile-summary");
+const deleteProfileDialog = document.querySelector("#delete-profile-dialog");
+document.querySelector("#delete-profile").addEventListener("click", () => {
+  deleteProfileDialog.returnValue = "";
+  deleteProfileDialog.showModal();
+});
+deleteProfileDialog.addEventListener("close", async () => {
+  if (deleteProfileDialog.returnValue !== "delete") return;
+  const peek = document.querySelector("#account-sync");
   if (account) {
     try {
       await request("/api/profile", {method: "DELETE"});
@@ -1217,10 +1278,9 @@ for (const button of document.querySelectorAll(".mode-switch button")) {
 function openChoice() {
   sourceMode = "choice";
   const meal = document.querySelector("#meal");
-  meal.elements.namedItem("goal").value = profile.goal;
-  meal.elements.namedItem("spice").value = profile.spice || "";
-  meal.elements.namedItem("soup").value = profile.soup || "";
-  document.querySelector("#choice-profile").textContent = summary();
+  for (const key of ["goal", "spice", "soup"]) {
+    for (const input of meal.elements.namedItem(key)) input.checked = input.value === profile[key];
+  }
   showScreen("choice");
 }
 
@@ -1235,6 +1295,7 @@ function showPicked(payload) {
     payload.diet && payload.diet !== "general" ? dietLabels[payload.diet] : "",
     payload.query ? `검색어 ${payload.query}` : "",
     payload.allergy ? `알레르기 ${payload.allergy}` : "", payload.exclude ? `기피 ${payload.exclude}` : ""];
+  if (payload.avoid_menus) tags.push("제외 메뉴 " + payload.avoid_menus);
   document.querySelector("#picked-tags").replaceChildren(...tags.filter(Boolean).map(text => node("span", text, "tag")));
   document.querySelector("#picked").hidden = false;
 }
@@ -1249,7 +1310,6 @@ async function recommendNow(conditions, mode) {
     showScreen("results");
     status.textContent = "오늘의 메뉴를 비교하고 있어요.";
     results.replaceChildren();
-    subtitle.textContent = "";
   } else {
     bubble("좋아요. 알려주신 조건으로 메뉴를 찾아볼게요.");
   }
@@ -1267,7 +1327,7 @@ async function recommendNow(conditions, mode) {
     if (data.families?.length) rememberFoods(data.families.map(family => family.name));
     if (mode === "chat") {
       const picked = data.families?.length || data.items.length;
-      bubble(data.items.length ? `취향과 조건을 살펴 ${picked}개 메뉴를 골랐어요. 메뉴를 고르면 파는 가게도 알려 드려요.`
+      bubble(data.items.length ? `${picked}개 메뉴를 골랐어요.`
         : "지금 조건으로 추천할 메뉴를 찾지 못했어요. 확인이 필요한 정보와 조건을 살펴보세요.");
       const button = node("button", data.items.length ? "추천 메뉴 보러 가기 →" : "결과와 확인 사항 보기 →", "chat-results-link");
       button.type = "button";
@@ -1321,15 +1381,6 @@ function bubble(text, who = "bot") {
   chatLog.append(node("div", text, `bubble ${who}`));
   scrollChat();
 }
-function restartChip() {
-  chatChips.replaceChildren();
-  const button = node("button", "대화 다시 시작");
-  button.type = "button";
-  button.addEventListener("click", startChat);
-  chatChips.append(button);
-  scrollChat();
-}
-
 function setChatChips(answers) {
   chatChips.replaceChildren();
   for (const answer of answers) {
@@ -1347,17 +1398,25 @@ function startChat() {
   chatConditions = {};
   chatLog.replaceChildren();
   chatInput.value = "";
+  updateChatTurns();
+  setBusy(false);
   chatInput.placeholder = "오늘 먹고 싶은 음식이나 조건을 말해 주세요";
   showScreen("chat");
   bubble("오늘은 어떤 식사가 좋으세요? 원하는 메뉴나 맵기·국물·식사 목표를 자유롭게 이야기해 주세요.");
   setChatChips(["가볍고 안 매운 음식이 좋아요", "국물 있는 메뉴 추천해 줘", "단백질 위주로 먹고 싶어요"]);
 }
 
-document.querySelector("#welcome-guest").addEventListener("click", startGuest);
 document.querySelector("#restart-chat").addEventListener("click", startChat);
 
+function updateChatTurns() {
+  const remaining = CHAT_TURN_LIMIT - chatMessages.length;
+  document.querySelector("#chat-turns").textContent = remaining
+    ? "대화 " + chatMessages.length + "/" + CHAT_TURN_LIMIT + " · " + remaining + "회 더 보낼 수 있어요."
+    : "대화 6회를 모두 사용했어요. 새 대화를 시작해 주세요.";
+}
+
 async function respond(answer) {
-  if (activeRecommendation || !answer.trim()) return;
+  if (activeRecommendation || chatMessages.length >= CHAT_TURN_LIMIT || !answer.trim()) return;
   if (!account) return openAccount();
   const text = answer.trim();
   if (text.length > 300) { bubble("300자 이내로 입력해 주세요."); return; }
@@ -1367,14 +1426,6 @@ async function respond(answer) {
   bubble(text, "user");
   chatInput.value = "";
   chatChips.replaceChildren();
-  // 입력은 메모리에서만 유지한다. 과거 대화를 조용히 버려 제한 조건이 사라지지 않게 한다.
-  if (chatMessages.length >= 6) {
-    bubble("대화 6회가 끝났어요. 조건을 정리해 다시 시작해 주세요.");
-    activeRecommendation = null;
-    setBusy(false);
-    restartChip();
-    return;
-  }
   const pending = [...chatMessages, text];
   const waiting = node("div", "AI가 조건과 추천 근거를 살펴보고 있어요…", "bubble bot");
   chatLog.append(waiting);
@@ -1382,32 +1433,26 @@ async function respond(answer) {
   try {
     const data = await request("/api/chat", {method: "POST",
       headers: {"Content-Type": "application/json"}, signal: controller.signal,
-      // 최근에 보여 준 음식을 함께 보내 "다른 거 보여줘"에 다른 메뉴가 나오게 한다(선택지 추천과 같은 감점).
       body: JSON.stringify({messages: pending, recent: recentFoods(),
         profile: {...profilePayload(), ...chatConditions, district: document.querySelector("#chat-district").value}}),
     });
     if (controller.signal.aborted) return;
     chatMessages = pending;
     chatConditions = data.conditions;
+    updateChatTurns();
+    lastRequest = null;
+    showPicked(data.conditions);
     render(data.result);
     if (data.result.families?.length) rememberFoods(data.result.families.map(family => family.name));
     bubble(data.reply);
     const selected = data.conditions;
-    bubble(`적용 조건: ${goalLabels[selected.goal]} · ${selected.spice === "hot" ? "매콤한 맛 선호" : selected.spice === "mild" ? "안 매운 맛 선호" : "맵기 무관"} · ${selected.soup === "yes" ? "국물 선호" : selected.soup === "no" ? "국물 없는 메뉴 선호" : "국물 무관"}${selected.meal_category ? ` · 음식군: ${selected.meal_category}` : ""}${selected.query ? ` · 검색: ${selected.query}` : ""}${selected.taste ? ` · 맛: ${tasteText(selected.taste)}` : ""}. 더 바꾸고 싶은 조건을 말해 주세요.`);
+    bubble(`적용 조건: ${goalLabels[selected.goal]} · ${selected.spice === "hot" ? "매콤한 맛 선호" : selected.spice === "mild" ? "안 매운 맛 선호" : "맵기 무관"} · ${selected.soup === "yes" ? "국물 선호" : selected.soup === "no" ? "국물 없는 메뉴 선호" : "국물 무관"}${selected.query ? ` · 검색: ${selected.query}` : ""}${selected.taste ? ` · 맛: ${tasteText(selected.taste)}` : ""}.`);
     const button = node("button", "추천 결과와 매장 보기 →", "chat-results-link");
     button.type = "button";
     button.addEventListener("click", () => showScreen("results"));
     chatLog.append(button);
-    // 다음에 할 말을 버튼으로 제안해 대화가 끊기지 않게 한다. 남은 횟수가 없으면 다시 시작만 둔다.
-    if (pending.length >= 6) restartChip();
-    else setChatChips([selected.query || selected.meal_category ? "다른 음식으로 보여줘" : "다른 메뉴도 보여줘",
-      selected.spice === "mild" ? "맵기는 상관없어" : "안 매운 걸로", selected.soup ? "국물은 상관없어" : "국물 없는 걸로"]);
   } catch (error) {
-    if (!controller.signal.aborted) {
-      bubble(error.message);
-      // 보낸 말은 대화에 남지 않았으니 한 번에 다시 보낼 수 있게 한다.
-      setChatChips([text]);
-    }
+    if (!controller.signal.aborted) bubble(error.message);
   } finally {
     waiting.remove();
     if (activeRecommendation === controller) {
@@ -1464,14 +1509,12 @@ async function initialize() {
   if (account && hasProfile) openModes();
   try {
     const data = await request("/api/catalog");
-    reviewPeriod = data.period || "";
     const select = document.querySelector("#category");
     for (const label of data.categories) select.add(new Option(label, label));
     for (const label of data.categories) document.querySelector("#signup-category").add(new Option(label, label));
     const mealCategory = document.querySelector("#meal-category");
     for (const label of data.categories) mealCategory.add(new Option(label, label));
     mealCategory.disabled = false;
-    document.querySelector("#meal-category-help").textContent = "음식군을 고르면 그 안에서 추천해요. 선택하지 않으면 저장한 취향을 반영해요.";
     if (!categoryTouched && data.categories.includes(profile.category)) select.value = profile.category;
     if (!data.categories.includes(profile.category)) profile.category = "";
   } catch {

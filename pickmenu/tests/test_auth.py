@@ -92,7 +92,7 @@ class AuthTest(unittest.TestCase):
         self.assertIsNone(auth.current(token)[1]["profile"])
 
     def test_signup_basics_are_optional_but_validated(self):
-        # 1.7.0부터 생년월일·키·몸무게·성별은 선택이다. 아이디·비밀번호만으로 가입할 수 있다.
+        # 생년월일·키·몸무게·성별은 선택이다. 아이디·비밀번호만으로 가입할 수 있다.
         for at, field in enumerate(["age", "height", "weight", "gender"]):
             value = registration(f"optional{at}")
             del value["profile"][field]

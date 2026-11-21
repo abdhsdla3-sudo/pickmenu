@@ -109,6 +109,9 @@ class StoreApiTest(unittest.TestCase):
         names = patch.object(menu_stores, "store_names", lambda: {"SW_a": "가 육회", "SW_b": "나 식당", "SW_c": "다 제육"})
         names.start()
         self.addCleanup(names.stop)
+        nutrition = patch.object(menu_stores, "franchise_nutrition", return_value={})
+        self.nutrition = nutrition.start()
+        self.addCleanup(nutrition.stop)
         facts = patch.object(menu_stores, "store_facts",
                              lambda: {"SW_a": {"repeat_ratio": 0.5, "positive_ratio": 0.9, "quantity": "많음"}})
         facts.start()
@@ -130,8 +133,7 @@ class StoreApiTest(unittest.TestCase):
         status, found = self.call("/api/recommend/stores", {"menu_ids": ids, "district": ""})
         self.assertEqual(status, 200)
         self.assertEqual([(s["menu_name"], s["store_name"], s["district"], s["reviews"]) for s in found["stores"]],
-                         [("최상급 육회", "가 육회", "권선구", 5), ("최상급 육회", "나 식당", "영통구", 2),
-                          ("[별미한점] 육회", "가 육회", "권선구", 2)])
+                         [("최상급 육회", "가 육회", "권선구", 5), ("최상급 육회", "나 식당", "영통구", 2)])
         self.assertEqual((found["store_count"], found["citywide"], found["names_available"]), (2, False, True))
         # 추천이유 근거: 같은 메뉴를 파는 가게 수와 이 가게 몫(5/7), 참고자료 가게 근거
         self.assertEqual(found["stores"][0]["evidence"], {"menu_stores": 2, "menu_share": 0.714, "repeat_ratio": 0.5,
@@ -142,7 +144,7 @@ class StoreApiTest(unittest.TestCase):
         self.assertEqual([s["store_name"] for s in found["stores"]], ["나 식당"])
         # 고른 구에 없으면 수원 전체로 넓히고 알린다.
         status, found = self.call("/api/recommend/stores", {"menu_ids": ids, "district": "장안구"})
-        self.assertEqual((found["citywide"], len(found["stores"])), (True, 3))
+        self.assertEqual((found["citywide"], len(found["stores"])), (True, 2))
         # 매장 이름이 없는 가게는 null로 둔다.
         status, found = self.call("/api/recommend/stores", {"menu_ids": [IDS["제육볶음 200g"]], "district": "장안구"})
         self.assertEqual(found["stores"][0]["store_name"], None)
@@ -151,6 +153,46 @@ class StoreApiTest(unittest.TestCase):
         with patch.object(menu_stores, "store_names", lambda: None):
             status, found = self.call("/api/recommend/stores", {"menu_ids": [IDS["불향가득제육"]], "district": ""})
         self.assertEqual((status, found["names_available"], found["stores"][0]["store_name"]), (200, False, None))
+
+    def test_franchise_nutrition_matches_the_exact_store_and_menu(self):
+        mid = IDS["최상급 육회"]
+        other = IDS["[별미한점] 육회"]
+        product = {"brand": "테스트", "product_name": "테스트 제품", "basis": "100g",
+                   "energy_kcal": 230.0, "protein_g": None, "approved": False}
+        self.nutrition.return_value = {("SW_a", mid): product, ("SW_b", other): product}
+        status, found = self.call("/api/recommend/stores", {"menu_ids": [mid, other]})
+        self.assertEqual(status, 200)
+        first, second = found["stores"]
+        self.assertEqual(first["franchise_nutrition"], product)
+        self.assertNotIn("franchise_nutrition", second)
+
+    def test_family_indicates_franchise_nutrition_only_in_matching_region(self):
+        self.nutrition.return_value = {("SW_a", IDS["최상급 육회"]): {"energy_kcal": 230.0}}
+        for district, expected in (("권선구", True), ("영통구", False)):
+            with self.subTest(district=district):
+                status, result = self.call("/api/recommend", {"district": district})
+                self.assertEqual(status, 200)
+                family = next(f for f in result["families"] if f["name"] == "육회")
+                self.assertIs(family["has_franchise_nutrition"], expected)
+
+    def test_store_keeps_linked_alternative_nutrition_after_deduplication(self):
+        mid = IDS["최상급 육회"]
+        other = IDS["[별미한점] 육회"]
+        reference = {"product_name": "별미한점 육회", "basis": "100g", "energy_kcal": 230.0}
+        self.nutrition.return_value = {("SW_a", other): reference}
+        status, result = self.call("/api/recommend/stores", {"menu_ids": [mid, other]})
+        self.assertEqual(status, 200)
+        first, second = result["stores"]
+        self.assertEqual(first["menu_name"], "최상급 육회")
+        self.assertNotIn("franchise_nutrition", first)
+        self.assertEqual(first["franchise_menu_options"], [
+            {"menu_name": "[별미한점] 육회", "franchise_nutrition": reference},
+        ])
+        self.assertNotIn("franchise_menu_options", second)
+        self.nutrition.return_value[("SW_a", mid)] = reference
+        _, result = self.call("/api/recommend/stores", {"menu_ids": [mid, other]})
+        self.assertEqual(result["stores"][0]["franchise_nutrition"], reference)
+        self.assertNotIn("franchise_menu_options", result["stores"][0])
 
     def test_step_two_rejects_bad_input(self):
         for body in ({}, {"menu_ids": []}, {"menu_ids": ["x"]}, {"menu_ids": [IDS["최상급 육회"]], "district": "서울"},
@@ -174,7 +216,7 @@ class StoreApiTest(unittest.TestCase):
             self.assertEqual(status, 200)
             generate.assert_not_called()  # 둘러보기는 AI 한마디 없이 사실 문장만
             self.assertEqual(found["stores"][0]["comment_mood"], "")
-            # 대화(AI)·위치 검색·프로필 저장은 여전히 로그인이 필요하다.
+            # 대화(AI)·위치 검색·가게까지 추천은 여전히 로그인이 필요하다.
             for path, body in (("/api/chat", {"messages": ["국밥"]}), ("/api/location/search", {"query": "수원역"}),
                                ("/api/v2/recommend", {})):
                 with self.subTest(path=path):

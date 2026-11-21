@@ -8,9 +8,11 @@ PostgreSQL의 매장 자료에서 같은 매장 ID(`SW_…`)로 붙인다. 매�
 import csv
 import math
 import os
+import re
 import sqlite3
 import threading
 import time
+from collections import defaultdict
 from contextlib import closing
 from pathlib import Path
 from typing import Any
@@ -21,6 +23,8 @@ CACHE_SECONDS = 300
 RETRY_SECONDS = 60
 _lock = threading.Lock()
 _names: dict[str, Any] = {"value": None, "checked": float("-inf")}
+_nutrition: dict[str, Any] = {"value": None, "checked": float("-inf")}
+_nutrition_lock = threading.Lock()
 
 
 # 가게 점수 = 100 × (리뷰 0.6 + 거리 0.4). 위치를 고르지 않으면 지금처럼 리뷰 수 순서다.
@@ -108,7 +112,7 @@ def store_rows(path: Path, menu_ids: list[str], district: str) -> list[tuple[str
     where, params = _filter(menu_ids, district)
     with closing(connect(path)) as db:
         return db.execute(f"""
-            SELECT trace.menu_id, trace.store_id, review.district, count(*)
+            SELECT trace.menu_id, trace.store_id, review.district, count(DISTINCT trace.review_id)
             FROM trace JOIN review USING(review_id) WHERE {where}
             GROUP BY trace.menu_id, trace.store_id, review.district""", params).fetchall()
 
@@ -141,6 +145,45 @@ def store_names() -> dict[str, str] | None:
             _names["value"] = None
         _names["checked"] = time.monotonic()
         return _names["value"]
+
+
+def franchise_nutrition() -> dict[tuple[str, str], dict[str, Any]]:
+    """공개 조회 뷰의 매장·메뉴 쌍별 영양 정보를 캐시한다."""
+    with _nutrition_lock:
+        age = time.monotonic() - _nutrition["checked"]
+        if age < (CACHE_SECONDS if _nutrition["value"] is not None else RETRY_SECONDS):
+            return _nutrition["value"] or {}
+        try:
+            import psycopg
+            from psycopg.rows import dict_row
+
+            with psycopg.connect(menu_reco.dsn(), connect_timeout=5, row_factory=dict_row) as db:
+                db.read_only = True
+                rows = db.execute("SELECT * FROM pickmenu_franchise.public_store_nutrition").fetchall()
+            values = {}
+            for row in rows:
+                key = (row.pop("store_id"), row.pop("standard_menu_id"))
+                for field in ("energy_kcal", "protein_g", "carbohydrate_g", "fat_g", "sugar_g", "sodium_mg"):
+                    if row[field] is not None:
+                        row[field] = float(row[field])
+                values[key] = row
+            _nutrition["value"] = values
+        except ImportError:  # PostgreSQL 드라이버 없이 실행하는 로컬 환경
+            _nutrition["value"] = None
+        except psycopg.Error:
+            _nutrition["value"] = None
+        _nutrition["checked"] = time.monotonic()
+        return _nutrition["value"] or {}
+
+
+def has_franchise_nutrition(path: Path, menu_ids: list[str], district: str) -> bool:
+    nutrition = franchise_nutrition()
+    if not {menu_id for _, menu_id in nutrition}.intersection(menu_ids):
+        return False
+    rows = store_rows(path, menu_ids, district)
+    if district and not rows:
+        rows = store_rows(path, menu_ids, "")
+    return any((store_id, menu_id) in nutrition for menu_id, store_id, _, _ in rows)
 
 
 def load_store_facts() -> dict[str, dict[str, Any]]:
@@ -217,27 +260,60 @@ def stores(path: Path, menus: list[dict[str, Any]], district: str, limit: int = 
     km = {sid: distance_km(origin, places[sid]) for sid in store_ids & places.keys()} if origin else {}
     scores = {(row[0], row[1]): store_score(row[3], km.get(row[1])) for row in rows} if origin else {}
     rows.sort(key=lambda row: (order[row[0]], -scores.get((row[0], row[1]), 0), -row[3], row[1]))
+    # 추천이유 문장의 근거: 같은 메뉴를 파는 가게 수와 그 메뉴 리뷰 중 이 가게 몫(같은 가게 묶기 전 전체 기준).
+    menu_reviews: dict[str, int] = defaultdict(int)
+    menu_store_ids: dict[str, set[str]] = defaultdict(set)
+    for mid, store_id, _, count in rows:
+        menu_reviews[mid] += count
+        menu_store_ids[mid].add(store_id)
+    facts = (store_facts() or {}) if rows else {}
     names = store_names()
+    nutrition = franchise_nutrition() if rows else {}
+    products_by_store: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+    for mid, store_id, _, _ in rows:
+        if reference := nutrition.get((store_id, mid)):
+            products_by_store[store_id][mid] = reference
+    # 정렬한 뒤 같은 매장은 조건에 가장 맞는 메뉴 한 건만 남긴다.
+    shown_ids: set[str] = set()
+    shown_places: set[tuple[str, str]] = set()
+    distinct_rows = []
+    for row in rows:
+        store_id = row[1]
+        name = re.sub(r"[^\w]", "", ((names or {}).get(store_id) or "").casefold())
+        address = re.sub(r"\s+", "", store_address(store_id) or "")
+        key = (name, address)
+        if store_id in shown_ids or (name and address and key in shown_places):
+            continue
+        shown_ids.add(store_id)
+        if name and address:
+            shown_places.add(key)
+        distinct_rows.append(row)
+    rows = distinct_rows
     by_id = {menu["standard_menu_id"]: menu for menu in menus}
     result: dict[str, Any] = {
         "district": district, "citywide": citywide, "names_available": names is not None,
-        "store_count": len(store_ids), "total": len(rows),
-        "location_used": origin is not None, "located": len(km),
+        "store_count": len(rows), "total": len(rows),
+        "location_used": origin is not None, "located": sum(row[1] in km for row in rows),
         "stores": [{"standard_menu_id": mid, "menu_name": by_id[mid]["name"],
                     "store_name": (names or {}).get(store_id), "district": where, "reviews": count}
                    for mid, store_id, where, count in rows[:limit]]}
-    # 추천이유 문장의 근거: 같은 메뉴를 파는 가게 수와 그 메뉴 리뷰 중 이 가게 몫(잘라 내기 전 전체 기준).
-    menu_reviews: dict[str, int] = {}
-    menu_stores: dict[str, set[str]] = {}
-    for mid, store_id, _, count in rows:
-        menu_reviews[mid] = menu_reviews.get(mid, 0) + count
-        menu_stores.setdefault(mid, set()).add(store_id)
-    facts = store_facts() or {}
     for store, row in zip(result["stores"], rows[:limit], strict=True):
-        mid, store_id, count = row[0], row[1], row[3]
-        store["evidence"] = {"menu_stores": len(menu_stores[mid]),
+        mid, store_id, _, count = row
+        store["evidence"] = {"menu_stores": len(menu_store_ids[mid]),
                              "menu_share": round(count / menu_reviews[mid], 3) if menu_reviews[mid] else None,
                              **facts.get(store_id, {})}
+        products = products_by_store.get(store_id, {})
+        reference = products.get(mid)
+        if reference:
+            store["franchise_nutrition"] = reference
+        seen_products = [reference] if reference else []
+        options = []
+        for other_id, other in products.items():
+            if other not in seen_products:
+                options.append({"menu_name": by_id[other_id]["name"], "franchise_nutrition": other})
+                seen_products.append(other)
+        if options:
+            store["franchise_menu_options"] = options
         # 지도 표시용 가게 위치(도로명 주소를 바꾼 공개 좌표). 없으면 지도에서 빠진다.
         store["location"] = list(places[row[1]]) if row[1] in places else None
         store["address"] = store_address(row[1]) or None

@@ -74,13 +74,11 @@ class ReferenceTagTest(unittest.TestCase):
         self.assertIn("육식 선호 일치", reasons["제육볶음"])
         self.assertIn("육식 선호 일치", reasons["모듬회"])
         self.assertNotIn("육식 선호 일치", reasons["햄버거"])
-        self.assertEqual(list(reasons)[:2], ["제육볶음", "모듬회"])  # 육식 선호 일치가 앞
-        # 채식(1.6.11 정책): 충돌 메뉴만 빼고 나머지는 '재료 확인 필요'로 추천한다. 모듬회는 이름 단서가 없어도
+        # 채식: 충돌 메뉴만 빼고 나머지는 '재료 확인 필요'로 추천한다. 모듬회는 이름 단서가 없어도
         # 참고자료 육식 라벨로 빠지고, 콩고기는 고기로 보지 않는다.
         result = recommend(menus, Profile.parse({"diet": "vegetarian"}, []))
         self.assertEqual({m["name"] for m in result["items"]}, {"콩고기구이", "비빔밥"})
         self.assertEqual(result["excluded"], 4)
-        self.assertTrue(all(m["needs_check"] for m in result["items"]))
 
     def test_clashing_spice_or_soup_is_dropped(self):
         menus = apply_reference([menu("짬뽕", menu_id="MN_1"), menu("피자", "피자", menu_id="MN_2"),

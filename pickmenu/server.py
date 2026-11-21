@@ -22,7 +22,13 @@ import menu_reco
 import menu_stores
 import naver_maps
 from raw import BASE, LOCAL
-from recommend import DISTRICTS, Profile, apply_reference, recommend, reference_tags
+from recommend import (
+    DISTRICTS,
+    Profile,
+    apply_reference,
+    recommend_relaxed,
+    reference_tags,
+)
 
 CATALOG = LOCAL / "catalog.sqlite3"
 MENU_ID = re.compile(r"MN_[0-9a-f]{16}")
@@ -104,6 +110,15 @@ def recent_foods(payload: Any) -> list[str]:
 
 def categories(menus: list[dict[str, Any]]) -> list[str]:
     return sorted({menu["category"] for menu in menus})
+
+
+def foods(menus: list[dict[str, Any]]) -> dict[str, set[str]]:
+    """대표 음식명(표준 음식명) → 속한 음식군. 이야기 추천에서 사용자가 말한 메뉴 이름을 찾는 데 쓴다."""
+    result: dict[str, set[str]] = {}
+    for menu in menus:
+        if menu.get("components"):
+            result.setdefault(menu["components"][0], set()).update(menu.get("groups") or [menu["category"]])
+    return result
 
 
 def public_menu(menu: dict[str, Any]) -> dict[str, Any]:
@@ -316,10 +331,8 @@ class Handler(BaseHTTPRequestHandler):
             if (menus := self.load()) is None:
                 return
             try:
-                recent = recent_foods(payload)
-                profile, history = llm.conditions(payload, categories(menus))
-                # 선택지 추천처럼 최근에 본 음식을 조금 뒤로 보내 "다른 거 보여줘"에 다른 메뉴가 나오게 한다.
-                result = self.recommendation(menus, profile, recent)
+                profile, history = llm.conditions(payload, categories(menus), foods(menus))
+                result = self.recommendation(menus, profile, recent_foods(payload))
                 self.send_json(200, {"reply": llm.reply(result, history), "result": result,
                                      "conditions": vars(profile)})
             except ValueError as error:
@@ -370,20 +383,25 @@ class Handler(BaseHTTPRequestHandler):
 
     def recommendation(self, menus: list[dict[str, Any]], profile: Profile,
                        recent: list[str] | None = None) -> dict[str, Any]:
-        result = recommend(menus, profile, recent or [])
+        result, used = recommend_relaxed(menus, profile, recent or [])
+        result["active_filters"] = {"spice": used.spice, "soup": used.soup}
         result["items"] = [public_menu(menu) for menu in result["items"]]
-        result["families"] = [self.family(family, profile.district) for family in result["families"]]
+        result["families"] = [self.family(family, used.district) for family in result["families"]]
         return result
 
     def family(self, family: dict[str, Any], district: str) -> dict[str, Any]:
         """대표 메뉴에 중복 없는 리뷰·매장 수를 붙인다. trace가 없으면 null로 둔다."""
         ids = [member["standard_menu_id"] for member in family["members"]]
+        best = public_menu(family["best"])
+        has_franchise = False
         try:
             evidence: dict[str, int] | None = menu_stores.evidence(catalog_path(), ids, district)
+            if not (best["nutrition"] or best["references"]):
+                has_franchise = menu_stores.has_franchise_nutrition(catalog_path(), ids, district)
         except sqlite3.Error as error:
             self.log_error("대표 메뉴 집계 오류 %s", type(error).__name__)
             evidence = None
-        return {**family, "best": public_menu(family["best"]), "evidence": evidence}
+        return {**family, "best": best, "evidence": evidence, "has_franchise_nutrition": has_franchise}
 
     def menu_stores(self, payload: Any, menus: list[dict[str, Any]]) -> None:
         """2단계: 고른 대표 메뉴의 실제 메뉴 이름과 판매 매장을 돌려준다."""
