@@ -232,6 +232,15 @@ class LLMTest(unittest.TestCase):
         self.assertEqual(result["stores"][0]["comment"], "권선구에서 이 메뉴를 파는 가게 12곳 중 하나예요.")
         self.assertEqual(result["stores"][0]["comment_mood"], "")
 
+    def test_mood_words_are_capped_within_one_answer(self):
+        stores = [{"menu_name": f"메뉴{i}", "store_name": f"가게{i}", "district": "권선구", "reviews": 20} for i in range(4)]
+        written = {"0": "따뜻한 저녁 한 그릇으로", "1": "따뜻한 점심 가볍게", "2": "따뜻한 주말 든든하게", "3": "비 오는 날 뜨끈하게"}
+        result = {"district": "권선구", "stores": [dict(s) for s in stores]}
+        with patch.object(llm, "generate", return_value=written):
+            llm.store_comments(result)
+        # '따뜻'은 두 번까지만. 세 번째 한마디는 사실 문장만 남긴다.
+        self.assertEqual([bool(s["comment_mood"]) for s in result["stores"]], [True, True, False, True])
+
     def test_fact_sentences_use_db_evidence_and_rotate(self):
         base = {"menu_name": "아구찜", "store_name": "아구집", "district": "권선구", "reviews": 40}
         rich = {**base, "evidence": {"menu_stores": 8, "menu_share": 0.234, "repeat_ratio": 0.49,
@@ -257,7 +266,9 @@ class LLMTest(unittest.TestCase):
             llm.store_comments(result)
         self.assertEqual(generate.call_args.kwargs["temperature"], 0.8)
         sent = generate.call_args.args[1]["menus"]
-        self.assertEqual(sent[0], {"menu": "불향가득제육", "district": "영통구"})  # 숫자·가게 이름은 보내지 않는다
+        # 숫자·가게 이름은 보내지 않고, 메뉴마다 다른 상황(scene)을 하나씩 건넨다.
+        self.assertEqual({k: v for k, v in sent[0].items() if k != "scene"}, {"menu": "불향가득제육", "district": "영통구"})
+        self.assertEqual(len({item["scene"] for item in sent}), len(sent))
         self.assertEqual(result["stores"][0]["comment_mood"], "쌀쌀한 저녁 한 접시로")
         self.assertTrue(result["stores"][0]["comment"].endswith("쌀쌀한 저녁 한 접시로"))
         self.assertEqual(result["stores"][1]["comment_mood"], "")  # 금지어·다른 가게 이름

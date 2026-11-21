@@ -4,6 +4,7 @@ import json
 import os
 import re
 import threading
+from collections import Counter
 from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
@@ -358,6 +359,21 @@ SPICY_NAME = re.compile(r"매|얼큰|불|고추|마라|땡초|청양")
 # AI 한마디에서 반복되던 말. 이 말이 들어가면 쓰지 않는다(1,172개 표본에서 자주 겹쳤다).
 OVERUSED = re.compile(r"퇴근길|고민|다녀갔|선택지|믿고|한\s*끼로\s*충분")
 MOOD_MIN, MOOD_MAX = 6, 28
+# 한마디가 '따뜻한 ~'처럼 한 가지로 몰리지 않게 메뉴마다 다른 상황을 하나씩 건넨다(실제 모델 111개 측정에서
+# '따뜻한'이 통과 문장의 25%였다). 메뉴와 어울리지 않으면 모델이 다른 상황을 고를 수 있다.
+SCENES = ("평일 점심", "늦은 밤 야식", "비 오는 날", "쌀쌀한 저녁", "주말 브런치", "혼자 먹는 저녁", "친구들과 모일 때",
+          "운동 끝나고", "과제 끝낸 날", "출출한 오후", "해장이 필요한 아침", "기분 전환이 필요할 때")
+# 한 응답 안에서 같은 말(두 글자 이상)은 두 번까지만 쓴다.
+MOOD_WORD_LIMIT = 2
+# 프롬프트 예시 문장을 그대로 베낀 한마디는 다른 메뉴 이름(치킨 등)이 섞일 수 있어 쓰지 않는다.
+MOOD_EXAMPLES = ("비 내리는 날엔 뜨끈하게 한 그릇", "과제 끝낸 밤 치킨으로 마무리", "느긋한 주말 아침 가볍게")
+
+
+def mood_words(text: str, menu: str) -> set[str]:
+    """한마디의 낱말(두 글자 이상, 메뉴 이름에 든 말과 조사 뗀 꼴 제외)."""
+    words = {re.sub(r"(?:으로|로|에|에서|의|을|를|이|가|은|는|과|와|도|한|하게|해)$", "", word)
+             for word in re.findall(r"[가-힣]{2,}", text)}
+    return {word for word in words if len(word) >= 2 and word not in menu}
 
 
 def short_menu(name: str) -> str:
@@ -431,16 +447,22 @@ def store_comments(result: dict[str, Any], use_ai: bool = True) -> None:
         return
     most = max(row["reviews"] for row in rows)
     place = result.get("district") or "수원시"
-    inputs = [{"menu": short_menu(row["menu_name"]), "district": row["district"]} for row in rows]
+    start = sum(map(ord, rows[0]["menu_name"])) % len(SCENES)  # 같은 목록이면 같은 상황(시험 가능), 메뉴마다 달라진다
+    inputs = [{"menu": short_menu(row["menu_name"]), "district": row["district"],
+               "scene": SCENES[(start + i) % len(SCENES)]} for i, row in enumerate(rows)]
     generated: dict[str, Any] = {}
     try:
         if not use_ai:
             raise Unavailable("guest")
         generated = generate(
-            "너는 배달 메뉴 앱의 한마디 작가다. 각 메뉴에 어울리는 상황이나 기분을 담은 짧은 한마디"
-            f"({MOOD_MIN}~{MOOD_MAX}자, 문장이 아니어도 된다)를 쓴다. 예: '쌀쌀한 저녁 한 그릇으로', "
-            "'주말 늦은 점심에 가볍게', '비 오는 날 생각나는'. 숫자, 리뷰·손님·단골·가게 이야기, 맛·재료·식감 묘사, "
-            "가격·배달·건강·순위는 쓰지 않는다. 퇴근길·고민 같은 흔한 말을 피하고, 메뉴마다 서로 다른 상황을 쓴다. "
+            "너는 배달 메뉴 앱의 한마디 작가다. 메뉴마다 scene(상황)을 살려 그 상황에 그 메뉴를 먹는 장면을 "
+            f"짧은 한마디({MOOD_MIN}~{MOOD_MAX}자, 문장이 아니어도 된다)로 쓴다. scene 낱말을 그대로 옮기지 말고 "
+            "자연스럽게 바꿔 쓰고, 끝에 그때의 기분이나 동작을 붙인다(든든하게, 가볍게, 마무리, 기분 전환, 달래기 등). "
+            f"예: scene '비 오는 날' → '{MOOD_EXAMPLES[0]}', scene '과제 끝낸 날' → '{MOOD_EXAMPLES[1]}', "
+            f"scene '주말 브런치' → '{MOOD_EXAMPLES[2]}'(예시를 그대로 쓰지 말 것). scene이 메뉴와 어울리지 않으면(아침에 피자 등) 어울리는 다른 상황을 쓴다. "
+            "뜻이 분명한 말만 쓰고 막연한 표현(풍경, 희망, 햇빛 아래 등)은 피한다. "
+            "숫자, 리뷰·손님·단골·가게 이야기, 맛·재료·식감 묘사, 가격·배달·건강·순위는 쓰지 않는다. "
+            "'따뜻한'·'퇴근길'·'고민' 같은 흔한 말을 되풀이하지 않고 메뉴마다 다른 낱말을 쓴다. "
             'JSON {"0":"한마디","1":"한마디",...} 키는 입력 순서 번호.',
             {"menus": inputs},
             {"type": "object", "properties": {str(i): {"type": "string"} for i in range(len(rows))},
@@ -449,6 +471,7 @@ def store_comments(result: dict[str, Any], use_ai: bool = True) -> None:
         pass
     names = {row.get("store_name") or "" for row in rows} | {row["menu_name"] for row in rows}
     seen: set[str] = set()
+    used: Counter[str] = Counter()
     for i, row in enumerate(rows):
         # 다른 가게·다른 메뉴 이름(자기 메뉴명·가게명을 포함하는 이름은 제외)
         others = {name for name in names - {row.get("store_name") or "", row["menu_name"]}
@@ -456,7 +479,13 @@ def store_comments(result: dict[str, Any], use_ai: bool = True) -> None:
         facts = fact_sentences(row, most, place, i)
         text = generated.get(str(i))
         mood = " ".join(text.split()) if safe_mood(text, row, others, seen) and isinstance(text, str) else ""
+        if mood in MOOD_EXAMPLES:
+            mood = ""
+        # 같은 응답에서 이미 두 번 쓴 낱말이 또 나오면 그 한마디는 쓰지 않는다('따뜻한 ~' 반복 방지).
+        if mood and any(used[word] >= MOOD_WORD_LIMIT for word in mood_words(mood, row["menu_name"])):
+            mood = ""
         if mood:
             seen.add(mood)
+            used.update(mood_words(mood, row["menu_name"]))
         row["comment_facts"], row["comment_mood"] = facts, mood
         row["comment"] = f"{facts} {mood}" if mood else facts
