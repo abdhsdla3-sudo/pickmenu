@@ -4,7 +4,6 @@ const form = document.querySelector("#profile");
 const status = document.querySelector("#result-status");
 const profileStatus = document.querySelector("#profile-status");
 const results = document.querySelector("#results");
-const subtitle = document.querySelector("#results-sub");
 const dialog = document.querySelector("#detail");
 const scroller = document.querySelector("#app-scroll");
 const chatLog = document.querySelector("#chat-log");
@@ -171,7 +170,6 @@ function openModes() {
   updateAccountUI();
   if (!personalFields.every(key => profile[key])) return startOnboarding();
   cancelRecommendation();
-  document.querySelector("#profile-summary").textContent = [summary(), storageNotice, syncNotice].filter(Boolean).join(" · ");
   openMode(savedMode());
 }
 
@@ -307,7 +305,7 @@ async function loadDetailStores(menu, box) {
       });
       box.append(more);
     }
-    box.append(node("p", "별점은 리뷰 내용을 분석한 만족도예요 (플랫폼 별점과 달라요). 가게 메뉴 이름이 달라도 같은 음식으로 분류된 메뉴를 보여 줘요.", "muted"));
+    box.append(node("p", "별점은 리뷰 내용을 분석한 만족도예요 (플랫폼 별점과 달라요).", "muted"));
   } catch (error) {
     box.replaceChildren(heading, node("p", `가게 목록을 불러오지 못했어요. ${error.message}`, "muted"));
   }
@@ -330,7 +328,6 @@ async function openDetail(item, button) {
     } else {
       body.append(node("p", `영양정보 없음 · ${menu.nutrition_status}`, "muted"));
     }
-    body.append(node("p", `표준 메뉴 ID ${menu.standard_menu_id} · 음식 분류 ${menu.mapping_method || "제공 자료"}`, "muted"));
     const storeBox = node("section", undefined, "detail-stores");
     storeBox.append(node("h3", "이 메뉴를 파는 가게"), node("p", "가게를 찾고 있어요.", "muted"));
     // 가게 목록은 메뉴 정보 바로 아래, 다른 정보보다 먼저 보이게 둔다.
@@ -344,11 +341,7 @@ async function openDetail(item, button) {
   }
 }
 
-// 리뷰 수집 기간. /api/catalog 응답으로 채운다.
-let reviewPeriod = "";
-
 function render(data) {
-  subtitle.textContent = reviewPeriod ? `${data.region} · ${reviewPeriod} 배달 리뷰 기준` : data.region;
   lastResult = data;
   if (!data.items.length) {
     empty("조건에 맞는 추천 메뉴가 없어요", sourceMode === "chat"
@@ -367,7 +360,7 @@ function render(data) {
     renderFamilies(data);
     return;
   }
-  status.textContent = data.items.length < 3 ? `현재 조건에서 ${data.items.length}개를 찾았어요. 조건을 바꾸면 다시 비교할 수 있어요.` : "";
+  status.textContent = "";
   results.replaceChildren();
   data.items.forEach((item, index) => {
     const card = node("article", undefined, "card");
@@ -457,19 +450,12 @@ function appendMenuCard(card, foodName, button, ...details) {
 // 1단계: 가게마다 다른 메뉴 이름을 표준 음식명(대표 메뉴)으로 묶어 고르게 한다.
 function renderFamilies(data) {
   const count = data.families.length;
-  const top = data.families[0]?.best.score ?? 0;
   status.textContent = [
     data.relaxed?.length ? `고른 조건에 맞는 메뉴가 없어 ${data.relaxed.join("·")}을 빼고 찾았어요.` : "",
     data.unverified ? "알레르기·채식 조건은 메뉴 재료 정보가 부족해 확인하지 못했어요. '재료 확인 필요' 메뉴는 주문 전에 가게에 꼭 확인해 주세요." : "",
     // 선호 음식군에 조건이 맞는 음식이 없으면 다른 음식군에서 골랐다고 알린다.
     data.category && data.preferred_foods === 0
       ? `선호 음식군 ${data.category}에는 지금 조건에 맞는 메뉴가 없어 다른 음식군에서 골랐어요.` : "",
-    top < 40 ? (data.active_filters?.spice || data.active_filters?.soup
-      ? "조건에 꼭 맞는 메뉴가 적어요. 지정한 맵기나 국물 조건을 풀면 더 넓게 찾아요."
-      : "지금 조건에서 적합도가 높은 메뉴가 적어요.") : "",
-    data.recent_applied ? "최근에 본 메뉴는 조금 뒤로 보내고 다른 메뉴도 올렸어요." : "",
-    count < 3 ? `현재 조건에서 대표 메뉴 ${count}개를 찾았어요. 조건을 바꾸면 다시 비교할 수 있어요.`
-      : "먹고 싶은 메뉴를 고르면 실제 메뉴와 파는 가게를 보여 드려요.",
   ].filter(Boolean).join(" ");
   results.replaceChildren();
   data.families.forEach((family, index) => {
@@ -499,7 +485,6 @@ function renderFamilies(data) {
     more.addEventListener("click", () => recommendNow(lastRequest.conditions, lastRequest.mode));
     results.append(more);
   }
-  results.append(node("p", "가게마다 다른 메뉴 이름을 같은 음식으로 묶었어요 (자동 분류 · 사람 미검수).", "muted family-note"));
 }
 
 // 배달 위치는 이 페이지의 현재 로그인에서만 사용한다.
@@ -791,9 +776,7 @@ async function showFamily(family, data) {
       return;
     }
     const where = found.citywide ? `${district}에는 없어 수원 전체 기준` : (district || "수원 전체");
-    const order = found.location_used ? "메뉴 적합도, 그다음 가게 점수(리뷰 수 60% · 고른 위치와의 거리 40%)"
-      : "메뉴 적합도, 그다음 가게 리뷰 수";
-    results.append(node("p", `${where} · 가게 ${found.store_count}곳 · 추천 순서는 ${order}예요.`, "muted"));
+    results.append(node("p", `${where} · 가게 ${found.store_count}곳`, "muted"));
     const place = node("div", undefined, "location-bar");
     place.append(node("span", found.location_used
       ? (found.located ? `📍 ${locationText(sessionLocation)}에서 가까운 가게를 앞에 두었어요.`
@@ -830,7 +813,6 @@ async function showFamily(family, data) {
       results.append(more);
     }
     if (!found.names_available) results.append(node("p", "가게 이름 자료를 지금 불러올 수 없어요. 잠시 뒤 다시 시도해 주세요.", "muted"));
-    results.append(node("p", "과거 리뷰에 등장한 메뉴와 가게예요. 현재 판매 여부·가격은 주문 전 확인해 주세요.", "muted"));
   } catch (error) {
     if (!results.contains(heading)) return;
     status.textContent = "";
@@ -910,8 +892,8 @@ function openAccount(mode = "login") {
       ? summary() : "아직 프로필이 없어요. 취향을 알려주면 추천에 반영해요.";
     document.querySelector("#account-settings").elements.namedItem("nickname").value = profile.nickname;
     document.querySelector("#settings-status").textContent = "";
-    document.querySelector("#account-sync").textContent = syncNotice
-      || (hasProfile ? "내 식사 프로필이 계정에 저장되어 있어요." : "프로필을 만들면 계정에 자동으로 저장돼요.");
+    document.querySelector("#account-sync").textContent = [storageNotice, syncNotice].filter(Boolean).join(" ");
+    document.querySelector("#delete-profile").hidden = !hasProfile;
   }
   authStatus.textContent = "";
   showScreen("account");
@@ -1143,7 +1125,7 @@ document.querySelector("#delete-profile").addEventListener("click", () => {
 });
 deleteProfileDialog.addEventListener("close", async () => {
   if (deleteProfileDialog.returnValue !== "delete") return;
-  const peek = document.querySelector("#profile-summary");
+  const peek = document.querySelector("#account-sync");
   if (account) {
     try {
       await request("/api/profile", {method: "DELETE"});
@@ -1174,7 +1156,6 @@ function openChoice() {
   for (const key of ["goal", "spice", "soup"]) {
     for (const input of meal.elements.namedItem(key)) input.checked = input.value === profile[key];
   }
-  document.querySelector("#choice-profile").textContent = summary();
   showScreen("choice");
 }
 
@@ -1204,7 +1185,6 @@ async function recommendNow(conditions, mode) {
     showScreen("results");
     status.textContent = "오늘의 메뉴를 비교하고 있어요.";
     results.replaceChildren();
-    subtitle.textContent = "";
   } else {
     bubble("좋아요. 알려주신 조건으로 메뉴를 찾아볼게요.");
   }
@@ -1222,7 +1202,7 @@ async function recommendNow(conditions, mode) {
     if (data.families?.length) rememberFoods(data.families.map(family => family.name));
     if (mode === "chat") {
       const picked = data.families?.length || data.items.length;
-      bubble(data.items.length ? `취향과 조건을 살펴 ${picked}개 메뉴를 골랐어요. 메뉴를 고르면 파는 가게도 알려 드려요.`
+      bubble(data.items.length ? `${picked}개 메뉴를 골랐어요.`
         : "지금 조건으로 추천할 메뉴를 찾지 못했어요. 확인이 필요한 정보와 조건을 살펴보세요.");
       const button = node("button", data.items.length ? "추천 메뉴 보러 가기 →" : "결과와 확인 사항 보기 →", "chat-results-link");
       button.type = "button";
@@ -1403,14 +1383,12 @@ async function initialize() {
   if (account && hasProfile) openModes();
   try {
     const data = await request("/api/catalog");
-    reviewPeriod = data.period || "";
     const select = document.querySelector("#category");
     for (const label of data.categories) select.add(new Option(label, label));
     for (const label of data.categories) document.querySelector("#signup-category").add(new Option(label, label));
     const mealCategory = document.querySelector("#meal-category");
     for (const label of data.categories) mealCategory.add(new Option(label, label));
     mealCategory.disabled = false;
-    document.querySelector("#meal-category-help").textContent = "음식군을 고르면 그 안에서 추천해요. 선택하지 않으면 저장한 취향을 반영해요.";
     if (!categoryTouched && data.categories.includes(profile.category)) select.value = profile.category;
     if (!data.categories.includes(profile.category)) profile.category = "";
   } catch {

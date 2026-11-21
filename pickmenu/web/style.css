@@ -146,9 +146,6 @@ legend { font-size: 12px; font-weight: 650; margin-bottom: 10px; }
 .expand-box { border: 1px dashed #c9b48f; background: #fbf6ec; border-radius: 15px; padding: 14px; margin-top: 16px; font-size: 11px; color: #7a6243; }
 .expand-box ul { margin: 8px 0 10px; padding-left: 16px; line-height: 1.8; }
 .expand-box button { width: 100%; border: 0; border-radius: 11px; background: #a77b45; color: white; padding: 10px; font-size: 12px; font-weight: 700; }
-.profile-peek { margin-top: 23px; padding: 15px 0; border-top: 1px solid var(--line); font-size: 11px; }
-.profile-peek > span { font-weight: 700; }
-.profile-peek p { color: #7f896f; font-size: 10px; margin: 5px 0; }
 .danger { color: #a98070; float: right; }
 .bottom-nav { display: flex; justify-content: center; gap: 96px; border-top: 1px solid #e8ebdf; background: var(--paper); padding: 10px 12px 4px; flex-shrink: 0; }
 .bottom-nav button { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 9px; color: #728261; border: 0; background: transparent; }
@@ -156,6 +153,9 @@ legend { font-size: 12px; font-weight: 650; margin-bottom: 10px; }
 .bottom-nav button[aria-current="page"] { color: var(--green); font-weight: 700; }
 .info-card { margin: 18px 0 22px; padding: 15px; border: 1px solid var(--line); border-radius: 16px; background: #fffef9; }
 .info-card .secondary { margin-top: 10px; width: 100%; }
+.info-card .danger { float: none; display: block; margin: 12px auto 0; }
+.info-card .danger[hidden] { display: none; }
+#meal-category-help:empty { display: none; }
 .info-label { margin: 0 0 6px; font-size: 12px; font-weight: 700; color: var(--green); }
 .home-indicator { width: 93px; height: 4px; border-radius: 5px; background: #dce1d2; margin: 9px auto 7px; flex-shrink: 0; }
 .profile-current { background: #eef1e7; padding: 13px; margin: 20px 0; border-radius: 11px; }
