@@ -88,7 +88,8 @@ def conditions(payload: Any, categories: list[str],
     # 음식군은 정해진 목록 값이라 문장에 이름이 그대로 없어도 된다("국밥 중에서" → 국밥·해장국).
     # 대신 그 음식군을 가리키는 말이 문장에 있어야 한다.
     category = result.get("meal_category")
-    if category in categories and any(word in text for word in category_words(category)):
+    if category in categories and any(not FOOD_NEGATIVE.match(text[m.end():m.end() + 8])
+                                      for word in category_words(category) for m in re.finditer(re.escape(word), text)):
         values["meal_category"] = category
     elif not category:
         for hint, pattern in CATEGORY_HINTS.items():
@@ -113,8 +114,12 @@ def conditions(payload: Any, categories: list[str],
     elif avoided and any(values["query"] and values["query"] in food for food in avoided):
         values["query"] = ""
     # 음식군을 가리키는 말("동남아", "분식")만 검색어가 되면 메뉴 이름과 맞지 않아 0개가 된다. 음식군으로 충분하다.
-    elif foods and values.get("query") and values["query"] not in foods and any(
-            values["query"] in category_words(category) or values["query"] == category for category in categories):
+    elif foods and values.get("query") and values["query"] not in foods and (named := [
+            category for category in categories
+            if values["query"] in category_words(category) or values["query"] == category]):
+        # AI가 음식군 이름을 검색어로만 넘긴 경우("분식 추천해줘" → query 분식) 그 음식군으로 찾는다.
+        if not values.get("meal_category"):
+            values["meal_category"] = named[0]
         values["query"] = ""
     # 말한 메뉴가 속하지 않은 음식군은 버린다("김밥"을 밥·덮밥으로 보면 결과가 0개가 된다).
     if foods and values.get("query") in foods and values.get("meal_category") not in foods[values["query"]]:
@@ -132,13 +137,15 @@ def conditions(payload: Any, categories: list[str],
         raise Unavailable("AI가 조건을 정확히 이해하지 못했어요. 조건을 간단히 다시 입력해 주세요.") from error
 
 
-NEGATIVE = r"(?:은|는|이|가|도)?\s*(?:싫|못\s*먹|안\s*(?:먹|좋|땡|당)|별로|빼|말고|없|업|노노)"
+NEGATIVE = (r"(?:은|는|이|가|도)?\s*(?:(?:영|전혀|진짜|정말|완전|좀)\s*)?"
+            r"(?:싫|못\s*먹|안\s*(?:먹|좋|땡|당)|별로|빼|말고|없(?!을까|나\b|나\?|니|는지|을지|어\?)|업|노노|ㄴㄴ|됐|아이다|아니야|사양)")
 SUPPORT = {
     "goal": {"light": r"가볍|가벼|저칼|다이어트|칼로리.*낮|부담.*없",
-             "protein": r"단백질|고단백", "balance": r"균형|골고루"},
+             "protein": r"단백질|고단백", "balance": r"균형|골고루|치팅"},
     "spice": {"mild": r"안\s*(?:매[운워]?|맵[고게지다]?)|덜\s*(?:매[운워]|맵[고게]?)|맵지\s*(?:않|안)|순한|순하게|맵찔|매운\s*(?:건|거|것|맛|음식)?" + NEGATIVE
                       + r"|맵(?:게|기)?\s*(?:는|은)?\s*못",
-              "hot": r"매콤|매운|맵게|맵고|매워|맵다|얼큰|칼칼|화끈"},
+              "hot": r"매콤|매운|맵게|맵고|매워|맵다|얼큰|칼칼|화끈",
+              "": r"(?:매운|맵)[가-힣]{0,2}\s*(?:건|거|것|맛)?\s*(?:은|는|도)?\s*(?:괜찮|상관\s*없|무관)"},
     # 부정은 국물 바로 뒤(조사·한두 단어 안)만 본다. "국물 요리로, 피자, 파 싫어"의 '싫어'는 파에 걸린다.
     "soup": {"yes": r"국물|탕(?!수)|국밥|수프",
              "no": r"국물\s*(?:요리)?" + NEGATIVE + r"|국물\s*(?:은|는)?\s*(?:안|필요\s*없)|(?:탕|국)\s*말고"},
@@ -149,8 +156,10 @@ CATEGORY_WORDS = {"국밥·해장국": ("국밥", "해장국", "해장"), "닭�
                   "해산물": ("해산물", "해물", "생선"), "전·부침": ("부침", "전 ", "전요리", "파전", "전을"),
                   "찌개·탕": ("찌개", "탕"), "면": ("면", "국수"), "죽": ("죽",)}
 # AI가 음식군을 넘기지 않았을 때만 쓰는 분명한 단서(메뉴 이름을 지운 문장에서 찾는다).
-CATEGORY_HINTS = {"닭요리": r"닭\s*요리", "면": r"(?<![가-힣])국수|면\s*요리", "국밥·해장국": r"해장",
-                  "샐러드·건강식": r"건강식", "전·부침": r"부침|(?<![가-힣])전\s*요리"}
+CATEGORY_HINTS = {"닭요리": r"닭\s*요리", "면": r"(?<![가-힣])국수|면\s*요리",
+                  "국밥·해장국": r"해장|숙취|술\s*(?:마셔|먹어|마신|먹은)|속(?:이)?\s*(?:쓰려|쓰리|안\s*좋)",
+                  "샐러드·건강식": r"건강식",
+                  "전·부침": r"부침|(?<![가-힣])전\s*(?:요리|생각|땡|이나|에\s*막걸리)"}
 ALLERGY_CUE = r"알레르기|알러지|앨러지"
 EXCLUDE_CUE = r"싫|빼|말고|안\s*들어|못\s*먹|안\s*먹|별로|제외|없이|넣지|피하고\s*싶"
 # '못 먹어'는 알레르기일 수도 있지만 이 말들은 분명한 기피다(AI가 알레르기로 넘겨도 기피로 둔다).
@@ -170,9 +179,11 @@ EXPLICIT_INGREDIENT = {
     "exclude": re.compile(rf"(?<![가-힣])({KNOWN_INGREDIENTS})(?:은|는|이|가|을|를|도|랑|이랑)?\s*"
                           r"(?:못\s*먹|빼|제외|피하고\s*싶|싫|별로|안\s*들어|말고|없이|넣지)"),
 }
-EXPLICIT_VEGAN = re.compile(r"(?<![가-힣])비건(?:주의자)?(?:이야|이에요|입니다)(?=$|\s|[,.!?])")
-EXPLICIT_VEGETARIAN = re.compile(r"(?<![가-힣])채식주의자(?:야|예요|입니다)(?=$|\s|[,.!?])")
-EXPLICIT_DISTRICT = re.compile(rf"({'|'.join(sorted(DISTRICTS - {''}))})\s*(?:에서|근처|쪽에서)")
+EXPLICIT_VEGAN = re.compile(r"(?<![가-힣])(?:비건|vegan)(?:주의자)?(?:이야|이에요|입니다|인데|이라|이고|이거든)"
+                            r"(?=$|\s|[,.!?])|(?<![가-힣])비건\s*(?:친구|지인|동료|손님)", re.I)
+EXPLICIT_VEGETARIAN = re.compile(r"(?<![가-힣])채식주의자(?:야|예요|입니다|인데|이라|이고)(?=$|\s|[,.!?])|"
+                                 r"(?<![가-힣])채식(?:해|하는\s*중|중이)|(?<![가-힣])채식주의자\s*(?:친구|지인|동료)")
+EXPLICIT_DISTRICT = re.compile(rf"({'|'.join(sorted(DISTRICTS - {''}))})(?!\s*(?:은|는)?\s*(?:말고|빼고|아니고|아니라|싫|별로))")
 
 
 # 검색어는 메뉴 이름만 받는다. "시원한 거", "야식으로 먹을 만한 거", "싸고 양 많은 거" 같은 말은

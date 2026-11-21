@@ -166,6 +166,32 @@ class LLMTest(unittest.TestCase):
                 profile, _ = llm.conditions({"messages": messages, "profile": {}}, ["아시안", "면", "치킨"], foods)
                 self.assertEqual(profile.query, query)
 
+    def test_heldout_rules(self):
+        # 새 말투 시험셋에서 나온 지역·부정·돌려 말하기 표현
+        cats = ["국밥·해장국", "전·부침", "치킨", "면", "분식"]
+        cases = [
+            (["장안구 사는데 국물 없는 걸로"], {}, "district", "장안구"),
+            (["권선구에 칼국수 집 있나?"], {}, "district", "권선구"),
+            (["영통구에서 먹을 거", "아 팔달구로 바꿀게"], {}, "district", "팔달구"),
+            (["영통구 말고 장안구"], {}, "district", "장안구"),
+            (["매운 거 ㄴㄴ"], {}, "spice", "mild"),
+            (["매운 건 괜찮은데 너무 짠 건 싫어"], {}, "spice", ""),
+            (["국물은 됐고 볶음밥"], {}, "soup", "no"),
+            (["다이어트 3주차인데 오늘은 치팅데이라 치킨"], {}, "goal", "balance"),
+            (["어제 술 마셔서 속이 쓰려"], {}, "meal_category", "국밥·해장국"),
+            (["비 오니까 전 생각나네"], {}, "meal_category", "전·부침"),
+            (["치킨 말고 다른 거"], {"meal_category": "치킨"}, "meal_category", ""),
+            (["비건 친구랑 팔달구에서 만나"], {}, "diet", "vegan"),
+            (["비건인데 국물 있는 거"], {}, "diet", "vegan"),
+            (["분식 추천해줘"], {"query": "분식"}, "meal_category", "분식"),
+        ]
+        for messages, model, key, want in cases:
+            with self.subTest(messages=messages), patch.object(llm, "generate", return_value=dict(model)):
+                profile, _ = llm.conditions({"messages": messages, "profile": {}}, cats, {"떡볶이": {"분식"}})
+                self.assertEqual(getattr(profile, key), want)
+        self.assertEqual(llm.tastes("느끼한 건 영 아이다"), "-rich")
+        self.assertEqual(llm.tastes("담백한 거 없을까?"), "plain")
+
     def test_reply_mentions_relaxed(self):
         family = {"name": "비빔밥", "best": {"reasons": []}}
         with patch.object(llm, "generate", side_effect=llm.Unavailable("x")):
