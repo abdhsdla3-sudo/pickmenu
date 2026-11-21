@@ -192,6 +192,35 @@ class LLMTest(unittest.TestCase):
         self.assertEqual(llm.tastes("느끼한 건 영 아이다"), "-rich")
         self.assertEqual(llm.tastes("담백한 거 없을까?"), "plain")
 
+    def test_model_fixed_menu_names(self):
+        # 파인튜닝 모델이 오타·영어·앞 턴 꾸밈말을 대표 메뉴 이름으로 고친 경우는 받고, 근거 없는 이름은 버린다.
+        foods = {name: {"분식"} for name in ("떡볶이", "치킨", "양념치킨", "피자", "부대찌개", "돈가스", "순대",
+                                            "순대국밥", "김치찌개", "김치찜", "냉면", "비빔냉면", "죽")}
+        cases = [
+            (["떡뽁이 먹고싶다"], "떡볶이", "떡볶이"),
+            (["떡볶 ㄱ?"], "떡볶이", "떡볶이"),
+            (["부대찌게ㄱㄱ"], "부대찌개", "부대찌개"),
+            (["돈까쓰 땡김"], "돈가스", "돈가스"),
+            (["pizza 먹고 싶어"], "피자", "피자"),
+            (["pizza 먹고 싶어"], "돈가스", ""),
+            (["hello"], "피자", ""),
+            (["no pizza 오늘은"], "피자", ""),
+            (["치킨!", "양념으로"], "양념치킨", "양념치킨"),
+            (["치킨!", "양념 빼고"], "양념치킨", "치킨"),
+            (["냉면", "비빔으로"], "비빔냉면", "비빔냉면"),
+            (["순대국 먹을래"], "순대국밥", "순대국밥"),
+            (["치킨 먹고 싶어"], "양념치킨", "치킨"),        # 꾸밈말이 없으면 말한 메뉴 그대로
+            (["김치찜 먹고 싶어"], "김치찌개", "김치찜"),    # 말한 메뉴와 다른 메뉴로 바꾸지 않는다
+            (["오늘 날씨 좋다"], "피자", ""),                 # 문장에 근거가 없다
+            (["죽인데 매운 거"], "매운죽", "죽"),             # 없는 메뉴 이름
+            (["죽 빼고 다른 거"], "매운죽", ""),
+            (["떡뽁이 말고 다른 거"], "떡볶이", ""),
+        ]
+        for messages, model, want in cases:
+            with self.subTest(messages=messages), patch.object(llm, "generate", return_value={"query": model}):
+                profile, _ = llm.conditions({"messages": messages, "profile": {}}, ["분식"], foods)
+                self.assertEqual(profile.query, want)
+
     def test_reply_mentions_relaxed(self):
         family = {"name": "비빔밥", "best": {"reasons": []}}
         with patch.object(llm, "generate", side_effect=llm.Unavailable("x")):

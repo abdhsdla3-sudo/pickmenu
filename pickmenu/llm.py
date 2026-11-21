@@ -5,6 +5,7 @@ import os
 import re
 import threading
 from collections import Counter
+from difflib import SequenceMatcher
 from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
@@ -84,8 +85,8 @@ def conditions(payload: Any, categories: list[str],
     for key in ("goal", "spice", "soup"):
         if result.get(key):
             values[key] = result[key]
-    if (query := menu_query(result.get("query"))) and query in text:
-        values["query"] = query
+    if (ai_query := menu_query(result.get("query"))) and ai_query in text:
+        values["query"] = ai_query
     # 음식군은 정해진 목록 값이라 문장에 이름이 그대로 없어도 된다("국밥 중에서" → 국밥·해장국).
     # 대신 그 음식군을 가리키는 말이 문장에 있어야 한다.
     category = result.get("meal_category")
@@ -110,8 +111,21 @@ def conditions(payload: Any, categories: list[str],
     # ("돈가스 추천해줘 / 아니 칼국수로 바꿔줘")를 바로잡는다.
     positives, avoided = food_mentions(text, list(foods or {}))
     values["avoid_menus"] = ",".join(avoided)
-    if positives:
+    # AI가 문장에 없는 대표 메뉴 이름으로 고쳐 준 경우(떡뽁이 → 떡볶이, pizza → 피자, 치킨 / 양념으로 → 양념치킨)는
+    # 실제 대표 메뉴이고 문장에 근거가 있을 때만 받는다. 사용자가 메뉴 이름을 그대로 말했으면 그 이름이 우선이고,
+    # 그 이름을 꾸민 메뉴(치킨 → 양념치킨)일 때만 AI 이름을 쓴다. 없는 이름(매운죽)은 받지 않는다.
+    fixed = (ai_query if foods and ai_query in foods and ai_query not in text and ai_query not in avoided
+             and supported_query(ai_query, text, positives) else "")
+    # AI가 없는 이름을 지었지만 그 안에 사용자가 말한 메뉴가 있으면 그 메뉴로 찾는다(죽인데 매운 거 → 매운죽 → 죽).
+    named = result.get("query") if isinstance(result.get("query"), str) else ""
+    inside = ([food for food in foods if food in named and food in text and food not in avoided]
+              if foods and named and named not in foods and not positives else [])
+    if fixed and (not positives or positives[-1] in fixed):
+        values["query"] = fixed
+    elif positives:
         values["query"] = positives[-1]
+    elif inside:
+        values["query"] = max(inside, key=len)
     elif avoided and any(values["query"] and values["query"] in food for food in avoided):
         values["query"] = ""
     # 음식군을 가리키는 말("동남아", "분식")만 검색어가 되면 메뉴 이름과 맞지 않아 0개가 된다. 음식군으로 충분하다.
@@ -212,6 +226,68 @@ FOOD_ALIASES = {"버거": "햄버거", "돈까스": "돈가스", "짜장": "짜�
                 "양념통닭": "양념치킨", "통닭": "치킨", "떡볶기": "떡볶이", "김치찌게": "김치찌개", "된장찌게": "된장찌개",
                 "부침개": "전", "전 요리": "전", "전요리": "전"}
 FOOD_NEGATIVE = re.compile(r"^\s*(?:은|는|이|가|도|을|를)?\s*(?:말고|빼|싫|별로|말구|아니|안\s*먹|못\s*먹|질려|물려)")
+ENGLISH_FOOD_ALIASES = {
+    "bibimbap": "비빔밥", "burger": "햄버거", "chicken": "치킨", "gimbap": "김밥", "hamburger": "햄버거",
+    "kimbap": "김밥", "malatang": "마라탕", "pasta": "파스타", "pho": "쌀국수", "pizza": "피자",
+    "poke": "포케", "ramen": "라멘", "ramyeon": "라면", "salad": "샐러드", "sushi": "초밥",
+    "tonkatsu": "돈가스", "tteokbokki": "떡볶이", "udon": "우동",
+}
+ENGLISH_FOOD_NEGATIVE = re.compile(r"\b(?:no|not|skip|without|except|but)\s+$", re.IGNORECASE)
+
+
+# 오타 비교용: 된소리는 예사소리로, ㅔ는 ㅐ로 본다(떡뽁이 = 떡볶이, 부대찌게 = 부대찌개).
+CHOSEONG = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"
+JUNGSEONG = "ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ"
+JONGSEONG = ["", "ㄱ", "ㄲ", "ㄳ", "ㄴ", "ㄵ", "ㄶ", "ㄷ", "ㄹ", "ㄺ", "ㄻ", "ㄼ", "ㄽ", "ㄾ", "ㄿ", "ㅀ", "ㅁ", "ㅂ",
+             "ㅄ", "ㅅ", "ㅆ", "ㅇ", "ㅈ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ"]
+LOOSE = str.maketrans("ㄲㄸㅃㅆㅉㅔㅖ", "ㄱㄷㅂㅅㅈㅐㅒ")
+
+
+def jamo(text: str) -> str:
+    out = []
+    for ch in text:
+        if "가" <= ch <= "힣":
+            code = ord(ch) - 0xAC00
+            out += [CHOSEONG[code // 588], JUNGSEONG[code % 588 // 28], JONGSEONG[code % 28]]
+        else:
+            out.append(ch)
+    return "".join(out).translate(LOOSE)
+
+
+def typo_wanted(food: str, text: str) -> bool:
+    """문장에 이 메뉴 이름의 오타·띄어쓰기·끝 글자 빠짐(떡뽁이, 비빔 냉면, 떡볶)이 있고, 마지막 것이 부정되지 않았는가."""
+    compact = re.sub(r"\s+", "", text)
+    target = jamo(food)
+    best: tuple[float, int] | None = None  # (가장 비슷한 정도, 끝 위치): 가장 비슷한 것 중 가장 뒤의 것
+    for size in range(max(2, len(food) - 1), len(food) + 2):
+        for start in range(len(compact) - size + 1):
+            window = jamo(compact[start:start + size])
+            score = 1.0 if window == target else SequenceMatcher(None, window, target).ratio() if len(food) >= 3 else 0
+            if score >= 0.8 and (best is None or (score, start + size) > best):
+                best = (score, start + size)
+    return best is not None and not FOOD_NEGATIVE.match(compact[best[1]:])
+
+
+def supported_query(query: str, text: str, positives: list[str]) -> bool:
+    """AI가 고친 메뉴 이름에 문장 근거가 있는가."""
+    # 앞에서 말한 메뉴 + 꾸밈말: 치킨 / 양념으로 → 양념치킨, 고기구이 / 소고기로 → 소고기구이
+    for food in positives:
+        if query != food and query.endswith(food):
+            modifier = query[:-len(food)]
+            rest = text.replace(food, " ")
+            matches = list(re.finditer(re.escape(modifier), rest))
+            if matches and not FOOD_NEGATIVE.match(rest[matches[-1].end():]):
+                return True
+    if typo_wanted(query, text):
+        return True
+    # 일반 영단어만으로 메뉴를 짐작하지 않는다. 확인된 메뉴 별칭의 마지막 요청을 따른다.
+    if positives:
+        return False
+    for match in reversed(list(re.finditer(r"[A-Za-z]+", text))):
+        if english_food := ENGLISH_FOOD_ALIASES.get(match.group().lower()):
+            return (english_food == query and not ENGLISH_FOOD_NEGATIVE.search(text[:match.start()])
+                    and not FOOD_NEGATIVE.match(text[match.end():]))
+    return False
 
 
 def without_foods(text: str, foods: dict[str, set[str]]) -> str:
