@@ -69,7 +69,9 @@ input, select { font-size: 16px; }
 .step-top, .page-top { display: flex; align-items: center; gap: 12px; font-size: 11px; font-weight: 600; color: #7b8371; margin: -8px 0 20px; }
 .step-top .text-button, .page-top .text-button { margin-left: auto; }
 /* 이야기/선택지 전환 바는 화면을 내려도 위에 고정된다. 화면 여백(26px 25px)만큼 넓혀 배경으로 덮는다. */
-.page-top.mode-bar { position: sticky; top: 0; z-index: 3; background: var(--paper); margin: -26px -25px 20px; padding: 12px 25px; border-bottom: 1px solid #edf0e5; }
+.page-top.mode-bar { position: sticky; top: 0; z-index: 3; background: var(--paper); margin: -26px -25px 20px; padding: 12px 25px; border-bottom: 1px solid #edf0e5; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
+.page-top.mode-bar .mode-switch { grid-column: 2; }
+.page-top.mode-bar .text-button { grid-column: 3; justify-self: end; margin-left: 0; }
 .mode-switch { display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: #edf2e4; }
 .mode-switch button { border: 0; background: transparent; border-radius: 999px; padding: 7px 15px; font-size: 12px; font-weight: 700; color: var(--muted); cursor: pointer; }
 .mode-switch button[aria-pressed="true"] { background: #fff; color: var(--green); box-shadow: 0 1px 3px rgba(52, 57, 46, .15); }
@@ -148,9 +150,13 @@ legend { font-size: 12px; font-weight: 650; margin-bottom: 10px; }
 .profile-peek > span { font-weight: 700; }
 .profile-peek p { color: #7f896f; font-size: 10px; margin: 5px 0; }
 .danger { color: #a98070; float: right; }
-.bottom-nav { display: flex; justify-content: center; gap: 56px; border-top: 1px solid #e8ebdf; background: var(--paper); padding: 10px 12px 4px; flex-shrink: 0; }
+.bottom-nav { display: flex; justify-content: center; gap: 96px; border-top: 1px solid #e8ebdf; background: var(--paper); padding: 10px 12px 4px; flex-shrink: 0; }
 .bottom-nav button { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 9px; color: #728261; border: 0; background: transparent; }
 .bottom-nav button span { font-size: 20px; line-height: 1.2; }
+.bottom-nav button[aria-current="page"] { color: var(--green); font-weight: 700; }
+.info-card { margin: 18px 0 22px; padding: 15px; border: 1px solid var(--line); border-radius: 16px; background: #fffef9; }
+.info-card .secondary { margin-top: 10px; width: 100%; }
+.info-label { margin: 0 0 6px; font-size: 12px; font-weight: 700; color: var(--green); }
 .home-indicator { width: 93px; height: 4px; border-radius: 5px; background: #dce1d2; margin: 9px auto 7px; flex-shrink: 0; }
 .profile-current { background: #eef1e7; padding: 13px; margin: 20px 0; border-radius: 11px; }
 .chat-screen { padding-bottom: 18px; display: flex; flex-direction: column; }
@@ -162,9 +168,11 @@ legend { font-size: 12px; font-weight: 650; margin-bottom: 10px; }
 .bubble.user { background: #5b7050; color: white; align-self: flex-end; border-bottom-right-radius: 4px; }
 .chat-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .chat-chips button { border: 1px solid #d7dfcb; background: #fffdf5; border-radius: 10px; padding: 8px 12px; font-size: 11px; color: var(--green); }
-.composer { display: flex; gap: 8px; position: sticky; bottom: 0; background: var(--paper); padding-top: 4px; }
-.composer input { border: 1px solid #dfe5d3; border-radius: 13px; background: #fffef9; min-width: 0; width: 100%; padding: 12px; font-size: 16px; }
-.composer button { border: 0; border-radius: 12px; background: var(--green); color: white; min-width: 44px; font-size: 21px; }
+.composer { display: flex; position: sticky; bottom: 0; background: var(--paper); padding-top: 4px; }
+.composer input { border: 1px solid #dfe5d3; border-radius: 24px; background: #fffef9; min-width: 0; width: 100%; padding: 12px 54px 12px 16px; font-size: 16px; }
+.composer input:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(84, 107, 70, .12); }
+.composer button { position: absolute; right: 6px; bottom: 6px; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: var(--green); color: white; font-size: 18px; line-height: 36px; cursor: pointer; }
+.composer button:disabled { background: #c9cfbf; cursor: default; }
 .chat-results-link { border: 0; border-radius: 12px; background: var(--green); color: white; padding: 12px; font-size: 12px; }
 .card { border: 1px solid #e2e6d8; background: #fffef9; padding: 17px; border-radius: 18px; margin-top: 13px; overflow-wrap: anywhere; }
 .card:first-child { border-color: #adb996; background: #f3f6eb; }

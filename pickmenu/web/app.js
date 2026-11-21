@@ -74,6 +74,12 @@ function showScreen(name) {
   for (const button of document.querySelectorAll(".mode-switch button")) {
     button.setAttribute("aria-pressed", String(button.dataset.mode === name));
   }
+  // 하단 탭: 지금 보고 있는 화면의 탭을 표시한다(메뉴 찾기 = 선택지·이야기·결과, 내 정보 = 계정).
+  const tab = name === "account" ? "nav-account" : ["choice", "chat", "results"].includes(name) ? "nav-home" : "";
+  for (const button of document.querySelectorAll(".bottom-nav button")) {
+    if (button.id === tab) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  }
   scroller.scrollTop = 0;
   const title = document.querySelector(`[data-screen="${name}"] h2`);
   if (title) title.focus({preventScroll: true});
@@ -900,6 +906,8 @@ function openAccount(mode = "login") {
   }
   if (account) {
     document.querySelector("#account-name").textContent = profile.nickname || account.username;
+    document.querySelector("#account-profile-summary").textContent = hasProfile
+      ? summary() : "아직 프로필이 없어요. 취향을 알려주면 추천에 반영해요.";
     document.querySelector("#account-settings").elements.namedItem("nickname").value = profile.nickname;
     document.querySelector("#settings-status").textContent = "";
     document.querySelector("#account-sync").textContent = syncNotice
