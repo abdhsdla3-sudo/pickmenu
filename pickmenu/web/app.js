@@ -62,7 +62,7 @@ let guest = false;
 const guestScreens = ["choice", "results"];
 let accountReturn = "welcome";
 let syncNotice = "";
-document.querySelector("#category").addEventListener("change", () => { categoryTouched = true; });
+document.querySelector("#profile-category").addEventListener("change", () => { categoryTouched = true; });
 
 function showScreen(name) {
   if (!account && !["welcome", "account"].includes(name) && !(guest && guestScreens.includes(name))) {
@@ -114,7 +114,11 @@ function applyProfile() {
     const field = form.elements.namedItem(key);
     const value = profile[key];
     if (field instanceof RadioNodeList) {
-      for (const input of field) input.checked = input.value === value;
+      const selected = Array.from(field).find(input => input.value === value) || (key === "category" ? field[0] : null);
+      for (const input of field) input.checked = input === selected;
+    } else if (field instanceof HTMLInputElement && field.type === "radio") {
+      // 음식군을 불러오기 전에는 기본 선택지만 있다.
+      field.checked = true;
     } else if (field instanceof HTMLSelectElement) {
       if (Array.from(field.options).some(option => option.value === value)) field.value = value;
     } else {
@@ -1061,7 +1065,6 @@ function clearLocalProfile() {
   hasProfile = false;
   form.reset();
   document.querySelector("#meal").reset();
-  setMealCategory("");
   chatMessages = [];
   chatConditions = {};
   chatLog.replaceChildren();
@@ -1208,7 +1211,7 @@ form.addEventListener("submit", async event => {
   const next = document.querySelector("#step-next");
   next.disabled = true;
   await pushProfile();
-  setMealCategory("");
+  document.querySelector("#meal-category-profile").checked = true;
   chatMessages = [];
   chatConditions = {};
   chatLog.replaceChildren();
@@ -1355,47 +1358,6 @@ async function recommendNow(conditions, mode) {
   }
 }
 
-// 선택지 화면의 음식군: 3열 아이콘 타일. 하나만 고르고, 고른 타일을 다시 누르면 풀린다(프로필 취향대로).
-const CATEGORY_ICONS = {"고기": "🥩", "국밥·해장국": "🍲", "닭요리": "🐔", "면": "🍜", "밥·덮밥": "🍚",
-  "버거·샌드위치": "🍔", "분식": "🍢", "샐러드·건강식": "🥗", "아시안": "🍛", "양식": "🍝", "일식": "🍣",
-  "전·부침": "🥞", "족발·보쌈": "🍖", "죽": "🥣", "중식": "🥟", "찌개·탕": "🥘", "찜·조림": "🫕", "치킨": "🍗",
-  "피자": "🍕", "해산물": "🦐", "디저트": "🍰", "카페·음료": "🥤"};
-function setMealCategory(value) {
-  document.querySelector("#meal-category").value = value;
-  for (const tile of document.querySelectorAll("#meal-category-grid .category-tile")) {
-    const on = tile.dataset.value === value;
-    tile.setAttribute("aria-checked", String(on));
-    tile.tabIndex = on || (!value && tile === tile.parentElement.firstElementChild) ? 0 : -1;
-  }
-  const help = document.querySelector("#meal-category-help");
-  help.textContent = value ? `${value} 안에서 찾아요. 다시 누르면 풀려요.` : "고르지 않으면 프로필 취향대로 찾아요.";
-}
-function buildCategoryGrid(categories) {
-  const grid = document.querySelector("#meal-category-grid");
-  grid.replaceChildren(...categories.map(label => {
-    const tile = node("button", undefined, "category-tile");
-    tile.type = "button";
-    tile.dataset.value = label;
-    tile.setAttribute("role", "radio");
-    tile.append(node("span", CATEGORY_ICONS[label] || "🍽️", "category-icon"), node("span", label, "category-name"));
-    tile.querySelector(".category-icon").setAttribute("aria-hidden", "true");
-    tile.addEventListener("click", () => setMealCategory(tile.getAttribute("aria-checked") === "true" ? "" : label));
-    return tile;
-  }));
-  // 화살표 키로 타일 사이를 옮긴다(라디오 그룹 동작).
-  grid.addEventListener("keydown", event => {
-    const tiles = [...grid.querySelectorAll(".category-tile")];
-    const at = tiles.indexOf(document.activeElement);
-    const step = {ArrowRight: 1, ArrowDown: 3, ArrowLeft: -1, ArrowUp: -3}[event.key];
-    if (at < 0 || !step) return;
-    event.preventDefault();
-    const next = tiles[Math.max(0, Math.min(tiles.length - 1, at + step))];
-    next.tabIndex = 0;
-    next.focus();
-  });
-  setMealCategory(document.querySelector("#meal-category").value);
-}
-
 document.querySelector("#meal").addEventListener("submit", event => {
   event.preventDefault();
   const conditions = Object.fromEntries(new FormData(event.currentTarget));
@@ -1526,6 +1488,35 @@ function storeItem(store) {
 }
 
 
+// 음식군 아이콘 시트의 왼쪽에서 오른쪽, 위에서 아래 순서.
+const mealCategoryIcons = [
+  "고기", "국밥·해장국", "닭요리", "면", "밥·덮밥",
+  "버거·샌드위치", "분식", "샐러드·건강식", "아시안", "양식",
+  "일식", "전·부침", "족발·보쌈", "죽", "중식",
+  "찌개·탕", "찜·조림", "치킨", "피자", "해산물",
+];
+
+function renderCategoryCards(grid, name, categories, selected = "") {
+  const cards = categories.map(category => {
+    const card = node("label", undefined, "meal-category-option");
+    const input = node("input");
+    input.type = "radio";
+    input.name = name;
+    input.value = category;
+    input.checked = category === selected;
+    const index = mealCategoryIcons.indexOf(category);
+    const icon = node("span", index < 0 ? "🍽️" : "", "meal-category-icon");
+    icon.setAttribute("aria-hidden", "true");
+    if (index >= 0) {
+      icon.classList.add("meal-category-art");
+      icon.style.backgroundPosition = `${(index % 5) * 25}% ${Math.floor(index / 5) / 3 * 100}%`;
+    }
+    card.append(input, icon, node("span", category));
+    return card;
+  });
+  grid.replaceChildren(...cards);
+}
+
 async function initialize() {
   updateAgeLabels();
   persistLocal();
@@ -1551,14 +1542,15 @@ async function initialize() {
   if (account && hasProfile) openModes();
   try {
     const data = await request("/api/catalog");
-    const select = document.querySelector("#category");
-    for (const label of data.categories) select.add(new Option(label, label));
-    for (const label of data.categories) document.querySelector("#signup-category").add(new Option(label, label));
-    buildCategoryGrid(data.categories);
-    if (!categoryTouched && data.categories.includes(profile.category)) select.value = profile.category;
     if (!data.categories.includes(profile.category)) profile.category = "";
+    renderCategoryCards(document.querySelector("#meal-category"), "meal_category", data.categories);
+    renderCategoryCards(document.querySelector("#profile-category .meal-category-grid"), "category", data.categories,
+      categoryTouched ? "" : profile.category);
+    renderCategoryCards(document.querySelector("#signup-category .meal-category-grid"), "category", data.categories);
   } catch {
-    document.querySelector("#meal-category-help").textContent = "음식군을 불러오지 못했어요. 연결을 확인한 뒤 새로고침해 주세요.";
+    for (const help of document.querySelectorAll("[data-category-help]")) {
+      help.textContent = "음식군을 불러오지 못했어요. 연결을 확인한 뒤 새로고침해 주세요.";
+    }
     // 프로필 작성은 가능하며 실제 추천 시 연결 상태를 안내한다.
   }
 }
