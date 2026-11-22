@@ -9,6 +9,8 @@ pickmenu 폴더에서 실행한다(카탈로그가 필요하다).
     PYTHONPATH=. .venv/bin/python -X utf8 eval/story_regression.py --model pickmenu-llm:8b-ft-q8
     PYTHONPATH=. .venv/bin/python -X utf8 eval/story_regression.py --write-baseline   # 기준 점수 갱신
     PYTHONPATH=. .venv/bin/python -X utf8 eval/story_regression.py --live            # 실제 AI 호출(오래 걸림)
+    PYTHONPATH=. .venv/bin/python -X utf8 eval/story_regression.py --live --prompt v2 --only SIT,ROL
+        # v2 출력 형식으로 일부 시험셋만(id 앞부분). 실제 AI 출력은 결과.jsonl의 ai_output에 남는다.
 """
 import argparse
 import csv
@@ -106,13 +108,21 @@ def run_case(case: dict[str, Any], model: str, live: bool, menus: list[dict[str,
         except StopIteration:
             raise llm.Unavailable("기록 없음") from None
 
+    seen: list[dict[str, Any]] = []
+
+    def live_call(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        output = original(*args, **kwargs)
+        seen.append(dict(output))
+        return output
+
+    original = llm.generate
     started = time.time()
     record: dict[str, Any] = {"id": case["id"], "source": case["source"], "kind": case["kind"],
                               "messages": case["messages"], "profile": profile, "expect": case["expect"],
                               "ai_model": model if live else (run or {}).get("model", ""),
                               "ai_output": None if live else (run or {}).get("output")}
     try:
-        with patch.object(llm, "generate", wraps=llm.generate) if live else patch.object(llm, "generate", recorded):
+        with patch.object(llm, "generate", live_call if live else recorded):
             parsed, history = llm.conditions(payload, cats, foods)
             result, _ = reco.recommend_relaxed(menus, parsed, [], conversation=True)
             saved = reco.Profile.parse(payload["profile"], cats)
@@ -123,6 +133,8 @@ def run_case(case: dict[str, Any], model: str, live: bool, menus: list[dict[str,
         record.update(conditions=got, families=families, relaxed=result.get("relaxed", []), reply=reply, wrong=wrong)
     except (ValueError, llm.Unavailable) as error:
         record.update(conditions={}, families=[], relaxed=[], reply="", wrong=[f"오류({error})"])
+    if live:
+        record["ai_output"] = seen[0] if seen else None
     record["sec"] = round(time.time() - started, 2)
     return record
 
@@ -135,7 +147,13 @@ def main() -> int:
     parser.add_argument("--out", default=str(Path(tempfile.gettempdir()) / "pickmenu-story-regression"))
     parser.add_argument("--write-baseline", action="store_true", help="이번 결과를 기준 점수로 저장")
     parser.add_argument("--live", action="store_true", help="기록 대신 실제 AI를 부른다(PICKMENU_LLM_URL 필요)")
+    parser.add_argument("--prompt", choices=("v1", "v2"), help="실제 AI에 쓸 출력 형식(PICKMENU_LLM_PROMPT)")
+    parser.add_argument("--only", default="", help="이 id 앞부분(쉼표로 여럿)으로 시작하는 문장만 실행")
     args = parser.parse_args()
+    if args.prompt:
+        os.environ["PICKMENU_LLM_PROMPT"] = args.prompt
+    if args.live:
+        os.environ["PICKMENU_LLM_MODEL"] = args.model
 
     # 시험 모듈로 불러올 때는 환경을 바꾸지 않는다(다른 시험이 기본 카탈로그 경로를 쓴다).
     os.environ.setdefault("PICKMENU_CATALOG_PATH", os.path.expanduser("~/.local/share/pickmenu/catalog-v03.sqlite3"))
@@ -143,6 +161,8 @@ def main() -> int:
     cats, foods = server.categories(menus), server.foods(menus)
     with open(args.cases, encoding="utf-8") as f:
         cases = [json.loads(line) for line in f if line.strip()]
+    if prefixes := tuple(p for p in args.only.split(",") if p):
+        cases = [case for case in cases if case["id"].startswith(prefixes)]
     records = [run_case(case, args.model, args.live, menus, cats, foods) for case in cases]
 
     out = Path(args.out)
@@ -179,7 +199,7 @@ def main() -> int:
     baseline = json.loads(baseline_path.read_text(encoding="utf-8")) if baseline_path.exists() else {"runs": {}}
     before = baseline["runs"].get(args.model)
     status = 0
-    if before and not args.live:
+    if before and not args.live and not prefixes:
         old, now = set(before["passed"]), set(passed)
         regressed = sorted(old - now)
         fixed = sorted(now - old)
@@ -189,7 +209,7 @@ def main() -> int:
             r = by_id[case_id]
             print(f"  새로 틀림 {case_id} {' / '.join(r['messages'])[:60]} | {' · '.join(r['wrong'])}")
         status = 1 if regressed else 0
-    if args.write_baseline and not args.live:
+    if args.write_baseline and not args.live and not prefixes:
         baseline["runs"][args.model] = {"버전": version, "맞음": len(passed), "passed": passed,
                                         "시험셋별": summary["시험셋별"]}
         baseline_path.write_text(json.dumps(baseline, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")

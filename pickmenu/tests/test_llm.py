@@ -321,6 +321,7 @@ class LLMTest(unittest.TestCase):
             (["친구가 추천한 떡볶이 먹고 싶어"], {}, {"query": "떡볶이"}),
             (["아까 피자 먹고 나왔는데 이번엔 얼큰한 국물 요리 있어?"], {}, {"query": "", "avoid_menus": "피자"}),
             (["점심은 김밥로 때웠고 밤에는 국물 없이 가볍게 마무리하고 싶어"], {}, {"avoid_menus": "김밥", "soup": "no"}),
+            (["점심 김밥 클리어🍲 저녁은 다른 가벼운 걸루"], {"goal": "light"}, {"avoid_menus": "김밥", "goal": "light"}),
             (["치킨 추천해줘", "그 메뉴 말고 따뜻한 국물 있는 다른 음식은?"], {}, {"query": "", "avoid_menus": "치킨"}),
             (["국물 없이 짜장면 먹고 싶어", "메뉴는 아무거나 괜찮고 국물은 있었으면 좋겠어"], {},
              {"query": "", "avoid_menus": "", "soup": "yes"}),
@@ -440,6 +441,85 @@ class LLMTest(unittest.TestCase):
         with patch.object(llm, "generate", side_effect=llm.Unavailable):
             self.assertIn("물회를 골랐어요", llm.reply({"families": [fam("국밥"), fam("물회")]}))
             self.assertIn("국밥을 골랐어요", llm.reply({"families": [fam("물회"), fam("국밥")]}))
+
+    def test_v2_mentions_are_grounded(self):
+        foods = {"치킨": {"치킨"}, "양념치킨": {"치킨"}, "후라이드치킨": {"치킨"}, "족발": {"족발·보쌈"},
+                 "국밥": {"국밥·해장국"}, "순대국밥": {"국밥·해장국"}, "돼지국밥": {"국밥·해장국"}, "순대": {"분식"},
+                 "짜장면": {"중식", "면"}, "짬뽕": {"중식", "면"}, "떡볶이": {"분식"}, "피자": {"피자"},
+                 "냉면": {"면"}, "라면": {"면"}, "비빔밥": {"밥·덮밥"}, "볶음밥": {"밥·덮밥"}, "새우볶음밥": {"밥·덮밥"}}
+        categories = ["치킨", "족발·보쌈", "국밥·해장국", "분식", "중식", "면", "피자", "밥·덮밥"]
+
+        def m(text, role, **extra):
+            return {"text": text, "role": role, **extra}
+
+        cases = [
+            # 남은 음식은 검색어로도 쓰지 않고 빼지도 않는다. 꾸밈말로 꾸민 메뉴를 고른다.
+            (["어제 족발 시킨 거 남았고 치킨 먹고 싶은데 후라이드 말고 양념"],
+             {"mentions": [m("족발", "leftover"), m("치킨", "want", modifier="양념"), m("후라이드", "avoid")]},
+             {"query": "양념치킨", "avoid_menus": "후라이드치킨"}),
+            # 먹은 절 바로 뒤에서 다시 원하면 AI(want)를 따른다.
+            (["순댓국밥 어제 먹었는데 또 땡김"], {"mentions": [m("순댓국밥", "want")]},
+             {"query": "순대국밥", "avoid_menus": ""}),
+            # 긴 메뉴 이름 안의 짧은 이름("순댓국밥" 안의 "국밥")은 따로 언급으로 보지 않는다.
+            (["순댓국밥 어제 먹었는데 또 땡김"], {"mentions": [m("순댓국밥", "want"), m("국밥", "leftover")]},
+             {"query": "순대국밥", "avoid_menus": ""}),
+            # 다른 사람 몫을 eaten으로 표시해도 빼지 않는다.
+            (["동생은 짜장면 먹는대. 나는 짬뽕"], {"mentions": [m("짜장면", "eaten"), m("짬뽕", "want")]},
+             {"query": "짬뽕", "avoid_menus": ""}),
+            # 먹은 메뉴를 eaten으로 했어도 바로 뒤에 다시 원하면 검색한다.
+            (["점심에 짬뽕 먹었는데 다시 생각나네"], {"mentions": [m("짬뽕", "eaten")]},
+             {"query": "짬뽕", "avoid_menus": ""}),
+            # 꾸밈말에 부정이 붙으면 꾸민 메뉴로 바꾸지 않는다.
+            (["볶음밥 먹을 건데 새우 들어간 건 빼줘"], {"mentions": [m("볶음밥", "want", modifier="새우")]},
+             {"query": "볶음밥"}),
+            # 먹은 절 속 메뉴를 want로 하면 eaten으로 바꾼다.
+            (["어제 짜장면 먹었어. 오늘은 짬뽕"], {"mentions": [m("짜장면", "want"), m("짬뽕", "want")]},
+             {"query": "짬뽕", "avoid_menus": "짜장면"}),
+            # 바로 뒤에 분명한 부정이 있으면 avoid로 바꾼다.
+            (["떡볶이 말고 순대"], {"mentions": [m("떡볶이", "want"), m("순대", "want")]},
+             {"query": "순대", "avoid_menus": "떡볶이"}),
+            # 다른 사람 몫은 검색어로 쓰지 않는다.
+            (["친구가 피자 먹재"], {"mentions": [m("피자", "other")], "query": "피자"}, {"query": "", "avoid_menus": ""}),
+            (["친구는 피자 먹는대. 나는 국밥"], {"mentions": [m("피자", "other"), m("국밥", "want")]},
+             {"query": "국밥", "avoid_menus": ""}),
+            # 그 재료가 든 메뉴를 뺀다.
+            (["국밥 먹고 싶은데 순대 들어간 건 별로야"],
+             {"mentions": [m("국밥", "want"), m("순대", "avoid_inside", **{"in": "국밥"})]},
+             {"query": "국밥", "avoid_menus": "순대,순대국밥"}),
+            # 문장에 없는 언급은 버린다.
+            (["비빔밥 먹을래"], {"mentions": [m("냉면", "want")]}, {"query": "비빔밥"}),
+            # 묶음 빼기는 그 묶음을 가리키는 낱말이 문장에 있어야 받는다.
+            (["라면 말고 국밥"], {"exclude_groups": ["면"]}, {"exclude_groups": ""}),
+            (["밀가루 들어간 건 요즘 좀 그래"], {"exclude_groups": ["밀가루"]}, {"exclude_groups": "밀가루"}),
+            # 묶음 낱말이 있어도 피한다는 말이 없으면 받지 않는다(AI가 묶음 목록을 베낀 경우).
+            (["새콤한 면 요리 먹고 싶어"], {"exclude_groups": ["면", "밀가루", "튀김"]}, {"exclude_groups": ""}),
+            (["튀김 종류는 속이 안 좋아서 피할래"], {"exclude_groups": ["튀김"]}, {"exclude_groups": "튀김"}),
+            (["해물 들어간 메뉴는 싫어요"], {"exclude_groups": ["해산물"]}, {"exclude": "해물"}),
+            (["튀긴 거!"], {"query": "튀김", "mentions": [m("튀긴", "want")]}, {"query": ""}),
+            (["pizza 추천"], {"meal_category": "피자"}, {"query": "피자"}),
+            (["치킨 반 마리 남았어. 곁들일 만한 거"], {"mentions": [{"text": "치킨 반", "role": "leftover"}]},
+             {"query": ""}),
+            # v2 출력에서 비운 검색어는 언급으로 채운다(오타는 뒤 단계가 고친다).
+            (["떡뽁이 먹고싶다"], {"mentions": [m("떡뽁이", "want")]}, {"query": "떡볶이"}),
+        ]
+        for messages, output, want in cases:
+            with self.subTest(messages=messages), patch.object(llm, "generate", return_value=output):
+                profile, _ = llm.conditions({"messages": messages, "profile": {}}, categories, foods)
+                self.assertEqual({key: getattr(profile, key) for key in want}, want)
+        # v1 출력(mentions 없음)은 지금과 같다: 먹은 절의 메뉴는 뺀다.
+        with patch.object(llm, "generate", return_value={"query": "순대국밥"}):
+            profile, _ = llm.conditions({"messages": ["순댓국밥 어제 먹었는데 또 땡김"], "profile": {}},
+                                        categories, foods)
+        self.assertEqual(profile.avoid_menus, "순대국밥")
+
+    def test_v2_prompt_is_opt_in(self):
+        with patch.object(llm, "generate", return_value={}) as generate:
+            llm.extract_conditions(["치킨"], ["치킨"])
+            self.assertIs(generate.call_args.args[0], llm.CONDITION_PROMPT)
+            with patch.dict(os.environ, {"PICKMENU_LLM_PROMPT": "v2"}):
+                llm.extract_conditions(["치킨"], ["치킨"])
+            self.assertIs(generate.call_args.args[0], llm.CONDITION_PROMPT_V2)
+            self.assertEqual(generate.call_args.args[2], llm.CONDITION_SCHEMA_V2)
 
     def test_reply_summarizes_conditions_without_model(self):
         cats = ["중식", "면", "고기", "밥·덮밥"]

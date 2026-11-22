@@ -86,6 +86,37 @@ CONDITION_PROMPT = (
     'meal_category(제공된 categories 중 정확히 일치), allergy(알레르기 재료,100자이하), '
     'exclude(기피 재료,100자이하). 일반 대화나 음식과 관계없는 요청은 빈 객체. '
     '최신 조건을 우선하며 이전 알레르기를 해제하거나 안전하다고 판단하지 않는다.')
+# 출력 형식 v2: v1 키에 mentions(언급과 역할)와 exclude_groups(뺄 음식 묶음)를 더한다. v1 키는 그대로라
+# v1으로 학습한 모델 출력도 받는다. PICKMENU_LLM_PROMPT=v2일 때만 v2 프롬프트를 쓴다(기본 v1).
+ROLES = ("want", "eaten", "avoid", "avoid_inside", "leftover", "other")
+CONDITION_PROMPT_V2 = CONDITION_PROMPT + (
+    ' 위 키는 그대로 채우고 다음 두 키를 더한다. mentions: 대화에 나온 메뉴·음식 이름마다 '
+    '{"text": 문장에 쓰인 그대로, "role": 역할}. 꾸민 메뉴를 원하면 "modifier"(양념·로제·비빔 등), '
+    '재료가 든 메뉴를 빼면 role avoid_inside와 "in"(그 메뉴). role: want=지금 먹고 싶음, eaten=본인이 이미 먹음, '
+    'avoid=싫음·빼 줘·질림, avoid_inside=그 재료가 든 메뉴를 뺌, leftover=남아 있음·곁들임, '
+    'other=다른 사람 몫·비교 대상·일반 대화. 이미 먹었어도 또·다시 먹고 싶다고 하면 want. '
+    'exclude_groups: 사용자가 "면 빼줘", "밀가루 음식 말고"처럼 음식 묶음을 뺀다고 직접 말했을 때만 그 묶음 이름. '
+    '말하지 않았으면 빈 목록. '
+    '예: "어제 족발 시킨 거 남았고 치킨 먹고 싶은데 후라이드 말고 양념" → '
+    '{"query": "양념치킨", "meal_category": "치킨", "mentions": [{"text": "족발", "role": "leftover"}, '
+    '{"text": "치킨", "role": "want", "modifier": "양념"}, {"text": "후라이드", "role": "avoid"}], "exclude_groups": []}')
+CONDITION_SCHEMA_V2: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "goal": {"type": "string", "enum": ["balance", "protein", "light"]},
+        "spice": {"type": "string", "enum": ["mild", "hot", ""]},
+        "soup": {"type": "string", "enum": ["yes", "no", ""]},
+        "query": {"type": "string"}, "meal_category": {"type": "string"},
+        "allergy": {"type": "string"}, "exclude": {"type": "string"},
+        "mentions": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"text": {"type": "string"}, "role": {"type": "string", "enum": list(ROLES)},
+                           "modifier": {"type": "string"}, "in": {"type": "string"}},
+            "required": ["text", "role"]}},
+        "exclude_groups": {"type": "array", "maxItems": 3,
+                           "items": {"type": "string", "enum": list(STORY_GROUPS)}},
+    },
+}
 UNCLEAR = "AI가 조건을 정확히 이해하지 못했어요. 조건을 간단히 다시 입력해 주세요."
 
 
@@ -101,6 +132,15 @@ class Story:
     others: tuple[tuple[int, int], ...] = ()  # 남이 시킨 메뉴·사진·후기·남은 음식이 든 절(검색어로 쓰지 않는다)
 
 
+@dataclass(frozen=True)
+class Mention:
+    """근거를 확인한 AI 언급(v2). food는 대표 메뉴 이름, end는 문장(text)에서 마지막으로 나온 끝 위치."""
+    food: str
+    role: str
+    end: int
+    inside: tuple[str, ...] = ()  # avoid_inside: 그 재료가 든 대표 메뉴들
+
+
 def conditions(payload: Any, categories: list[str],
                foods: dict[str, set[str]] | None = None) -> tuple[Profile, list[str]]:
     """대화 → 추천 조건. foods: 대표 음식명 → 그 음식이 속한 음식군(사용자가 말한 메뉴 이름을 찾는 데 쓴다).
@@ -108,18 +148,21 @@ def conditions(payload: Any, categories: list[str],
     단계: 입력 확인 → AI 추출(extract_conditions) → 문장 정리(read_story) → 단서 확인(ground_cues)
     → 음식군(resolve_category) → 재료(resolve_ingredients) → 맛 → 메뉴(resolve_menus, 꾸밈말 메뉴 포함)
     → 뺄 음식군·묶음(resolve_exclusions) → 문장에 명시한 식단·지역(apply_explicit). 단계 순서가 결과에 영향을 준다(뒤 단계가 앞 값을 고친다).
+    AI 출력에 mentions(v2)가 있으면 근거를 확인해(ground_mentions) 메뉴·묶음 단계에 반영한다. 없으면(v1) 지금과 같다.
     """
     history = read_history(payload)
     profile = Profile.parse(payload.get("profile"), categories)
     result = extract_conditions(history, categories)
+    v2_compat(result, categories, foods or {}, "\n".join(history))
     story = read_story(history, foods or {})
     values = dict(vars(profile))
     ground_cues(values, result, story)
     resolve_category(values, result, story, categories)
     resolve_ingredients(values, result, story)
     values["taste"] = tastes(story.cue_text)
-    resolve_menus(values, result, story, categories)
-    resolve_exclusions(values, story, categories)
+    mentions = ground_mentions(result, story)
+    resolve_menus(values, result, story, categories, mentions)
+    resolve_exclusions(values, story, categories, result)
     apply_explicit(values, history)
     try:
         return Profile.parse(values, categories), history
@@ -140,6 +183,9 @@ def read_history(payload: Any) -> list[str]:
 
 def extract_conditions(history: list[str], categories: list[str]) -> dict[str, Any]:
     """AI가 대화에서 뽑은 조건(검증 전 원본)."""
+    if os.environ.get("PICKMENU_LLM_PROMPT", "v1") == "v2":
+        return generate(CONDITION_PROMPT_V2, {"messages": history, "categories": categories},
+                        CONDITION_SCHEMA_V2, wait=True)
     return generate(CONDITION_PROMPT, {"messages": history, "categories": categories}, wait=True)
 
 
@@ -178,6 +224,173 @@ def ground_cues(values: dict[str, Any], result: dict[str, Any], story: Story) ->
             values[key] = ""
 
 
+# "어제 먹었는데 또 땡김": 먹은 절 바로 뒤에서 같은 메뉴를 다시 원한다.
+AGAIN = re.compile(r"^[\s.!?;,]*(?:근데\s*)?(?:오늘도|오늘\s*또|또|다시|한\s*번\s*더|계속)\s*(?:땡|당기|당겨|생각나|먹고\s*싶|먹고\s*파|먹을래|먹을까)")
+
+
+def mention_food(text: str, foods: dict[str, set[str]]) -> str:
+    """언급 낱말 → 대표 메뉴 이름(없으면 빈 문자열). 별칭·영어 이름을 바로잡는다."""
+    text = text.strip()
+    for name in (text, FOOD_ALIASES.get(text, ""), ENGLISH_FOOD_ALIASES.get(text.lower(), "")):
+        if name and name in foods:
+            return name
+    words = text.split()
+    if len(words) > 1:
+        if (joined := "".join(words)) in foods:
+            return joined
+        # 앞 낱말부터 줄여 본다("치킨 반" → 치킨). 한 글자 남으면 멈춘다.
+        for end in range(len(words) - 1, 0, -1):
+            head = " ".join(words[:end])
+            if len(head) >= 2 and (name := mention_food(head, foods)):
+                return name
+    return ""
+
+
+# 재료로도 뺄 수 있는 묶음("돼지고기는 안 먹어요" → 기피 재료 돼지고기)
+INGREDIENT_GROUPS = ("돼지고기", "소고기", "닭고기", "해산물")
+
+
+def v2_compat(result: dict[str, Any], categories: list[str], foods: dict[str, set[str]], text: str = "") -> None:
+    """v2 출력에서 AI가 mentions에만 적고 v1 키를 비운 경우를 채운다(오타 교정·음식군·기피 재료 단계는
+    v1 키를 본다). 문장 근거 확인은 뒤 단계가 그대로 한다."""
+    groups = result.get("exclude_groups")
+    if not result.get("exclude") and isinstance(groups, list):
+        if words := [word for name in groups if name in INGREDIENT_GROUPS
+                     for word in dict.fromkeys((name, *STORY_GROUPS[name]["words"])) if word in text][:1]:
+            result["exclude"] = words[0]
+    raw = result.get("mentions")
+    if not isinstance(raw, list):
+        return
+    items = [m for m in raw if isinstance(m, dict) and isinstance(m.get("text"), str) and m["text"].strip()]
+    named = {word.strip(): category for category in categories for word in (category, *category_words(category))
+             if word.strip()}
+    wanted = [m["text"].strip() for m in items if m.get("role") == "want"]
+    if not result.get("meal_category"):
+        if picked := [named[text] for text in wanted if text in named and text not in foods]:
+            result["meal_category"] = picked[-1]
+    if not result.get("query"):
+        if menus := [text for text in wanted
+                     if mention_food(text, foods) or (len(text) >= 3 and any(
+                         len(food) == len(text) and typo_wanted(food, text, foods) for food in foods))]:
+            result["query"] = menus[-1]
+    if not result.get("exclude"):
+        avoided = [m["text"].strip() for m in items if m.get("role") in ("avoid", "avoid_inside")]
+        terms = [text for text in avoided if not mention_food(text, foods) and text not in named
+                 and len(text) <= 10]
+        if terms:
+            result["exclude"] = ",".join(terms)
+
+
+def related(word: str, food: str) -> bool:
+    """줄임말·영어 언급이 그 메뉴를 가리킬 만한가: 영어 낱말이거나, 두 음절 이상 같은 음절을 쓴다."""
+    if re.fullmatch(r"[A-Za-z][A-Za-z\s'-]*", word):
+        return True
+    return 2 <= len(word.replace(" ", "")) <= 6 and len(set(word) & set(food) - {" "}) >= 2
+
+
+def inside_longer(word: str, match: re.Match[str], text: str, foods: dict[str, set[str]]) -> bool:
+    """찾은 자리가 더 긴 메뉴 이름(별칭 포함)의 일부인가("순댓국밥" 안의 "국밥")."""
+    names = [name for name in (*foods, *FOOD_ALIASES) if len(name) > len(word) and word in name]
+    return any(m.start() <= match.start() and match.end() <= m.end()
+               for name in names for m in re.finditer(re.escape(name), text))
+
+
+def ground_mentions(result: dict[str, Any], story: Story) -> list[Mention]:
+    """AI 언급(v2)의 근거 확인. 문장에 없는 말은 버리고, 바로 뒤에 분명한 부정이 있으면 avoid,
+    먹은 절 속 메뉴를 want로 했으면 eaten으로 바꾼다(바로 뒤에서 '또 땡김'처럼 다시 원하면 AI를 따른다).
+    부정이 없는데 avoid로 온 것은 AI를 따른다. 같은 메뉴는 문장에서 가장 뒤에 나온 언급이 남는다."""
+    raw = result.get("mentions")
+    if not isinstance(raw, list) or not story.foods:
+        return []
+    text, foods = story.text, story.foods
+    grounded: dict[str, Mention] = {}
+    conflicts: set[str] = set()
+    for item in raw[:20]:
+        if not isinstance(item, dict):
+            continue
+        word, role = item.get("text"), item.get("role")
+        if not isinstance(word, str) or not word.strip() or len(word) > 40 or role not in ROLES:
+            continue
+        found = [match for match in re.finditer(r"\s*".join(map(re.escape, word.split())), text, re.IGNORECASE)
+                 if not inside_longer(word.strip(), match, text, foods)]
+        if not found:
+            continue
+        end = found[-1].end()
+        modifier = str(item.get("modifier") or "") if isinstance(item.get("modifier"), str) else ""
+        inside_menu = str(item.get("in") or "") if isinstance(item.get("in"), str) else ""
+        food = mention_food(word, foods)
+        query = result.get("query") if isinstance(result.get("query"), str) else ""
+        if not food and role == "want" and query in foods and related(word.strip(), query):
+            food = query  # "치마덮" → 치킨마요덮밥, "pad thai" → 팟타이: 문장에 쓰인 말이 근거다.
+        if role == "avoid_inside":
+            # 그 재료가 이름에 든 대표 메뉴(순대 in 국밥 → 순대국밥). in이 있으면 그 메뉴 계열만.
+            ingredient = word.strip()
+            base = mention_food(inside_menu, foods) or inside_menu.strip()
+            menus = tuple(name for name in foods if ingredient in name and name != base
+                          and (not base or name.endswith(base) or base in name))
+            if menus:
+                grounded[f"inside:{ingredient}"] = Mention(ingredient, role, end, menus)
+            continue
+        if not food:
+            continue
+        modifier = modifier.strip()
+        if (role == "want" and modifier and (modifier + food) in foods
+                and (spot := re.search(rf"(?<![가-힣]){re.escape(modifier)}", text))
+                and not FOOD_NEGATIVE.match(text[spot.end():])
+                and not re.match(rf"[^,.!?\n]{{0,8}}?(?:{ALLERGY_CUE}|{EXCLUDE_CUE})", text[spot.end():])):
+            food = modifier + food
+        span = next(((s, e) for s, e in story.past if s < end <= e), None)
+        again = bool(span and AGAIN.match(text[span[1]:]))
+        if role == "want" and FOOD_NEGATIVE.match(text[end:]):
+            role = "avoid"
+        elif role == "want" and span and not again:
+            role = "eaten"
+        elif role in ("eaten", "leftover", "other") and again:
+            role = "want"
+        elif role == "eaten" and not span and any(s < end <= e for s, e in story.others):
+            role = "other"  # 남의 몫·남은 음식 절이다("동생은 짜장면 먹는대"). Story.others(1.9.2)와 같은 기준.
+        old = grounded.get(food)
+        if old is not None and old.end == end and old.role != role:
+            # 같은 자리를 서로 다른 역할로 표시했으면 믿지 않는다(정규식 결과를 따른다).
+            conflicts.add(food)
+        if old is None or end >= old.end:
+            grounded[food] = Mention(food, role, end)
+    return sorted((m for m in grounded.values() if m.food not in conflicts), key=lambda m: m.end)
+
+
+def apply_mentions(mentions: list[Mention], positives: list[str], avoided: list[str]) -> set[str]:
+    """근거를 확인한 언급을 정규식 결과(positives·avoided)에 반영한다. 반환: 검색어로 쓰면 안 되는 메뉴
+    (leftover·other·eaten·avoid). leftover·other는 검색어로도 쓰지 않고 빼지도 않는다."""
+    blocked: set[str] = set()
+    for mention in mentions:
+        food = mention.food
+        if mention.role == "avoid_inside":
+            for name in mention.inside:
+                if name in positives:
+                    positives.remove(name)
+                if name not in avoided:
+                    avoided.append(name)
+                blocked.add(name)
+            continue
+        if mention.role == "want":
+            if food in avoided:
+                avoided.remove(food)
+            if food in positives:
+                positives.remove(food)
+            positives.append(food)
+            blocked.discard(food)
+            continue
+        if food in positives:
+            positives.remove(food)
+        blocked.add(food)
+        if mention.role in ("eaten", "avoid"):
+            if food not in avoided:
+                avoided.append(food)
+        elif food in avoided:
+            avoided.remove(food)
+    return blocked
+
+
 def resolve_category(values: dict[str, Any], result: dict[str, Any], story: Story, categories: list[str]) -> None:
     # 음식군은 정해진 목록 값이라 문장에 이름이 그대로 없어도 된다("국밥 중에서" → 국밥·해장국).
     # 대신 그 음식군을 가리키는 말이 문장에 있어야 한다.
@@ -205,15 +418,19 @@ def resolve_ingredients(values: dict[str, Any], result: dict[str, Any], story: S
     values["exclude"] = ",".join(term for term in values["exclude"].split(",") if term and term not in allergic)
 
 
-def resolve_menus(values: dict[str, Any], result: dict[str, Any], story: Story, categories: list[str]) -> None:
-    """검색어(query)·뺄 메뉴(avoid_menus). 필요하면 음식군도 고친다."""
+def resolve_menus(values: dict[str, Any], result: dict[str, Any], story: Story, categories: list[str],
+                  mentions: list[Mention] | None = None) -> None:
+    """검색어(query)·뺄 메뉴(avoid_menus). 필요하면 음식군도 고친다. mentions(v2)가 있으면 정규식 결과를 고친다."""
     current, foods, history = story.current, story.foods, story.history
-    if (ai_query := menu_query(result.get("query"))) and ai_query in current:
+    if (ai_query := menu_query(result.get("query"))) and (
+            ai_query in current or any(m.food == ai_query and m.role == "want" for m in mentions or [])):
         values["query"] = ai_query
     # 사용자가 메뉴 이름을 말했으면 가장 뒤에 말한(같으면 가장 긴) 이름을 검색어로 쓴다. AI가 음식군만 넘기거나
     # ("햄버거 먹고 싶어" → 버거·샌드위치), 이름을 줄이거나(양념치킨 → 치킨), 앞 턴 메뉴를 남긴 경우
     # ("돈가스 추천해줘 / 아니 칼국수로 바꿔줘")를 바로잡는다.
     positives, avoided = food_mentions(story.text, list(foods), past=story.past, others=story.others)
+    # v2 언급(역할)을 먼저 반영하고, 그다음 마지막 말의 '앞 메뉴 물리기'를 적용한다.
+    blocked = apply_mentions(mentions or [], positives, avoided)
     last_has_food = len(history) > 1 and any(food_mentions(history[-1], list(foods), past=[(0, len(history[-1]))]))
     # "치킨 먹을래 / 아니다 어제 먹었다", "치킨 추천해줘 / 그 메뉴 말고 국물 있는 다른 음식":
     # 메뉴 없이 이미 먹었다거나 앞 메뉴를 물리는 마지막 말은 앞 말들의 메뉴를 뺄 메뉴로 돌린다.
@@ -225,20 +442,23 @@ def resolve_menus(values: dict[str, Any], result: dict[str, Any], story: Story, 
                 if food in positives:
                     positives.remove(food)
                     avoided.append(food)
+                    blocked.add(food)
     # "국물 없이 치킨 먹고 싶어 / 메뉴는 아무거나 괜찮고": 앞 말의 메뉴 제한을 푼다(뺄 메뉴는 아니다).
     elif len(history) > 1 and not last_has_food and MENU_ANY.search(history[-1]):
         positives.clear()
         values["query"] = values["meal_category"] = ""
+    if values.get("query") in blocked:
+        values["query"] = ""
     values["avoid_menus"] = ",".join(avoided)
     # AI가 문장에 없는 대표 메뉴 이름으로 고쳐 준 경우(떡뽁이 → 떡볶이, pizza → 피자, 치킨 / 양념으로 → 양념치킨)는
     # 실제 대표 메뉴이고 문장에 근거가 있을 때만 받는다. 사용자가 메뉴 이름을 그대로 말했으면 그 이름이 우선이고,
     # 그 이름을 꾸민 메뉴(치킨 → 양념치킨)일 때만 AI 이름을 쓴다. 없는 이름(매운죽)은 받지 않는다.
     fixed = (ai_query if foods and ai_query in foods and ai_query not in current and ai_query not in avoided
-             and supported_query(ai_query, current, positives, foods) else "")
+             and ai_query not in blocked and supported_query(ai_query, current, positives, foods) else "")
     # AI가 없는 이름을 지었지만 그 안에 사용자가 말한 메뉴가 있으면 그 메뉴로 찾는다(죽인데 매운 거 → 매운죽 → 죽).
     named = result.get("query") if isinstance(result.get("query"), str) else ""
     inside = ([food for food in foods if food in named and re.search(food_pattern(food), current)
-               and food not in avoided]
+               and food not in avoided and food not in blocked]
               if foods and named and named not in foods and not positives else [])
     if fixed and (not positives or positives[-1] in fixed):
         values["query"] = fixed
@@ -246,7 +466,7 @@ def resolve_menus(values: dict[str, Any], result: dict[str, Any], story: Story, 
         values["query"] = positives[-1]
     elif inside:
         values["query"] = max(inside, key=len)
-    elif avoided and any(values["query"] and values["query"] in food for food in avoided):
+    elif (avoided and any(values["query"] and values["query"] in food for food in avoided)) or values["query"] in blocked:
         values["query"] = ""
     # 음식군을 가리키는 말("동남아", "분식")만 검색어가 되면 메뉴 이름과 맞지 않아 0개가 된다. 음식군으로 충분하다.
     elif foods and values.get("query") and values["query"] not in foods and (named_categories := [
@@ -316,7 +536,38 @@ def group_negated(word: str, text: str, listed: str = "") -> bool:
     return bool(re.search(rf"(?<![가-힣]){words}{between}{GROUP_NEGATIVE}", text))
 
 
-def resolve_exclusions(values: dict[str, Any], story: Story, categories: list[str]) -> None:
+# 묶음 낱말 뒤 같은 절에서 피한다는 말("밀가루 들어간 건 요즘 좀 그래", "돼지고기는 종교적인 이유로 안 먹어요")
+
+
+def ai_exclusions(result: dict[str, Any] | None, story: Story, categories: list[str],
+                  category_names: list[str]) -> tuple[list[str], list[str]]:
+    """AI가 뺀다고 표시한 묶음·음식군(v2 exclude_groups). 그 묶음·음식군을 가리키는 말이 지금 문장에
+    낱말로 있어야 받는다("라면"의 '면'은 아니다). 메뉴 이름이기도 한 음식군 말은 받지 않는다."""
+    raw = (result or {}).get("exclude_groups")
+    if not isinstance(raw, list):
+        return [], []
+
+    avoided = [m["text"] for m in (result or {}).get("mentions") or []
+               if isinstance(m, dict) and m.get("role") == "avoid" and isinstance(m.get("text"), str)]
+
+    avoid_tail = rf"[^.!?\n]{{0,20}}?(?:{EXCLUDE_CUE}|피할|피해|끊었|좀\s*그래|안\s*좋|부담)"
+
+    def said(words: Iterable[str]) -> bool:
+        return any(re.search(rf"(?<![가-힣]){re.escape(word.strip())}", story.current)
+                   and (group_negated(word.strip(), story.current) or any(word.strip() in text for text in avoided)
+                        or re.search(rf"(?<![가-힣]){re.escape(word.strip())}{avoid_tail}", story.current))
+                   for word in words if word.strip())
+
+    groups = [name for name in raw if isinstance(name, str) and name in STORY_GROUPS
+              and (said([*STORY_GROUPS[name]["words"], f"{name} 종류", f"{name}종류", f"{name}류"])
+                   or (name in avoided and name in story.current))]
+    cats = [name for name in raw if isinstance(name, str) and name in categories and name not in STORY_GROUPS
+            and said(word for word in category_words(name) if word.strip() in category_names)]
+    return groups, cats
+
+
+def resolve_exclusions(values: dict[str, Any], story: Story, categories: list[str],
+                       result: dict[str, Any] | None = None) -> None:
     """뺄 음식군(exclude_categories)·음식 묶음(exclude_groups). 메뉴 이름이기도 한 말("피자", "짬뽕")은
     그 메뉴만 빼고(avoid_menus) 음식군 전체를 빼지 않는다. 이전 대화에서 뺀 것도 마지막 말에서
     부정 없이 다시 말하면 풀어 준다."""
@@ -341,8 +592,9 @@ def resolve_exclusions(values: dict[str, Any], story: Story, categories: list[st
                    if g in STORY_GROUPS and not released(STORY_GROUPS[g]["words"])]
     kept_cats = [c for c in values.get("exclude_categories", "").split(",")
                  if c in categories and not released(category_words(c))]
-    groups = list(dict.fromkeys(kept_groups + groups))
-    cats = list(dict.fromkeys(kept_cats + cats))
+    ai_groups, ai_cats = ai_exclusions(result, story, categories, category_names)
+    groups = list(dict.fromkeys(kept_groups + groups + ai_groups))
+    cats = list(dict.fromkeys(kept_cats + cats + ai_cats))
     query = values.get("query", "")
     # 말한 메뉴가 속한 음식군은 빼지 않는다("짜장면 말고 중식 아닌 거"는 드묾. "후라이드 치킨 말고 양념"의 치킨 보호).
     cats = [c for c in cats if c not in foods.get(query, set())]
@@ -569,7 +821,7 @@ def without_foods(text: str, foods: dict[str, set[str]]) -> str:
 
 MEAL_CLAUSE_BREAK = re.compile(
     r"[.!?;,\n]+|(?<=먹었고)\s+|(?<=먹었는데)\s+|(?<=먹었지만)\s+|(?<=먹었더니)\s+|(?<=먹었으니까)\s+"
-    r"|(?<=먹었으니)\s+|(?<=먹었길래)\s+|(?<=먹어서)\s+|(?<=나왔는데)\s+|(?<=때웠고)\s+|(?<=때웠는데)\s+"
+    r"|(?<=먹었으니)\s+|(?<=먹었길래)\s+|(?<=먹어서)\s+|(?<=나왔는데)\s+|(?<=때웠고)\s+|(?<=때웠는데)\s+|(?<=클리어)[^\s가-힣A-Za-z0-9]*\s+"
     r"|(?<=먹었어)\s+(?=오늘|이번|저녁|지금|내일)|(?<=먹었음)\s+(?=오늘|이번|저녁|지금|내일)"
 )
 # '먹어서'는 때를 함께 말했을 때만 먹은 것으로 본다("점심에 치킨 먹어서", "든든하게 먹어서 힘내고 싶어"는 아니다).

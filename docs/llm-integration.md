@@ -63,6 +63,7 @@ Environment=PICKMENU_LLM_MODEL=pickmenu-llm:8b
   - 기준 점수(`eval/story_baseline.json`)에서 맞던 문장이 틀리면 목록을 보여 주고 종료 코드 1을 낸다.
   - 의도한 변화면 `--write-baseline`으로 기준을 갱신한다.
   - `--model pickmenu-llm:8b-ft-q8`는 파인튜닝 모델 기록을 쓴다. 기록이 없는 문장은 데모 모델 기록을 쓴다.
+  - `--model pickmenu-llm:8b-ft2-q8`는 v2 형식으로 다시 학습한 모델(5단계)의 기록을 쓴다. 이 모델은 `PICKMENU_LLM_PROMPT=v2`와 함께 쓴다.
   - `--live`는 실제 AI를 다시 부른다.
 
   기대 형식은 두 가지다. strict는 적지 않은 칸이 저장 프로필 그대로여야 한다. listed는 적은 칸만 보며, 빈 값은 조건을 풀어야 한다는 뜻이다.
@@ -70,6 +71,13 @@ Environment=PICKMENU_LLM_MODEL=pickmenu-llm:8b
 - 동시 모델 호출 1개, 호출당 35초 제한, 최대 출력 1536토큰.
   - 1.9.1부터 이야기 추천 조건 추출은 다른 요청이 처리 중이면 대기열에서 기다린다. 기본은 최대 3명, 20초이며 `PICKMENU_LLM_QUEUE`·`PICKMENU_LLM_WAIT_SECONDS`로 바꾼다. 넘치면 재시도를 안내한다.
   - 매장 설명(가게 한마디)은 기다리지 않고 생략한다.
+- AI 출력 형식 v2(1.9.2, 선택): `PICKMENU_LLM_PROMPT=v2`
+  - v1 키에 `mentions`([{text, role, modifier?, in?}])와 `exclude_groups`를 더한다.
+  - role은 want·eaten·avoid·avoid_inside·leftover·other 중 하나다.
+  - 서버는 `ground_mentions`에서 문장 근거를 확인한다. 문장에 없는 말은 버리고, 부정·먹은 절·다시 원함·남의 몫으로 역할을 고친다.
+  - 확인한 언급은 `apply_mentions`에서 정규식 결과에 반영한다.
+  - 기본값은 v1이다. v2는 프롬프트만으로는 출력이 길어 느리다. v2로 학습한 모델이 생기면 기본값을 바꾼다.
+  - 비교: `eval/story_regression.py --live --prompt v2 --only SIT,NEW,ROL`
 - 이야기 추천 답변은 AI를 부르지 않는다(1.9.1). 서버가 새로 알아들은 조건 요약, 0개일 때의 충돌 이유, 다음 질문을 만든다. 선택지 메뉴 추천은 모델을 호출하지 않는다.
 - 이름·생년월일·성별·키·몸무게·계정 토큰은 모델에 보내지 않는다. 대화에 직접 쓴 내용은
   모델 입력이 되므로 불필요한 개인정보를 입력하지 않는다. 요청 원문을 로그에 남기지 않는다.
