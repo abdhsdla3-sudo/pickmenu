@@ -23,6 +23,28 @@ from recommend import (
 )
 
 _slot = threading.BoundedSemaphore(1)
+# AI는 한 번에 하나만 부른다. 이야기 추천 조건 추출은 앞 요청이 끝나기를 짧게 기다린다(대기 인원·시간 제한).
+# 가게 한마디처럼 없어도 되는 호출은 기다리지 않는다.
+_waiting = 0
+_waiting_lock = threading.Lock()
+
+
+def _enter(wait: bool) -> bool:
+    global _waiting
+    if _slot.acquire(blocking=False):
+        return True
+    if not wait:
+        return False
+    limit = int(os.environ.get("PICKMENU_LLM_QUEUE", "3"))
+    with _waiting_lock:
+        if _waiting >= limit:
+            return False
+        _waiting += 1
+    try:
+        return _slot.acquire(timeout=float(os.environ.get("PICKMENU_LLM_WAIT_SECONDS", "20")))
+    finally:
+        with _waiting_lock:
+            _waiting -= 1
 
 
 class Unavailable(Exception):
@@ -30,9 +52,10 @@ class Unavailable(Exception):
 
 
 def generate(instruction: str, data: Any, schema: dict[str, Any] | None = None,
-             temperature: float = 0.1) -> dict[str, Any]:
+             temperature: float = 0.1, *, wait: bool = False) -> dict[str, Any]:
+    """wait=True면 다른 요청이 AI를 쓰는 동안 대기열에서 기다린다(PICKMENU_LLM_QUEUE명, PICKMENU_LLM_WAIT_SECONDS초)."""
     base = os.environ.get("PICKMENU_LLM_URL", "").rstrip("/")
-    if not base or not _slot.acquire(blocking=False):
+    if not base or not _enter(wait):
         raise Unavailable("AI가 준비되지 않았거나 다른 요청을 처리 중이에요. 잠시 후 다시 시도해 주세요.")
     try:
         payload = {"model": os.environ.get("PICKMENU_LLM_MODEL", "pickmenu-llm:8b"),
@@ -116,7 +139,7 @@ def read_history(payload: Any) -> list[str]:
 
 def extract_conditions(history: list[str], categories: list[str]) -> dict[str, Any]:
     """AI가 대화에서 뽑은 조건(검증 전 원본)."""
-    return generate(CONDITION_PROMPT, {"messages": history, "categories": categories})
+    return generate(CONDITION_PROMPT, {"messages": history, "categories": categories}, wait=True)
 
 
 def read_story(history: list[str], foods: dict[str, set[str]]) -> Story:
@@ -672,38 +695,125 @@ def understood(profile: Profile, payload: dict[str, Any], categories: list[str])
     return any(getattr(profile, field) != getattr(saved, field) for field in vars(profile))
 
 
+DIET_NAMES = {"vegan": "비건", "vegetarian": "채식", "meat": "육식 선호"}
+SPICE_NAMES = {"mild": "안 매운 맛", "hot": "매운맛"}
+SOUP_NAMES = {"yes": "국물 있음", "no": "국물 없음"}
+GOAL_NAMES = {"light": "가벼운 식사", "protein": "단백질 위주"}
+# 채식·비건에서 추천할 수 없는 음식군
+MEAT_CATEGORIES = {"고기", "족발·보쌈", "치킨", "닭요리"}
+
+
+def _split(value: str) -> list[str]:
+    return [item for item in re.split(r"[,;/]", value or "") if item]
+
+
+def _base_menus(names: list[str]) -> list[str]:
+    """뺀 메뉴 목록에서 꾸민 메뉴(양념치킨)는 기본 메뉴(치킨)가 있으면 생략한다."""
+    return [name for name in names if not any(other != name and name.endswith(other) for other in names)]
+
+
+def _listing(items: list[str], limit: int = 4) -> str:
+    return "·".join(items[:limit]) + (" 등" if len(items) > limit else "")
+
+
+def condition_phrases(profile: Profile, saved: Profile | None = None) -> list[str]:
+    """대화에서 새로 알아들은 조건(저장된 취향과 다른 것)을 짧은 말로. saved가 없으면 쓰인 조건 전부."""
+    def new(field: str) -> list[str]:
+        before = set(_split(getattr(saved, field))) if saved else set()
+        return [item for item in _split(getattr(profile, field)) if item not in before]
+
+    def changed(field: str) -> bool:
+        return bool(getattr(profile, field)) and (saved is None or getattr(profile, field) != getattr(saved, field))
+
+    parts = []
+    if changed("district"):
+        parts.append(profile.district)
+    if changed("diet") and profile.diet in DIET_NAMES:
+        parts.append(DIET_NAMES[profile.diet])
+    if changed("query"):
+        parts.append(f"메뉴 {profile.query}")
+    if changed("meal_category"):
+        parts.append(f"{profile.meal_category} 음식군")
+    if changed("goal") and profile.goal in GOAL_NAMES:
+        parts.append(GOAL_NAMES[profile.goal])
+    if changed("spice"):
+        parts.append(SPICE_NAMES[profile.spice])
+    if changed("soup"):
+        parts.append(SOUP_NAMES[profile.soup])
+    for item in new("taste"):
+        name = TASTE_NAMES.get(item.lstrip("-"), item)
+        parts.append(f"{name} 피함" if item.startswith("-") else name)
+    removed = list(dict.fromkeys(_base_menus(new("avoid_menus")) + new("exclude_categories") + new("exclude_groups")))
+    if removed:
+        parts.append(f"{_listing(removed)} 제외")
+    if allergy := new("allergy"):
+        parts.append(f"알레르기 {_listing(allergy)}")
+    # 이미 제외로 말한 음식군·묶음과 같은 기피 재료("중식", "면")는 다시 쓰지 않는다.
+    covered = set(removed) | {word for group in _split(profile.exclude_groups)
+                              for word in STORY_GROUPS.get(group, {}).get("words", [])}
+    if exclude := [term for term in new("exclude") if term not in covered]:
+        parts.append(f"기피 재료 {_listing(exclude)}")
+    return parts
+
+
+def empty_reason(result: dict[str, Any], profile: Profile | None) -> str:
+    """추천이 0개일 때 무엇이 충돌했는지 말한다."""
+    generic = "현재 조건에 맞는 메뉴를 찾지 못했어요. 지역이나 맵기·국물·메뉴 조건을 바꿔 다시 말씀해 주세요."
+    if profile is None:
+        return generic
+    if profile.diet in ("vegan", "vegetarian") and profile.meal_category in MEAT_CATEGORIES:
+        return (f"{DIET_NAMES[profile.diet]} 조건에서는 {profile.meal_category} 음식군 메뉴를 찾지 못했어요. "
+                "다른 음식군을 말씀하시거나 식단 조건을 바꿔 주세요.")
+    limits = [label for label, value in (("알레르기", profile.allergy), ("기피 재료", profile.exclude),
+                                         ("식단", DIET_NAMES.get(profile.diet, "")),
+                                         ("제외", profile.exclude_categories or profile.exclude_groups)) if value]
+    if profile.query and result.get("excluded") and limits:
+        return (f"{profile.query}{object_particle(profile.query)} 찾았지만 {'·'.join(limits)} 조건에 걸려 추천하지 못했어요. "
+                "다른 메뉴를 말씀해 주세요.")
+    if parts := condition_phrases(profile):
+        return f"현재 조건({', '.join(parts)})에 맞는 메뉴를 찾지 못했어요. 조건 하나를 빼거나 바꿔 다시 말씀해 주세요."
+    return generic
+
+
+def next_question(profile: Profile | None) -> str:
+    """다음에 물을 말. 아직 말하지 않은 조건을 보고 서버가 고른다(예전에는 AI를 한 번 더 불렀다)."""
+    if profile is None:
+        return "아래 결과에서 근거를 확인해 주세요."
+    if not profile.query and not profile.meal_category:
+        return "먹고 싶은 메뉴 이름을 알려주시면 더 좁혀볼게요."
+    if not profile.spice and not profile.soup:
+        return "맵기나 국물 선호를 더 바꿔볼까요?"
+    return "아래에서 메뉴를 고르면 판매 기록이 있는 매장도 볼 수 있어요."
+
+
 def reply(result: dict[str, Any], history: list[str] | None = None, *, taste: str | None = None,
-          understood: bool = True) -> str:
+          understood: bool | None = None, profile: Profile | None = None, saved: Profile | None = None) -> str:
+    """이야기 추천 답변. AI를 부르지 않고 서버가 조건과 결과로 만든다.
+
+    profile: 이번에 쓴 조건, saved: 대화 전 저장된 취향. 둘 다 주면 새로 알아들은 조건을 요약하고,
+    understood를 따로 주지 않았으면 새로 알아들은 조건이 있는지로 정한다.
+    """
     note = taste_note(history or [], result, taste=taste)
-    candidates = [{"name": f["name"], "reasons": f["best"]["reasons"]}
-                  for f in result.get("families", [])[:5]]
-    if not candidates:
-        return " ".join(filter(None, (
-            "현재 조건에 맞는 메뉴를 찾지 못했어요. 지역이나 맵기·국물·메뉴 조건을 바꿔 다시 말씀해 주세요.", note)))
-    names = [c["name"] for c in candidates]
+    families = result.get("families", [])[:5]
+    if not families:
+        return " ".join(filter(None, (empty_reason(result, profile), note)))
+    names = [f["name"] for f in families]
+    if understood is None:
+        understood = profile is None or saved is None or any(
+            getattr(profile, field) != getattr(saved, field) for field in vars(profile))
     if not understood:
-        # 저장된 취향만으로 고른 기본 목록이다. '조건에 맞춰'라고 하지 않고, AI 질문 고르기도 건너뛴다.
+        # 저장된 취향만으로 고른 기본 목록이다. '조건에 맞춰'라고 하지 않는다.
         return ("말씀에서 메뉴 조건을 찾지 못해 저장된 취향 기준으로 " + ", ".join(names) + object_particle(names[-1])
                 + " 골랐어요. 먹고 싶은 메뉴나 맵기·국물·가벼운 정도를 말씀해 주시면 더 맞춰 볼게요.")
     relaxed = result.get("relaxed") or []
-    summary = " ".join(filter(None, (
+    heard = condition_phrases(profile, saved) if profile is not None else []
+    lead = f"알아들은 조건({', '.join(heard)})으로 " if heard else "조건에 맞춰 "
+    return " ".join(filter(None, (
         f"말씀하신 조건에 맞는 메뉴가 없어 {'·'.join(relaxed)}을 빼고 찾았어요." if relaxed else "",
-        "조건에 맞춰 " + ", ".join(names) + object_particle(names[-1]) + " 골랐어요.", note,
+        lead + ", ".join(names) + object_particle(names[-1]) + " 골랐어요.", note,
         "알레르기·채식 조건은 재료 정보가 없어 확인하지 못했으니 주문 전에 가게에 꼭 확인해 주세요."
-        if any(f["best"].get("needs_check") for f in result["families"][:5]) else "")))
-    questions = ["맵기나 국물 선호를 더 바꿔볼까요?", "먹고 싶은 메뉴 이름을 알려주시면 더 좁혀볼게요.",
-                 "아래에서 메뉴를 고르면 판매 기록이 있는 매장도 볼 수 있어요."]
-    try:
-        answer = generate('제공된 후보를 보고 다음에 안내할 질문 하나를 questions에서 고른다. '
-                          'JSON {"question":"선택한 질문"}. 후보나 수치를 새로 작성하지 않는다.',
-                          {"candidates": candidates, "questions": questions},
-                          {"type": "object", "properties": {"question": {"type": "string", "enum": questions}},
-                           "required": ["question"]}).get("question")
-        if answer in questions:
-            return summary + " " + answer
-    except Unavailable:
-        pass
-    return summary + " 아래 결과에서 근거를 확인해 주세요."
+        if any(f["best"].get("needs_check") for f in families) else "",
+        next_question(profile))))
 
 
 # 추천이유에 쓰면 안 되는 말: 입력에 없는 맛·가격·배달·위생·건강·순위 주장과 과장.

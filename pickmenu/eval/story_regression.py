@@ -115,8 +115,8 @@ def run_case(case: dict[str, Any], model: str, live: bool, menus: list[dict[str,
         with patch.object(llm, "generate", wraps=llm.generate) if live else patch.object(llm, "generate", recorded):
             parsed, history = llm.conditions(payload, cats, foods)
             result, _ = reco.recommend_relaxed(menus, parsed, [], conversation=True)
-            reply = llm.reply(result, history, taste=parsed.taste,
-                              understood=llm.understood(parsed, payload, cats))
+            saved = reco.Profile.parse(payload["profile"], cats)
+            reply = llm.reply(result, history, taste=parsed.taste, profile=parsed, saved=saved)
         got = {k: getattr(parsed, k) for k in KEYS if getattr(parsed, k)}
         families = [f["name"] for f in result.get("families", [])[:5]]
         wrong = judge(case, got, families, foods)

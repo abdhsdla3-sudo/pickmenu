@@ -396,6 +396,58 @@ class LLMTest(unittest.TestCase):
             self.assertIn("물회를 골랐어요", llm.reply({"families": [fam("국밥"), fam("물회")]}))
             self.assertIn("국밥을 골랐어요", llm.reply({"families": [fam("물회"), fam("국밥")]}))
 
+    def test_reply_summarizes_conditions_without_model(self):
+        cats = ["중식", "면", "고기", "밥·덮밥"]
+        saved = llm.Profile.parse({"spice": "mild"}, cats)
+        profile = llm.Profile.parse({"spice": "mild", "goal": "light", "taste": "-rich",
+                                     "avoid_menus": "치킨,양념치킨,후라이드치킨", "exclude_categories": "중식",
+                                     "exclude_groups": "면", "exclude": "중식,오이"}, cats)
+        family = {"name": "비빔밥", "best": {"reasons": []}}
+        with patch.object(llm, "generate") as generate:
+            answer = llm.reply({"families": [family]}, profile=profile, saved=saved)
+            generate.assert_not_called()
+        self.assertIn("알아들은 조건(가벼운 식사, 진하고 기름진 맛 피함, 치킨·중식·면 제외, 기피 재료 오이)으로 비빔밥을 골랐어요.",
+                      answer)
+        self.assertNotIn("안 매운", answer)  # 저장된 취향 그대로인 조건은 다시 말하지 않는다
+        self.assertTrue(answer.endswith("먹고 싶은 메뉴 이름을 알려주시면 더 좁혀볼게요."))
+        with_menu = llm.Profile.parse({"query": "비빔밥", "soup": "no"}, cats)
+        self.assertTrue(llm.reply({"families": [family]}, profile=with_menu, saved=saved)
+                        .endswith("판매 기록이 있는 매장도 볼 수 있어요."))
+        # 저장된 취향과 같으면 되묻는다.
+        self.assertIn("조건을 찾지 못해", llm.reply({"families": [family]}, profile=saved, saved=saved))
+
+    def test_empty_result_explains_conflict(self):
+        cats = ["고기", "치킨"]
+        vegan = llm.Profile.parse({"diet": "vegan", "meal_category": "고기"}, cats)
+        self.assertIn("비건 조건에서는 고기 음식군", llm.reply({"families": []}, profile=vegan))
+        allergic = llm.Profile.parse({"allergy": "새우", "query": "새우튀김"}, cats)
+        self.assertIn("새우튀김을 찾았지만 알레르기 조건에 걸려",
+                      llm.reply({"families": [], "excluded": 3}, profile=allergic))
+        narrow = llm.Profile.parse({"query": "짜장면", "spice": "hot", "soup": "yes"}, cats)
+        self.assertIn("현재 조건(메뉴 짜장면, 매운맛, 국물 있음)에 맞는 메뉴를 찾지 못했어요",
+                      llm.reply({"families": [], "excluded": 0}, profile=narrow))
+
+    def test_condition_call_waits_in_short_queue(self):
+        import threading
+        llm._slot.acquire()
+        released = threading.Timer(0.2, llm._slot.release)
+        try:
+            env = {"PICKMENU_LLM_URL": "http://127.0.0.1:11435", "PICKMENU_LLM_WAIT_SECONDS": "2"}
+            with patch.dict(os.environ, env), patch.object(llm, "urlopen") as network:
+                network.return_value.__enter__.return_value.read.return_value = (
+                    b'{"message": {"content": "{\\"spice\\": \\"mild\\"}"}}')
+                with self.assertRaises(llm.Unavailable):
+                    llm.generate("", {})  # 기다리지 않는 호출(가게 한마디)은 바로 포기
+                released.start()
+                self.assertEqual(llm.generate("", {}, wait=True), {"spice": "mild"})
+            with patch.dict(os.environ, {**env, "PICKMENU_LLM_QUEUE": "0"}), patch.object(llm, "urlopen"):
+                llm._slot.acquire()
+                with self.assertRaises(llm.Unavailable):
+                    llm.generate("", {}, wait=True)  # 대기열이 가득 차면 바로 안내
+                llm._slot.release()
+        finally:
+            released.join()
+
     def test_busy_and_disabled_do_not_open_network(self):
         with patch.dict(os.environ, {"PICKMENU_LLM_URL": ""}), patch.object(llm, "urlopen") as network:
             with self.assertRaises(llm.Unavailable):
