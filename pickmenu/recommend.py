@@ -415,7 +415,8 @@ def median(values: list[float], default: float = 0.5) -> float:
     return ordered[middle] if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2
 
 
-def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[str] = ()) -> dict[str, Any]:
+def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[str] = (), *,
+              conversation: bool = False) -> dict[str, Any]:
     """`recent`: 최근 추천에서 본 대표 음식 이름(중복은 본 횟수). 본 만큼 조금 뒤로 보낸다."""
     seen_count = Counter(compact(name) for name in recent)
     ranked: list[dict[str, Any]] = []
@@ -453,12 +454,13 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
             continue
         # 고른 맵기·국물과 반대로 확인된 메뉴는 뺀다. 메뉴 이름의 단서뿐 아니라 음식 자체의 값도 본다
         # (예: 매운 쪽을 골랐을 때 '매콤한 감자피자'가 있어도 안 매운 음식인 피자는 뺀다).
-        # 정보가 없는 메뉴는 남기고 점수만 낮춘다.
+        # 이야기에서 국물 조건을 썼으면 국물 여부를 확인할 수 있는 메뉴만 남긴다.
         name_spice = menu["spice"] or ("hot" if KNOWN_HOT.search(compact(menu["components"][0] + menu["name"])) else "")
+        family_soup = menu.get("family_soup") or menu["soup"]
         if any(value and actual and value != actual
                for value, actual in ((profile.spice, name_spice), (profile.soup, menu["soup"]),
                                      (profile.spice, menu.get("family_spice", "")),
-                                     (profile.soup, menu.get("family_soup", "")))):
+                                     (profile.soup, family_soup))) or (conversation and profile.soup and not family_soup):
             mismatched += 1
             continue
         # 육식 선호 일치는 참고자료 컬럼표의 '육식' 라벨(menu_reco와 같은 기준)을 먼저 쓰고, 연결된 컬럼이
@@ -484,7 +486,7 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
                                      # 맵기·국물 점수는 음식 자체의 값으로 매긴다. 매운오뎅김밥 하나로
                                      # 김밥이 매운 음식 1위가 되지 않게, 음식 값이 미정이면 정보 부족으로 본다.
                                      ("맵기", profile.spice, menu.get("family_spice", menu["spice"])),
-                                     ("국물", profile.soup, menu.get("family_soup", menu["soup"])),
+                                     ("국물", profile.soup, family_soup),
                                      ("육식 선호", "yes" if profile.diet == "meat" else "",
                                       "yes" if meat else "")):
             if value:
@@ -523,7 +525,7 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
                        "_parts": (n, t, e, s, r), "_preferred": bool(profile.category) and profile.category in groups,
                        "_unknown_taste": sum(1 for value, actual in (
                            (profile.spice, menu.get("family_spice", menu["spice"])),
-                           (profile.soup, menu.get("family_soup", menu["soup"]))) if value and not actual)})
+                           (profile.soup, family_soup)) if value and not actual)})
     # 영양 자료가 없는 메뉴는 감점하지 않고 이번 후보들의 영양 점수 중앙값을 쓴다.
     middle = median([menu["_parts"][0] for menu in ranked if menu["_parts"][0] is not None])
     # 만족도·단골 주문 자료가 없는 음식도 같은 방식으로 후보 중앙값을 쓴다.
@@ -539,7 +541,8 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
                        + WEIGHTS["satisfaction"] * (s if s is not None else middle_s)
                        + WEIGHTS["reorder"] * (r if r is not None else middle_r))
         unknown_taste = menu.pop("_unknown_taste")
-        menu["_outside"] = outside = preferred_first and not menu.pop("_preferred")
+        outside = preferred_first and not menu.pop("_preferred")
+        menu["_outside"] = outside
         times = min(RECENT_MAX, seen_count[compact(menu["components"][0])])
         penalty = (UNKNOWN_TASTE_PENALTY * unknown_taste + (OUTSIDE_PREFERRED_PENALTY if outside else 0)
                    + RECENT_PENALTY * times)
@@ -563,7 +566,7 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
             return 0
         return 1 if name.endswith(query) else 2 if query in name else 3
 
-    ranked.sort(key=lambda x: (name_tier(x), x["_outside"], -x["score"], x["_unknown_nutrition"],
+    ranked.sort(key=lambda x: (name_tier(x), not conversation and x["_outside"], -x["score"], x["_unknown_nutrition"],
                                -x["evidence"]["reviews"],
                                x["standard_menu_id"]))
     for menu in ranked:
@@ -592,8 +595,8 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
 RELAXABLE = (("soup", "국물 조건"), ("spice", "맵기 조건"), ("district", "지역(수원시 전체로 넓힘)"))
 
 
-def recommend_relaxed(menus: list[dict[str, Any]], profile: Profile,
-                      recent: Sequence[str] = ()) -> tuple[dict[str, Any], Profile]:
+def recommend_relaxed(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[str] = (), *,
+                      conversation: bool = False) -> tuple[dict[str, Any], Profile]:
     """recommend와 같고, 결과가 없거나 말한 메뉴 자체가 없으면 RELAXABLE 조건을 적게 빼는 것부터 차례로 빼서
     다시 찾는다. (결과, 실제로 쓴 조건)"""
     query = compact(profile.query)
@@ -605,16 +608,17 @@ def recommend_relaxed(menus: list[dict[str, Any]], profile: Profile,
         first = compact(result["families"][0]["name"])
         return not query or not any(query == compact(m["components"][0]) for m in menus) or first.endswith(query)
 
-    result = recommend(menus, profile, recent)
+    result = recommend(menus, profile, recent, conversation=conversation)
     result["relaxed"] = []
     if good(result):
         return result, profile
     fields = [(field, label) for field, label in RELAXABLE
-              if getattr(profile, field) and not (field == "spice" and profile.spice == "mild")]
+              if getattr(profile, field) and not (field == "spice" and profile.spice == "mild")
+              and not (field == "soup" and conversation)]
     for size in range(1, len(fields) + 1):
         for chosen in combinations(fields, size):
             current = replace(profile, **{field: "" for field, _ in chosen})
-            retry = recommend(menus, current, recent)
+            retry = recommend(menus, current, recent, conversation=conversation)
             if good(retry):
                 retry["relaxed"] = [label for _, label in chosen]
                 return retry, current

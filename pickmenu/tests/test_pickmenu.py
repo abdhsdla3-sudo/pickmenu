@@ -126,6 +126,23 @@ class RulesTest(unittest.TestCase):
         self.assertEqual([row["name"] for row in found["families"]], ["샐러드", "육회"])
         self.assertEqual(recommend(menus, Profile.parse({"avoid_menus": "육회"}, []))["eligible"], 1)
 
+    def test_conversation_keeps_soup_filter_and_orders_by_score(self):
+        rich = {"basis": 100, "unit": "g", "values": [500, 0, 0, 55, 250]}
+        balanced = {**rich, "values": [500, 27.5, 66.25, 13.89, 250]}
+        bulgogi = {**fixture("소불고기", "MN_1"), "category": "고기", "soup": "", "family_soup": ""}
+        stew = {**fixture("고기전골", "MN_2", rich), "category": "고기", "soup": "yes"}
+        noodle = {**fixture("짬뽕", "MN_3", balanced), "category": "중식", "soup": "yes", "family_soup": "",
+                  "regions": {"수원시": {"reviews": 100, "stores": 5}}}
+        menus = [bulgogi, stew, noodle, fixture("비빔밥", "MN_4")]
+        profile = Profile.parse({"category": "고기", "soup": "yes"}, ["고기", "중식"])
+        result, used = recommend_relaxed(menus, profile, conversation=True)
+        self.assertEqual([f["name"] for f in result["families"]], ["짬뽕", "고기전골"])
+        self.assertGreater(result["families"][0]["best"]["score"], result["families"][1]["best"]["score"])
+        self.assertIn("국물 일치", result["families"][0]["best"]["reasons"])
+        self.assertEqual((result["relaxed"], used.soup), ([], "yes"))
+        result, used = recommend_relaxed([bulgogi], profile, conversation=True)
+        self.assertEqual((result["families"], result["relaxed"], used.soup), ([], [], "yes"))
+
     def test_mild_excludes_inferred_hot_without_relaxing(self):
         menus = [fixture(name, str(i)) for i, name in enumerate(("불족발", "고추바사삭", "부대찌개"))]
         result, used = recommend_relaxed(menus, Profile.parse({"spice": "mild"}, []))
