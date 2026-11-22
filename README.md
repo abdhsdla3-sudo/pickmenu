@@ -35,11 +35,11 @@ cd pickmenu
 python -X utf8 -m unittest discover -s tests -v
 ```
 
-추천까지 실행하려면 접근 권한이 있는 경로에서 생성한 `catalog.sqlite3`를 받아 `PICKMENU_CATALOG_PATH`에 지정한다. 이 PC의 기존 카탈로그를 재사용하는 CMD 명령은 아래와 같다.
+추천까지 실행하려면 접근 권한이 있는 경로에서 생성한 `catalog.sqlite3`를 받아 `PICKMENU_CATALOG_PATH`에 지정한다. 저장소 루트에서 아래 CMD 명령을 실행한다. 카탈로그가 다른 폴더에 있다면 해당 경로를 지정한다.
 
 ```bat
-cd /d "D:\학교\3학년\캡스톤\pickmenu-dev\pickmenu"
-set "PICKMENU_CATALOG_PATH=D:\학교\3학년\캡스톤\pickmenu\local\catalog-v03.sqlite3"
+cd pickmenu
+set "PICKMENU_CATALOG_PATH=%CD%\local\catalog-v03.sqlite3"
 start.cmd --port 8766
 ```
 

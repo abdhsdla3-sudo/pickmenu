@@ -2,10 +2,10 @@
 
 로컬 픽메뉴 화면과 메뉴 5,736개의 집계·공개 영양 참고값을 Sites Worker에서 제공한다. `catalog.json`은 배포 시 서버 코드에 포함된다. 브라우저는 카테고리, 추천 결과, 선택한 메뉴 상세를 API로 조회한다. 원본 리뷰, 리뷰 ID, 매장 ID, 매장별 세부 집계와 SQLite 파일은 내보내기 대상에서 제외한다.
 
-Windows CMD에서 로컬 픽메뉴 서버를 실행한 뒤 다음 명령으로 공유용 데이터를 갱신하고 결과를 비교할 수 있다.
+Windows CMD에서 로컬 픽메뉴 서버를 실행한 뒤 저장소 루트에서 다음 명령으로 공유용 데이터를 갱신하고 결과를 비교할 수 있다.
 
 ```bat
-cd /d "D:\학교\3학년\캡스톤\pickmenu-dev\pickmenu-share"
+cd pickmenu-share
 python -X utf8 export.py
 node build.mjs --local
 node --check dist\server\index.js

@@ -103,11 +103,11 @@
 Windows CMD 실행 순서:
 1. 네이버 클라우드 콘솔 → Maps → Application 등록에서 **Geocoding**을 체크하고 Client ID·Client Secret을 확인한다.
 2. `07_지도데이터` 폴더에 `naver-maps.key` 파일을 만든다. 메모장으로 첫 줄에 Client ID, 둘째 줄에 Client Secret을 적는다. 이 파일은 공유하거나 커밋하지 않는다.
-3. 시험 실행(5곳):
+3. 지도 파일과 키 파일이 같은 폴더에 있는지 확인한 뒤 저장소 루트에서 5곳을 시험 실행한다. 아래 경로는 실제 엑셀 경로로 바꾼다.
 
 ```bat
-cd /d "D:\학교\3학년\캡스톤\pickmenu-dev\pickmenu"
-python -X utf8 geocode_stores.py "D:\학교\3학년\캡스톤\픽메뉴_통합자료_20261115\07_지도데이터\픽메뉴_635매장_네이버API_재점검_통합.xlsx" --limit 5
+cd pickmenu
+python -X utf8 geocode_stores.py "local\drive\07_지도데이터\매장목록.xlsx" --limit 5
 ```
 
 4. `매장좌표_네이버.csv`에 좌표가 들어갔으면 `--limit 5` 대신 `--all`로 다시 실행한다. 이미 변환한 매장은 건너뛴다.

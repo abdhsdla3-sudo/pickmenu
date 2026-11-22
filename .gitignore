@@ -11,7 +11,14 @@ node_modules/
 *.fernet
 account-keys.json
 .pgpass
+.pg_service.conf
 pgpass.conf
+*.pem
+*.p12
+*.pfx
+*.dump
+id_rsa
+id_ed25519
 *.csv
 *.xlsx
 *.zip

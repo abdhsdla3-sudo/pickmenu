@@ -3,7 +3,7 @@
 현재 데모: 브라우저 → 동일 출처 Ubuntu API → SSH 역방향 통로 → Windows Ollama(11435).
 DB 조회와 메뉴·매장 선정은 Ubuntu에서 담당한다. Ollama는 인터넷에 공개하지 않는다.
 
-Windows에서 `D:\학교\3학년\캡스톤\픽메뉴_서버관리\start-llm.cmd`를 실행한다.
+Windows에서 운영 환경에 준비한 `start-llm.cmd`를 실행한다.
 Ubuntu `pickmenu-demo` 환경:
 
 ```ini

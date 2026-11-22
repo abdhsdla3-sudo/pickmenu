@@ -34,14 +34,14 @@
 
 ## Windows CMD 재실행
 
-Python 3.11 이상과 기존 `requirements-preprocess.txt`의 openpyxl만 사용한다. 경로는 큰따옴표로 감싼다. 다른 환경에서는 아래 세 경로를 해당 환경으로 바꾼다. 원본 DB는 기존 `prepare.py` 전수 처리 결과여야 한다.
+Python 3.11 이상과 기존 `requirements-preprocess.txt`의 openpyxl만 사용한다. 경로는 큰따옴표로 감싼다. 저장소 루트에서 실행한다. 아래 예시에서는 갱신 파일을 `pickmenu/local/updates/`에 둔다. 원본 DB는 기존 `prepare.py` 전수 처리 결과여야 한다.
 
 ```bat
 chcp 65001 > nul
-cd /d "D:\학교\3학년\캡스톤\pickmenu-dev\pickmenu"
-python -X utf8 refresh.py --source-db "D:\학교\3학년\캡스톤\pickmenu\local\catalog.sqlite3" --updates "D:\학교\3학년\캡스톤\tmp\drive-review-20261114" --output "D:\학교\3학년\캡스톤\pickmenu\local\catalog-v03.sqlite3"
-set "PICKMENU_CATALOG_PATH=D:\학교\3학년\캡스톤\pickmenu\local\catalog-v03.sqlite3"
-set "PICKMENU_AUDIT_DIR=D:\학교\3학년\캡스톤\pickmenu\local"
+cd pickmenu
+python -X utf8 refresh.py --source-db "%CD%\local\catalog.sqlite3" --updates "%CD%\local\updates" --output "%CD%\local\catalog-v03.sqlite3"
+set "PICKMENU_CATALOG_PATH=%CD%\local\catalog-v03.sqlite3"
+set "PICKMENU_AUDIT_DIR=%CD%\local"
 start.cmd --port 8767
 ```
 
