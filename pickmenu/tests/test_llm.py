@@ -439,8 +439,9 @@ class LLMTest(unittest.TestCase):
         def fam(name):
             return {"name": name, "best": {"reasons": []}}
         with patch.object(llm, "generate", side_effect=llm.Unavailable):
-            self.assertIn("물회를 골랐어요", llm.reply({"families": [fam("국밥"), fam("물회")]}))
-            self.assertIn("국밥을 골랐어요", llm.reply({"families": [fam("물회"), fam("국밥")]}))
+            # 말투는 바뀌어도 목록 끝 메뉴의 조사는 맞아야 한다.
+            self.assertIn("국밥, 물회를", llm.reply({"families": [fam("국밥"), fam("물회")]}))
+            self.assertIn("물회, 국밥을", llm.reply({"families": [fam("물회"), fam("국밥")]}))
 
     def test_v2_mentions_are_grounded(self):
         foods = {"치킨": {"치킨"}, "양념치킨": {"치킨"}, "후라이드치킨": {"치킨"}, "족발": {"족발·보쌈"},
@@ -531,15 +532,43 @@ class LLMTest(unittest.TestCase):
         with patch.object(llm, "generate") as generate:
             answer = llm.reply({"families": [family]}, profile=profile, saved=saved)
             generate.assert_not_called()
-        self.assertIn("알아들은 조건(가벼운 식사, 진하고 기름진 맛 피함, 치킨·중식·면 제외, 기피 재료 오이)으로 비빔밥을 골랐어요.",
-                      answer)
+        # 말투는 대화에 따라 바뀌지만 알아들은 조건과 메뉴는 그대로 말한다.
+        self.assertIn("가벼운 식사, 진하고 기름진 맛 피함, 치킨·중식·면 제외, 기피 재료 오이", answer)
+        self.assertIn("비빔밥을", answer)
         self.assertNotIn("안 매운", answer)  # 저장된 취향 그대로인 조건은 다시 말하지 않는다
-        self.assertTrue(answer.endswith("먹고 싶은 메뉴 이름을 알려주시면 더 좁혀볼게요."))
+        self.assertTrue(answer.endswith(llm.QUESTIONS["menu"]))
         with_menu = llm.Profile.parse({"query": "비빔밥", "soup": "no"}, cats)
         self.assertTrue(llm.reply({"families": [family]}, profile=with_menu, saved=saved)
-                        .endswith("판매 기록이 있는 매장도 볼 수 있어요."))
+                        .endswith(llm.QUESTIONS["stores"]))
         # 저장된 취향과 같으면 되묻는다.
         self.assertIn("조건을 찾지 못해", llm.reply({"families": [family]}, profile=saved, saved=saved))
+
+    def test_reply_voice_varies_but_keeps_facts(self):
+        """말투는 상황에 따라 다양하게, 같은 대화면 같은 답, 사실(메뉴·조건·주의)은 빠지지 않는다."""
+        cats = ["국밥·해장국", "면"]
+        saved = llm.Profile.parse({}, cats)
+        profile = llm.Profile.parse({"soup": "yes", "goal": "light"}, cats)
+        families = [{"name": name, "best": {"reasons": []}} for name in ("국밥", "칼국수", "우동")]
+        talks = [["비 오는 날 국물 있는 거"], ["어제 술 마셔서 해장하고 싶어 국물로"], ["야근 끝나고 가볍게 국물"],
+                 ["운동 끝나고 가볍게 국물 땡겨"], ["국물 있는 걸로 가볍게"], ["시험 끝났다 국물 가볍게"],
+                 ["혼자 먹을 거 국물"], ["추워서 국물 가볍게"]]
+        answers = [llm.reply({"families": families}, talk, profile=profile, saved=saved) for talk in talks]
+        for talk, answer in zip(talks, answers, strict=True):
+            with self.subTest(talk=talk):
+                self.assertIn("국밥, 칼국수, 우동을", answer)
+                self.assertIn("가벼운 식사, 국물 있음", answer)
+                self.assertEqual(answer, llm.reply({"families": families}, talk, profile=profile, saved=saved))
+        self.assertGreaterEqual(len({answer.split(".")[0] for answer in answers}), 6)  # 첫마디가 상황마다 다르다
+        self.assertTrue(any(line in answers[1] for line in llm.SITUATIONS[0][1]))  # 해장 상황
+        self.assertTrue(any(line in answers[0] for line in llm.SITUATIONS[1][1]))  # 비 오는 날
+        # 친구가 다른 걸 시켰다는 말은 같이 먹는 자리로 보지 않는다.
+        friend = llm.reply({"families": families}, ["친구는 치킨 시켰는데 난 국물"], profile=profile, saved=saved)
+        self.assertNotIn("같이 드실", friend)
+        # 주의 문구와 조건을 뺀 안내는 그대로 남는다.
+        checked = [{**families[0], "best": {"reasons": [], "needs_check": True}}]
+        self.assertIn("가게에 꼭 확인", llm.reply({"families": checked}, ["채식"], profile=profile, saved=saved))
+        relaxed = llm.reply({"families": families, "relaxed": ["국물 조건"]}, ["국물"], profile=profile, saved=saved)
+        self.assertIn("국물 조건을 빼고", relaxed)
 
     def test_empty_result_explains_conflict(self):
         cats = ["고기", "치킨"]

@@ -1,7 +1,9 @@
 """사설 Ollama 호출과 검증된 추천 데이터의 설명 경계."""
 
+import hashlib
 import json
 import os
+import random
 import re
 import threading
 from collections import Counter
@@ -1117,15 +1119,113 @@ def empty_reason(result: dict[str, Any], profile: Profile | None) -> str:
     return generic
 
 
-def next_question(profile: Profile | None) -> str:
+# ---------------------------------------------------------------- 답변 말투
+# 답변은 사실(고른 메뉴·알아들은 조건·뺀 조건·주의)은 그대로 두고, 말투만 상황에 따라 바꾼다.
+# 같은 대화면 같은 답(시험 가능), 말이 다르면 다른 말투가 나오도록 대화 내용으로 고른다.
+# 첫마디는 사용자가 말한 상황(비·추위·야식·해장·피곤·시험·운동·모임·혼밥·배고픔)에 맞춰 공감만 하고,
+# 메뉴·영양에 대한 주장은 하지 않는다.
+SITUATIONS = (
+    (r"해장|숙취|술\s*(?:마셔|먹어|마신|먹은|마셨)|속이?\s*(?:쓰려|쓰리|안\s*좋)",
+     ("어제 고생하셨나 봐요. 속부터 달래 볼게요.", "속이 편해야 하루가 편하죠.", "해장이 먼저겠네요.")),
+    (r"비\s*(?:가|와|오|내리)|비\s*오는|장마|빗소리|우산",
+     ("비 오는 날엔 메뉴 고르기가 더 어렵죠.", "빗소리 들리는 날이네요.", "비 오는 날 한 끼, 같이 골라 볼게요.")),
+    (r"추워|추운|쌀쌀|으슬|감기|몸\s*(?:좀\s*)?녹",
+     ("쌀쌀한 날엔 속부터 데우고 싶죠.", "몸 녹일 한 끼가 필요하겠네요.", "추운 날이네요, 든든하게 골라 볼게요.")),
+    (r"더워|더운|폭염|여름|땀",
+     ("더운 날엔 입맛 찾기가 쉽지 않죠.", "더위에 지칠 때네요.", "여름엔 메뉴도 시원하게 고르고 싶죠.")),
+    (r"야식|새벽|늦은\s*(?:밤|시간)|밤\s*늦|자기\s*전",
+     ("늦은 시간에 출출하시군요.", "밤에 생각나는 한 끼네요.", "야식 고민, 같이 해 볼게요.")),
+    (r"야근|피곤|지쳐|지친|힘들|녹초|퇴근",
+     ("오늘 하루 수고 많으셨어요.", "고생한 날엔 잘 챙겨 드셔야죠.", "지친 날이네요, 고르는 건 제가 도울게요.")),
+    (r"시험|과제|공부|마감",
+     ("공부하느라 고생 많으셨어요.", "마감 끝낸 날은 잘 먹어야죠.", "머리 쓴 날엔 든든한 게 필요하죠.")),
+    (r"운동|헬스|오운완|러닝|등산",
+     ("운동하셨군요, 잘 챙겨 드셔야죠.", "땀 흘린 만큼 잘 먹어야죠.", "운동 끝난 한 끼, 골라 볼게요.")),
+    (r"다이어트|살\s*(?:좀\s*)?(?:빼|뺄|빠지)|체중",
+     ("가볍게 챙기는 날이네요.", "몸 관리 중이시군요.", "부담 없는 쪽으로 같이 볼게요.")),
+    (r"회식|모임|같이\s*먹|함께\s*먹|여럿이|둘이\s*먹|친구들(?:이랑|하고|과)",
+     ("여럿이 먹을 땐 고르기가 더 어렵죠.", "같이 드실 메뉴네요.", "함께 먹는 자리, 같이 골라 볼게요.")),
+    (r"혼밥|혼자",
+     ("혼자 먹는 끼니도 든든하게 챙겨야죠.", "혼밥 메뉴 골라 볼게요.", "혼자서도 맛있게 드셔야죠.")),
+    (r"배고|허기|출출|배가\s*고",
+     ("배고프실 테니 바로 골라 볼게요.", "출출할 땐 빨리 정하는 게 좋죠.", "배고픈 마음 알아요, 바로 볼게요.")),
+)
+OPENERS = ("좋아요.", "알겠어요.", "말씀 잘 들었어요.", "네, 골라 볼게요.", "그럼 이렇게 찾아봤어요.")
+# 고른 메뉴를 말하는 틀. {c}: 알아들은 조건, {n}: 메뉴 이름들, {o}: 을/를
+WITH_CONDITIONS = (  # 조건이 두 개 이하일 때
+    "알아들은 조건({c})으로 {n}{o} 골랐어요.",
+    "{c} 쪽으로 찾아보니 {n}{o} 골랐어요.",
+    "{c}에 맞춰 {n}{o} 추려 봤어요.",
+    "말씀하신 {c} 기준으로 {n}{o} 골라 봤어요.",
+    "{c}{o2} 반영해서 {n}{o} 준비했어요.",
+)
+WITH_MANY_CONDITIONS = (  # 조건이 많으면 괄호로 묶어 읽기 쉽게
+    "알아들은 조건({c})으로 {n}{o} 골랐어요.",
+    "이번 조건({c})에 맞춰 {n}{o} 추려 봤어요.",
+    "말씀을 정리하면 {c}예요. 여기에 맞춰 {n}{o} 골랐어요.",
+    "조건({c})을 모두 반영해서 {n}{o} 준비했어요.",
+)
+WITHOUT_CONDITIONS = (
+    "조건에 맞춰 {n}{o} 골랐어요.",
+    "{n}{o} 골라 봤어요.",
+    "이번엔 {n}{o} 추려 봤어요.",
+    "{n} 쪽이 지금 조건에 잘 맞아요.",
+)
+TOP_PICK = (
+    "그중 {t}{ga} 지금 조건에 가장 잘 맞았어요.",
+    "맨 앞의 {t}부터 살펴보세요.",
+    "{t}{o} 1순위로 올려 뒀어요.",
+)
+QUESTIONS = {
+    "menu": ("먹고 싶은 메뉴 이름을 알려주시면 더 좁혀볼게요.", "끌리는 메뉴가 있으면 이름만 말해 주세요.",
+             "특별히 당기는 음식이 있으면 말해 주세요. 거기서 다시 골라 볼게요."),
+    "taste": ("맵기나 국물 선호를 더 바꿔볼까요?", "매운 정도나 국물 여부도 정해 볼까요?",
+              "국물이 있으면 좋은지, 맵기는 어떤지도 알려 주세요."),
+    "stores": ("아래에서 메뉴를 고르면 판매 기록이 있는 매장도 볼 수 있어요.", "마음에 드는 메뉴를 누르면 파는 가게를 보여 드릴게요.",
+               "메뉴를 고르시면 그 메뉴를 파는 가게까지 찾아 드릴게요."),
+}
+NOT_UNDERSTOOD = (
+    "말씀에서 메뉴 조건을 찾지 못해 저장된 취향 기준으로 {n}{o} 골랐어요.",
+    "이번 말씀에서는 조건을 찾지 못해 평소 취향대로 {n}{o} 골라 봤어요.",
+    "조건을 찾지 못해 저장된 취향으로 {n}{o} 먼저 보여 드려요.",
+)
+NOT_UNDERSTOOD_ASK = ("먹고 싶은 메뉴나 맵기·국물·가벼운 정도를 말씀해 주시면 더 맞춰 볼게요.",
+                      "어떤 게 당기는지, 매운 건 괜찮은지 알려 주시면 다시 골라 볼게요.")
+
+
+def subject_particle(word: str) -> str:
+    """받침이 있으면 '이', 없으면 '가'. 한글이 아니면 '이(가)'."""
+    if not word or not "가" <= word[-1] <= "힣":
+        return "이(가)"
+    return "이" if (ord(word[-1]) - 0xAC00) % 28 else "가"
+
+
+def _pick(rng: random.Random, options: tuple[str, ...]) -> str:
+    return options[rng.randrange(len(options))]
+
+
+def _voice(history: list[str] | None, names: list[str]) -> random.Random:
+    """대화 내용과 고른 메뉴로 말투를 고른다. 같은 입력이면 같은 답, 말이 달라지면 말투도 달라진다."""
+    seed = hashlib.sha256("\n".join([*(history or []), *names]).encode()).digest()
+    return random.Random(int.from_bytes(seed[:8], "big"))
+
+
+def opener(history: list[str] | None, rng: random.Random) -> str:
+    """사용자가 말한 상황에 맞춘 첫마디. 마지막 말을 먼저 보고, 없으면 대화 전체를 본다."""
+    for text in ((history or [""])[-1], " ".join(history or [])):
+        for pattern, lines in SITUATIONS:
+            if re.search(pattern, text):
+                return _pick(rng, lines)
+    return _pick(rng, OPENERS)
+
+
+def next_question(profile: Profile | None, rng: random.Random | None = None) -> str:
     """다음에 물을 말. 아직 말하지 않은 조건을 보고 서버가 고른다(예전에는 AI를 한 번 더 불렀다)."""
     if profile is None:
         return "아래 결과에서 근거를 확인해 주세요."
-    if not profile.query and not profile.meal_category:
-        return "먹고 싶은 메뉴 이름을 알려주시면 더 좁혀볼게요."
-    if not profile.spice and not profile.soup:
-        return "맵기나 국물 선호를 더 바꿔볼까요?"
-    return "아래에서 메뉴를 고르면 판매 기록이 있는 매장도 볼 수 있어요."
+    kind = ("menu" if not profile.query and not profile.meal_category
+            else "taste" if not profile.spice and not profile.soup else "stores")
+    return _pick(rng, QUESTIONS[kind]) if rng else QUESTIONS[kind][0]
 
 
 def reply(result: dict[str, Any], history: list[str] | None = None, *, taste: str | None = None,
@@ -1134,28 +1234,42 @@ def reply(result: dict[str, Any], history: list[str] | None = None, *, taste: st
 
     profile: 이번에 쓴 조건, saved: 대화 전 저장된 취향. 둘 다 주면 새로 알아들은 조건을 요약하고,
     understood를 따로 주지 않았으면 새로 알아들은 조건이 있는지로 정한다.
+    사실(메뉴·조건·뺀 조건·주의 문구)은 그대로 두고 첫마디·문장 틀·되묻는 말만 상황에 따라 바꾼다.
     """
     note = taste_note(history or [], result, taste=taste)
     families = result.get("families", [])[:5]
     if not families:
         return " ".join(filter(None, (empty_reason(result, profile), note)))
     names = [f["name"] for f in families]
+    rng = _voice(history, names)
+    listed = ", ".join(names)
     if understood is None:
         understood = profile is None or saved is None or any(
             getattr(profile, field) != getattr(saved, field) for field in vars(profile))
     if not understood:
         # 저장된 취향만으로 고른 기본 목록이다. '조건에 맞춰'라고 하지 않는다.
-        return ("말씀에서 메뉴 조건을 찾지 못해 저장된 취향 기준으로 " + ", ".join(names) + object_particle(names[-1])
-                + " 골랐어요. 먹고 싶은 메뉴나 맵기·국물·가벼운 정도를 말씀해 주시면 더 맞춰 볼게요.")
+        return " ".join((_pick(rng, NOT_UNDERSTOOD).format(n=listed, o=object_particle(names[-1])),
+                         _pick(rng, NOT_UNDERSTOOD_ASK)))
     relaxed = result.get("relaxed") or []
     heard = condition_phrases(profile, saved) if profile is not None else []
-    lead = f"알아들은 조건({', '.join(heard)})으로 " if heard else "조건에 맞춰 "
+    if heard:
+        conditions = ", ".join(heard)
+        # 알레르기·기피·제외 같은 제한 조건에는 ~ 쪽으로, ~ 기준으로 틀을 쓰지 않는다(어색하다).
+        limiting = any(re.search(r"알레르기|기피|제외|피함", part) for part in heard)
+        frames = WITH_MANY_CONDITIONS if len(heard) > 2 else (WITH_CONDITIONS[::2] if limiting else WITH_CONDITIONS)
+        main = _pick(rng, frames).format(c=conditions, n=listed, o=object_particle(names[-1]),
+                                                  o2=object_particle(conditions))
+    else:
+        main = _pick(rng, WITHOUT_CONDITIONS).format(n=listed, o=object_particle(names[-1]))
+    top = (_pick(rng, TOP_PICK).format(t=names[0], ga=subject_particle(names[0]), o=object_particle(names[0]))
+           if len(names) > 1 and rng.random() < 0.6 else "")
     return " ".join(filter(None, (
+        "" if relaxed else opener(history, rng),
         f"말씀하신 조건에 맞는 메뉴가 없어 {'·'.join(relaxed)}을 빼고 찾았어요." if relaxed else "",
-        lead + ", ".join(names) + object_particle(names[-1]) + " 골랐어요.", note,
+        main, top, note,
         "알레르기·채식 조건은 재료 정보가 없어 확인하지 못했으니 주문 전에 가게에 꼭 확인해 주세요."
         if any(f["best"].get("needs_check") for f in families) else "",
-        next_question(profile))))
+        next_question(profile, rng))))
 
 
 # 추천이유에 쓰면 안 되는 말: 입력에 없는 맛·가격·배달·위생·건강·순위 주장과 과장.
