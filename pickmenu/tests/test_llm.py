@@ -240,7 +240,7 @@ class LLMTest(unittest.TestCase):
             (["부대찌게ㄱㄱ"], "부대찌개", "부대찌개"),
             (["돈까쓰 땡김"], "돈가스", "돈가스"),
             (["pizza 먹고 싶어"], "피자", "피자"),
-            (["pizza 먹고 싶어"], "돈가스", ""),
+            (["pizza 먹고 싶어"], "돈가스", "피자"),   # 1.9.2: 사용자가 말한 영어 메뉴 이름이 우선(모델의 틀린 이름은 버림)
             (["hello"], "피자", ""),
             (["no pizza 오늘은"], "피자", ""),
             (["치킨!", "양념으로"], "양념치킨", "양념치킨"),
@@ -307,6 +307,51 @@ class LLMTest(unittest.TestCase):
             with self.subTest(messages=messages), patch.object(llm, "generate", return_value=model):
                 profile, _ = llm.conditions({"messages": messages, "profile": {}}, categories, foods)
                 self.assertEqual({key: getattr(profile, key) for key in want}, want)
+
+    def test_story_tune_1_9_2(self):
+        """1.9.2: 회귀 시험 2,325문장에서 아직 틀리던 말투(남의 메뉴·지난 식사·'상관없어'·국물 부정·채식·맛 부정·오타)."""
+        foods = {"치킨": {"치킨"}, "피자": {"피자"}, "김밥": {"분식"}, "돈가스": {"양식"}, "떡볶이": {"분식"},
+                 "부대찌개": {"찌개·탕"}, "제육볶음": {"고기"}, "제육덮밥": {"밥·덮밥"}, "짜장면": {"중식"},
+                 "칼국수": {"면"}}
+        categories = ["치킨", "피자", "분식", "양식", "찌개·탕", "고기", "밥·덮밥", "중식", "면", "해산물"]
+        cases = [
+            (["친구는 치킨 시켰는데 난 오늘 좀 가볍고 기름지지 않은 걸로 부탁해"], {}, {"query": "", "avoid_menus": ""}),
+            (["사진은 돈가스고 오늘은 라이트한 저메추 원함"], {"query": "라이트한 저메추"}, {"query": "", "goal": "light"}),
+            (["냉장고에 치킨이 남아 있지만 오늘은 다른 가벼운 음식을 원해요."], {}, {"query": ""}),
+            (["친구가 추천한 떡볶이 먹고 싶어"], {}, {"query": "떡볶이"}),
+            (["아까 피자 먹고 나왔는데 이번엔 얼큰한 국물 요리 있어?"], {}, {"query": "", "avoid_menus": "피자"}),
+            (["점심은 김밥로 때웠고 밤에는 국물 없이 가볍게 마무리하고 싶어"], {}, {"avoid_menus": "김밥", "soup": "no"}),
+            (["치킨 추천해줘", "그 메뉴 말고 따뜻한 국물 있는 다른 음식은?"], {}, {"query": "", "avoid_menus": "치킨"}),
+            (["국물 없이 짜장면 먹고 싶어", "메뉴는 아무거나 괜찮고 국물은 있었으면 좋겠어"], {},
+             {"query": "", "avoid_menus": "", "soup": "yes"}),
+            (["치킨 ㄴ 가벼운거 ㄱ"], {}, {"query": "", "avoid_menus": "치킨"}),
+            (["짜장면 PASS, 칼국수 PICK"], {}, {"query": "칼국수", "avoid_menus": "짜장면"}),
+            (["나는 피자 말고 김밥 먹고 싶고, 국물은 상관없어"], {}, {"query": "김밥", "soup": ""}),
+            (["김밥 먹을거임 국물은 ㄴ"], {"soup": "yes"}, {"soup": "no"}),
+            (["국물 있는 건 놔두고 오독오독 씹는 맛 있는 걸 골라"], {}, {"soup": "no"}),
+            (["맵기는 이제 노상관임 암거나"], {}, {"spice": ""}),
+            (["맵 닭강정!"], {}, {"spice": "hot"}),
+            (["Not too spicy please"], {}, {"spice": "mild"}),
+            (["맵기 ㄴ 기름기 ㄴ ㅊㅊ"], {"spice": "hot"}, {"spice": "mild", "taste": "-rich"}),
+            (["채식 메뉴 부탁해요"], {}, {"diet": "vegetarian"}),
+            (["비건 식단으로 부탁해요"], {}, {"diet": "vegan"}),
+            (["달지 않은 음식을 추천해 주세요."], {}, {"taste": "-sweet"}),
+            (["짠맛이 덜한 메뉴를 골라 주세요."], {}, {"taste": "-salty"}),
+            (["protein 많은 거"], {}, {"goal": "protein"}),
+            (["pizza 먹고 싶어"], {}, {"query": "피자"}),
+            (["돈까쓰 땡김"], {}, {"query": "돈가스"}),
+            (["제육 ㄱㄱ"], {}, {"query": "제육볶음"}),
+            (["중식 중에 뭐 먹을까?"], {"meal_category": "중국 음식"}, {"meal_category": "중식"}),
+        ]
+        for messages, model, want in cases:
+            with self.subTest(messages=messages), patch.object(llm, "generate", return_value=model):
+                profile, _ = llm.conditions({"messages": messages, "profile": {}}, categories, foods)
+                self.assertEqual({key: getattr(profile, key) for key in want}, want)
+        # 저장 프로필이나 앞 대화의 국물 조건도 '상관없어'로 푼다.
+        with patch.object(llm, "generate", return_value={"soup": "yes"}):
+            profile, _ = llm.conditions({"messages": ["국물 있는 음식", "국물 상관없어. 맵게만 해줘"],
+                                         "profile": {"soup": "yes"}}, categories, foods)
+        self.assertEqual((profile.soup, profile.spice), ("", "hot"))
 
     def test_condition_stages(self):
         foods = {"짜장면": {"중식"}, "칼국수": {"면"}}
