@@ -96,7 +96,7 @@ function recommend(profile) {
     const evidence = menu.regions[region];
     const signal = [menu.name, menu.category, ...menu.components].join(" ");
     const normalized = compact(signal);
-    if (!evidence || !normalized.includes(query) ||
+    if (!evidence || !normalized.includes(query) || (profile.spice && menu.spice !== profile.spice) ||
         (profile.meal_category && menu.category !== profile.meal_category)) continue;
     const meat = meatPattern.test(signal);
     const conflict = terms.some(term => normalized.includes(term)) ||

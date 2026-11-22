@@ -396,7 +396,9 @@ function render(data) {
   if (!data.items.length) {
     empty("조건에 맞는 추천 메뉴가 없어요", sourceMode === "chat"
       ? "대화에서 다른 음식이나 지역을 말해 다시 찾아보세요."
-      : "‘조건 바꾸기’에서 음식군이나 지역을 바꿔 다시 찾아보세요.");
+      : data.active_filters?.spice
+        ? "‘조건 바꾸기’에서 맵기나 음식군을 바꿔 다시 찾아보세요."
+        : "‘조건 바꾸기’에서 음식군이나 지역을 바꿔 다시 찾아보세요.");
     status.textContent = `제한 충돌 ${data.excluded.toLocaleString("ko-KR")}종 · 확인 필요 ${data.unverified.toLocaleString("ko-KR")}종`;
     if (data.check_only.length) {
       const note = node("div", undefined, "card");
@@ -497,6 +499,11 @@ function appendMenuCard(card, foodName, button, ...details) {
   card.append(body, button);
 }
 
+function familyDisplayName(family, data) {
+  const spice = data.active_filters?.spice;
+  return spice && family.best.spice === spice && !family.best.family_spice ? family.best.name : family.name;
+}
+
 // 1단계: 가게마다 다른 메뉴 이름을 표준 음식명(대표 메뉴)으로 묶어 고르게 한다.
 function renderFamilies(data) {
   const count = data.families.length;
@@ -512,11 +519,12 @@ function renderFamilies(data) {
     const card = node("article", undefined, "card");
     const head = node("div", undefined, "card-head");
     const title = node("h3");
-    title.append(node("span", String(index + 1).padStart(2, "0"), "rank"), family.name);
+    const displayName = familyDisplayName(family, data);
+    title.append(node("span", String(index + 1).padStart(2, "0"), "rank"), displayName);
     head.append(title, node("span", family.category, "badge"));
     const button = node("button", "이 메뉴 고르기", "detail-link");
     button.type = "button";
-    button.setAttribute("aria-label", `${family.name} 고르고 파는 가게 보기`);
+    button.setAttribute("aria-label", `${displayName} 고르고 파는 가게 보기`);
     button.addEventListener("click", () => showFamily(family, data));
     // 카드는 이름·음식군과 영양 한 줄만 보여 준다. LLM 한 줄 설명(comment)이 오면 영양 대신 보여 준다.
     // 추천 근거와 알레르기 확인 안내는 메뉴 상세에 남는다.
@@ -876,7 +884,9 @@ async function showFamily(family, data) {
     render(lastResult);
     scroller.scrollTop = 0;
   });
-  const heading = node("h3", `${family.name} 파는 가게`, "family-title");
+  const kind = familyDisplayName(family, data) === family.name ? "" :
+    data.active_filters.spice === "hot" ? "매운 " : "안 매운 ";
+  const heading = node("h3", `${kind}${family.name} 파는 가게`, "family-title");
   heading.tabIndex = -1;
   results.replaceChildren(back, heading);
   status.textContent = "가게를 찾고 있어요.";

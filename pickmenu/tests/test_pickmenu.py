@@ -170,6 +170,25 @@ class RulesTest(unittest.TestCase):
         self.assertEqual((used.spice, result["items"]), ("mild", []))
         self.assertEqual(recommend(menus, Profile.parse({"spice": ""}, []))["eligible"], 3)
 
+    def test_selected_spice_requires_evidence_even_with_preferred_group(self):
+        plain = {**fixture("소불고기", "MN_1"), "category": "고기"}
+        known_mild = {**fixture("오리고기", "MN_2"), "category": "고기", "spice": "mild"}
+        variant = {**fixture("매운 삼겹살", "MN_3"), "category": "고기", "spice": "hot",
+                   "components": ["삼겹살"], "family_spice": ""}
+        grouped = {**fixture("제육볶음", "MN_4"), "category": "고기", "family_spice": "hot"}
+        conflict = {**fixture("안 매운 제육", "MN_5"), "category": "고기", "spice": "mild",
+                    "family_spice": "hot"}
+        in_request = {"category": "고기", "goal": "protein"}
+        for spice, expected in (("hot", {"매운 삼겹살", "제육볶음"}), ("mild", {"오리고기"})):
+            profile = Profile.parse({**in_request, "spice": spice}, ["고기"])
+            with self.subTest(spice=spice):
+                result, actual = recommend_relaxed([plain, known_mild, variant, grouped, conflict], profile)
+                self.assertEqual({f["best"]["name"] for f in result["families"]}, expected)
+                self.assertTrue(all("맵기 일치" in f["best"]["reasons"] for f in result["families"]))
+                self.assertEqual((actual.spice, result["relaxed"]), (spice, []))
+                empty, used = recommend_relaxed([plain], profile)
+                self.assertEqual((used.spice, empty["families"], empty["relaxed"]), (spice, [], []))
+
     def test_light_meal_checks_sodium_and_serving(self):
         stew = {"basis": 100, "unit": "g", "values": [61, 3.8, 3, 3.8, 491]}
         lighter = {**stew, "values": [61, 3.8, 3, 3.8, 40]}

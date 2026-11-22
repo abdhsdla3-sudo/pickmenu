@@ -479,11 +479,12 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
         # (예: 매운 쪽을 골랐을 때 '매콤한 감자피자'가 있어도 안 매운 음식인 피자는 뺀다).
         # 이야기에서 국물 조건을 썼으면 국물 여부를 확인할 수 있는 메뉴만 남긴다.
         name_spice = menu["spice"] or ("hot" if KNOWN_HOT.search(compact(menu["components"][0] + menu["name"])) else "")
+        family_spice = menu.get("family_spice", "")
+        effective_spice = family_spice or name_spice
         family_soup = menu.get("family_soup") or menu["soup"]
-        if any(value and actual and value != actual
-               for value, actual in ((profile.spice, name_spice), (profile.soup, menu["soup"]),
-                                     (profile.spice, menu.get("family_spice", "")),
-                                     (profile.soup, family_soup))) or (conversation and profile.soup and not family_soup):
+        if (profile.spice and (profile.spice != effective_spice or (name_spice and name_spice != profile.spice))
+                or any(profile.soup and actual and profile.soup != actual for actual in (menu["soup"], family_soup))
+                or (conversation and profile.soup and not family_soup)):
             mismatched += 1
             continue
         # 육식 선호 일치는 참고자료 컬럼표의 '육식' 라벨(menu_reco와 같은 기준)을 먼저 쓰고, 연결된 컬럼이
@@ -508,7 +509,7 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
         for label, value, actual in (("음식군", profile.category, category),
                                      # 맵기·국물 점수는 음식 자체의 값으로 매긴다. 매운오뎅김밥 하나로
                                      # 김밥이 매운 음식 1위가 되지 않게, 음식 값이 미정이면 정보 부족으로 본다.
-                                     ("맵기", profile.spice, menu.get("family_spice", menu["spice"])),
+                                     ("맵기", profile.spice, effective_spice),
                                      ("국물", profile.soup, family_soup),
                                      ("육식 선호", "yes" if profile.diet == "meat" else "",
                                       "yes" if meat else "")):
@@ -546,9 +547,7 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
         ranked.append({**menu, "region": region, "evidence": evidence, "reasons": reasons,
                        "needs_check": bool(check_note),
                        "_parts": (n, t, e, s, r), "_preferred": bool(profile.category) and profile.category in groups,
-                       "_unknown_taste": sum(1 for value, actual in (
-                           (profile.spice, menu.get("family_spice", menu["spice"])),
-                           (profile.soup, family_soup)) if value and not actual)})
+                       "_unknown_taste": int(bool(profile.soup and not family_soup))})
     # 영양 자료가 없는 메뉴는 감점하지 않고 이번 후보들의 영양 점수 중앙값을 쓴다.
     middle = median([menu["_parts"][0] for menu in ranked if menu["_parts"][0] is not None])
     # 만족도·단골 주문 자료가 없는 음식도 같은 방식으로 후보 중앙값을 쓴다.
@@ -574,7 +573,7 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
         if n is None:
             menu["reasons"][1] = f"참고 영양값 없음 · 후보 중앙값 {round(middle * 100)}점으로 계산"
         if unknown_taste:
-            menu["reasons"].append(f"고른 맵기·국물을 확인할 수 없어 {UNKNOWN_TASTE_PENALTY * unknown_taste}점 감점")
+            menu["reasons"].append(f"국물 정보를 확인할 수 없어 {UNKNOWN_TASTE_PENALTY * unknown_taste}점 감점")
         if outside:
             menu["reasons"].append(f"선호 음식군 밖이라 {OUTSIDE_PREFERRED_PENALTY}점 감점")
         if times:
@@ -614,8 +613,8 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
 
 # 결과가 0개일 때 하나씩 빼 보는 조건(앞에서부터). 국밥에 '국물 없음'처럼 서로 맞지 않는 조합이나
 # 그 지역에 메뉴가 없는 경우에 빈 화면 대신 조건을 넓혀 보여 주고 무엇을 뺐는지 알린다.
-# 안 매운 쪽·식단·알레르기·기피 재료·검색어·음식군은 빼지 않는다.
-RELAXABLE = (("soup", "국물 조건"), ("spice", "맵기 조건"), ("district", "지역(수원시 전체로 넓힘)"))
+# 맵기·식단·알레르기·기피 재료·음식군은 빼지 않는다.
+RELAXABLE = (("soup", "국물 조건"), ("district", "지역(수원시 전체로 넓힘)"))
 
 
 def recommend_relaxed(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[str] = (), *,
@@ -636,8 +635,7 @@ def recommend_relaxed(menus: list[dict[str, Any]], profile: Profile, recent: Seq
     if good(result):
         return result, profile
     fields = [(field, label) for field, label in RELAXABLE
-              if getattr(profile, field) and not (field == "spice" and profile.spice == "mild")
-              and not (field == "soup" and conversation)]
+              if getattr(profile, field) and not (field == "soup" and conversation)]
     for size in range(1, len(fields) + 1):
         for chosen in combinations(fields, size):
             current = replace(profile, **{field: "" for field, _ in chosen})

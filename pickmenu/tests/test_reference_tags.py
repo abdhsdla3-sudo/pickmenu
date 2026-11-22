@@ -85,8 +85,8 @@ class ReferenceTagTest(unittest.TestCase):
                                  menu("탕수육", menu_id="MN_3")], TAGS)
         categories = ["면", "중식", "피자"]
         mild = recommend(menus, Profile.parse({"spice": "mild"}, categories))
-        self.assertEqual([item["name"] for item in mild["items"]], ["피자", "탕수육"])
-        self.assertEqual(mild["mismatched"], 1)
+        self.assertEqual([item["name"] for item in mild["items"]], ["피자"])
+        self.assertEqual(mild["mismatched"], 2)
         dry = recommend(menus, Profile.parse({"soup": "no"}, categories))
         self.assertNotIn("짬뽕", [item["name"] for item in dry["items"]])
         self.assertIn("국물 정보 부족", dry["items"][-1]["reasons"])  # 모르는 메뉴는 남긴다
@@ -113,7 +113,7 @@ class ReferenceTagTest(unittest.TestCase):
         result = recommend(menus, Profile.parse({"spice": "hot"}, ["피자", "분식", "족발·보쌈"]))
         names = {item["name"] for item in result["items"]}
         self.assertFalse(names & {"매콤한 감자피자", "콤비네이션피자"})  # 피자 자체가 안 매운 음식
-        self.assertTrue({"불족발", "매운불족발", "매운오뎅김밥", "참치김밥"} <= names)  # 김밥은 미정이라 남는다
+        self.assertEqual(names, {"불족발", "매운불족발", "매운오뎅김밥"})  # 김밥 중 매운 변형만 남는다.
 
     def test_missing_nutrition_gets_median_and_preferred_group_first(self):
         def fed(name, category, menu_id, protein):
@@ -130,7 +130,7 @@ class ReferenceTagTest(unittest.TestCase):
         meat = recommend(menus, Profile.parse({"goal": "protein", "category": "고기"}, categories))
         self.assertEqual([item["category"] for item in meat["items"][:3]], ["고기"] * 3)
 
-    def test_unknown_taste_is_penalized_and_order_follows_score(self):
+    def test_unknown_spice_is_excluded_and_order_follows_score(self):
         rich = menu("육회", "고기", menu_id="MN_1")
         rich["nutrition"] = {"basis": 100, "unit": "g", "values": [130, 20, 1, 5, None]}
         menus = apply_reference([rich, menu("제육볶음", "고기", spice="hot", soup="no", menu_id="MN_2"),
@@ -138,7 +138,7 @@ class ReferenceTagTest(unittest.TestCase):
                                  menu("오돌뼈", "고기", spice="hot", soup="no", menu_id="MN_4")], TAGS)
         result = recommend(menus, Profile.parse({"spice": "hot", "soup": "no", "category": "고기", "goal": "protein"},
                                                 ["고기"]))
-        self.assertEqual(result["items"][-1]["name"], "육회")  # 영양은 좋아도 맵기·국물을 확인할 수 없다
+        self.assertNotIn("육회", [item["name"] for item in result["items"]])
         scores = [item["score"] for item in result["items"]]
         self.assertEqual(scores, sorted(scores, reverse=True))
 
@@ -152,13 +152,15 @@ class ReferenceTagTest(unittest.TestCase):
         self.assertEqual([item["name"] for item in search["items"]], ["고기만두"])
 
     def test_penalty_reasons_and_preferred_count(self):
-        menus = apply_reference([menu("김치전", "전·부침", menu_id="MN_1"), menu("짬뽕", menu_id="MN_2")], TAGS)
-        result = recommend(menus, Profile.parse({"category": "전·부침", "spice": "hot"}, ["전·부침", "중식"]))
+        menus = apply_reference([menu("김치전", "전·부침", spice="hot", menu_id="MN_1"),
+                                 menu("짬뽕", menu_id="MN_2")], TAGS)
+        result = recommend(menus, Profile.parse({"category": "전·부침", "spice": "hot", "soup": "yes"},
+                                                ["전·부침", "중식"]))
         self.assertEqual((result["category"], result["preferred_foods"]), ("전·부침", 1))
         self.assertEqual(result["items"][0]["name"], "김치전")  # 선호 음식군 음식이 하나여도 앞에
         jjamppong = result["items"][1]
         self.assertIn("선호 음식군 밖이라 25점 감점", jjamppong["reasons"])
-        self.assertIn("고른 맵기·국물을 확인할 수 없어 15점 감점", result["items"][0]["reasons"])
+        self.assertIn("국물 정보를 확인할 수 없어 15점 감점", result["items"][0]["reasons"])
         self.assertTrue(jjamppong["reasons"][1].startswith("참고 영양값 없음 · 후보 중앙값"))
         none = recommend(menus, Profile.parse({"category": "피자"}, ["전·부침", "중식", "피자"]))
         self.assertEqual(none["preferred_foods"], 0)
