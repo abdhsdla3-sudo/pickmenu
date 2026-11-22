@@ -308,6 +308,33 @@ class LLMTest(unittest.TestCase):
                 profile, _ = llm.conditions({"messages": messages, "profile": {}}, categories, foods)
                 self.assertEqual({key: getattr(profile, key) for key in want}, want)
 
+    def test_condition_stages(self):
+        foods = {"짜장면": {"중식"}, "칼국수": {"면"}}
+        story = llm.read_story(["어제 짜장면 먹었고, 오늘은 칼국수 국물로"], foods)
+        self.assertNotIn("짜장면", story.current)
+        self.assertIn("칼국수", story.current)
+        self.assertNotIn("칼국수", story.cue_text)  # 메뉴 이름 속 글자는 단서가 아니다
+        values = {"goal": "balance", "spice": "", "soup": ""}
+        result = {"spice": "hot", "soup": "no"}
+        llm.ground_cues(values, result, story)  # 문장에 매운 단서가 없고 '국물'은 있다
+        self.assertEqual((values["spice"], values["soup"]), ("", "yes"))
+        with self.assertRaises(llm.Unavailable):
+            llm.ground_cues(dict(values), {"query": ["칼국수"]}, story)
+        values = {"meal_category": ""}
+        llm.resolve_category(values, {}, llm.read_story(["해장이 필요해"], {}), ["국밥·해장국"])
+        self.assertEqual(values["meal_category"], "국밥·해장국")
+        values = {"allergy": "땅콩", "exclude": ""}
+        llm.resolve_ingredients(values, {"exclude": "오이,땅콩"}, llm.read_story(["오이 빼 줘"], {}))
+        self.assertEqual((values["allergy"], values["exclude"]), ("땅콩", "오이"))
+        values = {"query": "", "meal_category": "중식", "avoid_menus": ""}
+        llm.resolve_menus(values, {"query": "칼국수"}, story, ["중식", "면"])
+        self.assertEqual((values["query"], values["avoid_menus"], values["meal_category"]), ("칼국수", "짜장면", ""))
+        values = {"diet": "general", "district": ""}
+        llm.apply_explicit(values, ["비건이야", "영통구에서"])
+        self.assertEqual((values["diet"], values["district"]), ("vegan", "영통구"))
+        with self.assertRaises(ValueError):
+            llm.read_history({"messages": []})
+
     def test_reply_without_understood_conditions_asks_back(self):
         family = {"name": "피자", "best": {"reasons": []}}
         with patch.object(llm, "generate") as generate:
