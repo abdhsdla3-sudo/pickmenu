@@ -752,8 +752,8 @@ async function storeMap(holder, stores, {singleStore = false, onUnavailable} = {
     return;
   }
   if (!holder.isConnected) return;
-  // 지도 위에서 휠을 굴리면 페이지 대신 지도가 확대·축소된다(Leaflet이 휠 이벤트를 막는다).
-  const map = L.map(holder, {scrollWheelZoom: !singleStore});
+  // 지도 위에서만 마우스 휠로 확대·축소하고, 지도 밖에서는 원래 화면을 스크롤한다.
+  const map = L.map(holder);
   const tiles = osmTiles(L);
   if (onUnavailable) {
     let loaded = false;
