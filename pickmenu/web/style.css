@@ -144,8 +144,11 @@ legend { font-size: 12px; font-weight: 650; margin-bottom: 10px; }
 .step-bottom { margin-top: 28px; padding-top: 10px; }
 .status { font-size: 11px; line-height: 1.8; color: var(--rust); margin-top: 14px; overflow-wrap: anywhere; }
 .status:empty { display: none; }
-.detail-stores { background: #f3f6eb; border-radius: 14px; padding: 4px 14px 12px; margin: 14px 0; }
-.detail-stores h3 { margin-top: 12px; }
+.detail-location { background: #f3f6eb; border-radius: 14px; padding: 12px 14px; margin: 14px 0; }
+.detail-location h3 { margin: 0 0 6px; }
+.detail-store-name { font-weight: 700; }
+.detail-location .muted:empty { display: none; }
+.detail-location .small-link { display: inline-block; margin-top: 8px; }
 .legend-note { font-weight: 400; color: var(--muted); font-size: 10px; margin-left: 4px; }
 .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
 .tag { font-size: 9px; border-radius: 6px; padding: 3px 7px; background: #eef1e7; color: #6c7f55; }
@@ -159,8 +162,6 @@ legend { font-size: 12px; font-weight: 650; margin-bottom: 10px; }
 .store-list { list-style: none; margin: 12px 0 0; padding: 0; border-top: 1px solid var(--line); }
 .store-list li { padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 11px; }
 .store-list li:last-child { border-bottom: 0; }
-.store-name { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; font-size: 12px; }
-.store-name .star { color: var(--rust); white-space: nowrap; }
 .store-meta { color: #7e896e; font-size: 10px; line-height: 1.8; margin-top: 2px; }
 .franchise-nutrition { margin-top: 6px; padding: 6px 9px; border-radius: 8px; background: #edf0e4; }
 .franchise-nutrition summary { color: var(--green); cursor: pointer; font-size: 11px; font-weight: 700; }

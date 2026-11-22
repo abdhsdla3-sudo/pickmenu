@@ -324,50 +324,15 @@ function appendFranchiseNutrition(parent, item) {
   parent.append(group);
 }
 
-function currentDistrict() {
-  return sourceMode === "chat" ? document.querySelector("#chat-district").value
-    : document.querySelector("#meal").elements.namedItem("district").value;
-}
+let detailMap = null;
+dialog.addEventListener("close", () => {
+  if (dialog.open) return;
+  detailMap?.remove();
+  detailMap = null;
+  document.querySelector("#detail-body").replaceChildren();
+});
 
-async function loadDetailStores(menu, box) {
-  // 기존 메뉴와 가게 자료는 ID 변환표가 없어 구성 음식 이름이 정확히 같을 때만 연결한다.
-  const district = currentDistrict();
-  const query = new URLSearchParams();
-  for (const food of menu.components) query.append("food", food);
-  if (district) query.set("district", district);
-  const heading = box.firstChild;
-  try {
-    const data = await request(`/api/v2/stores?${query}`);
-    box.replaceChildren(heading);
-    if (!data.stores.length) {
-      box.append(node("p", "이 메뉴와 연결된 가게 리뷰 자료가 아직 없어요.", "muted"));
-      return;
-    }
-    const where = data.citywide ? `${district}에는 없어 수원 전체 기준` : (district || "수원 전체");
-    box.append(node("p", `${data.foods.join("·")} · ${where} · 가게 ${data.store_count}곳`, "muted"));
-    const list = node("ul", undefined, "store-list");
-    data.stores.forEach((store, at) => {
-      const item = storeItem(store);
-      item.hidden = at >= 5;
-      list.append(item);
-    });
-    box.append(list);
-    if (data.stores.length > 5) {
-      const more = node("button", `가게 ${data.stores.length - 5}곳 더 보기`, "more-stores");
-      more.type = "button";
-      more.addEventListener("click", () => {
-        for (const item of list.children) item.hidden = false;
-        more.remove();
-      });
-      box.append(more);
-    }
-    box.append(node("p", "별점은 리뷰 내용을 분석한 만족도예요 (플랫폼 별점과 달라요).", "muted"));
-  } catch (error) {
-    box.replaceChildren(heading, node("p", `가게 목록을 불러오지 못했어요. ${error.message}`, "muted"));
-  }
-}
-
-async function openDetail(item, button) {
+async function openDetail(item, button, store) {
   button.disabled = true;
   try {
     const menu = await request(`/api/menus/${encodeURIComponent(item.standard_menu_id)}`);
@@ -377,7 +342,7 @@ async function openDetail(item, button) {
     addReasons(body, item.reasons);
     body.append(node("p", "실제 매장 레시피와 원재료, 알레르기 및 교차접촉 정보는 확인이 필요해요.", "muted"));
     appendFranchiseNutrition(body, item);
-    if (menu.references.length) {
+    if (menu.references?.length) {
       body.append(node("p", menu.compound
         ? "구성 음식별 참고값입니다. 전체 메뉴나 매장 1인분의 영양량은 확인되지 않았어요."
         : "공개 일반음식 참고값입니다. 실제 매장 제공량과 조리법에 따라 달라요.", "muted"));
@@ -385,17 +350,45 @@ async function openDetail(item, button) {
     } else if (!item.franchise_nutrition && !item.franchise_menu_options?.length) {
       body.append(node("p", "일반 메뉴 영양정보 없음", "muted"));
     }
-    const storeBox = node("section", undefined, "detail-stores");
-    storeBox.append(node("h3", "이 메뉴를 파는 가게"), node("p", "가게를 찾고 있어요.", "muted"));
-    // 가게 목록은 메뉴 정보 바로 아래, 다른 정보보다 먼저 보이게 둔다.
-    body.insertBefore(storeBox, body.children[2] || null);
+    detailMap?.remove();
+    detailMap = null;
     dialog.showModal();
-    loadDetailStores(menu, storeBox);
+    if (store) showDetailLocation(body, store);
   } catch (error) {
     status.textContent = error.message;
   } finally {
     button.disabled = false;
   }
+}
+
+async function showDetailLocation(body, store) {
+  const section = node("section", undefined, "detail-location");
+  section.append(node("h3", "매장 위치"));
+  if (store.store_name) section.append(node("p", store.store_name, "detail-store-name"));
+  if (store.address) section.append(node("p", store.address, "muted"));
+  const holder = node("div", undefined, "store-map");
+  const feedback = node("p", undefined, "muted");
+  feedback.setAttribute("role", "status");
+  if (store.location) {
+    holder.setAttribute("role", "region");
+    holder.setAttribute("aria-label", `${store.store_name || "선택한 매장"} 위치 지도`);
+    section.append(holder);
+  } else {
+    feedback.textContent = "매장 좌표 정보가 없어요.";
+  }
+  section.append(feedback);
+  if (store.store_name || store.address) section.append(storeMapLink(store, "네이버 지도에서 보기"));
+  body.insertBefore(section, body.children[2] || null);
+  if (!store.location) return;
+  const map = await storeMap(holder, [store], {
+    singleStore: true,
+    onUnavailable() {
+      holder.hidden = true;
+      feedback.textContent = "지도를 불러오지 못했어요.";
+    },
+  });
+  if (dialog.open && holder.isConnected) detailMap = map;
+  else map?.remove();
 }
 
 function render(data) {
@@ -744,7 +737,7 @@ async function pickLocation(onDone) {
 }
 
 // 가게 목록 지도: 보이는 가게를 순번 표시로, 고른 위치를 원으로 찍는다.
-async function storeMap(holder, stores) {
+async function storeMap(holder, stores, {singleStore = false, onUnavailable} = {}) {
   const placed = stores.map((store, at) => ({store, at})).filter(({store}) => store.location);
   if (!placed.length) {
     holder.remove();
@@ -754,33 +747,45 @@ async function storeMap(holder, stores) {
   try {
     L = await loadLeaflet();
   } catch {
-    holder.replaceChildren(node("p", "지도를 불러오지 못했어요. 목록은 그대로 볼 수 있어요.", "muted"));
+    if (onUnavailable) onUnavailable();
+    else holder.replaceChildren(node("p", "지도를 불러오지 못했어요. 목록은 그대로 볼 수 있어요.", "muted"));
     return;
   }
   if (!holder.isConnected) return;
   // 지도 위에서 휠을 굴리면 페이지 대신 지도가 확대·축소된다(Leaflet이 휠 이벤트를 막는다).
-  const map = L.map(holder);
-  osmTiles(L).addTo(map);
+  const map = L.map(holder, {scrollWheelZoom: !singleStore});
+  const tiles = osmTiles(L);
+  if (onUnavailable) {
+    let loaded = false;
+    tiles.on("tileload", () => { loaded = true; });
+    tiles.once("load", () => {
+      if (!loaded && holder.isConnected) onUnavailable();
+    });
+  }
+  tiles.addTo(map);
   const points = [];
   for (const {store, at} of placed) {
-    // 표시 내용은 순번 숫자뿐이라 html에 그대로 넣는다.
-    const icon = L.divIcon({className: "store-pin", html: String(at + 1), iconSize: [26, 26]});
-    const marker = L.marker(store.location, {icon, title: `${at + 1}. ${store.store_name || store.menu_name}`}).addTo(map);
+    const label = singleStore ? "" : `${at + 1}. `;
+    const icon = L.divIcon({className: "store-pin", html: singleStore ? "●" : String(at + 1), iconSize: [26, 26]});
+    const title = label + (store.store_name || store.menu_name);
+    const marker = L.marker(store.location, {icon, title}).addTo(map);
+    if (singleStore) marker.getElement()?.setAttribute("aria-label", `${title} 위치`);
     const popup = node("div", undefined, "map-popup");
-    popup.append(node("strong", `${at + 1}. ${store.store_name || "가게 이름 확인 중"}`),
+    popup.append(node("strong", label + (store.store_name || "가게 이름 확인 중")),
       node("span", `${store.menu_name} · 이 메뉴 리뷰 ${store.reviews.toLocaleString("ko-KR")}건`
         + (store.distance_km != null ? ` · 약 ${store.distance_km}km` : "")));
     if (store.address) popup.append(node("span", store.address));
     marker.bindPopup(popup);
     points.push(store.location);
   }
-  if (sessionLocation) {
+  if (!singleStore && sessionLocation) {
     L.circleMarker([sessionLocation.lat, sessionLocation.lng], {radius: 9, weight: 3, color: "#b5532f", fillOpacity: 0.35})
       .bindTooltip(node("span", sessionLocation.address ? `고른 위치 · ${sessionLocation.address}` : "고른 위치")).addTo(map);
     points.push([sessionLocation.lat, sessionLocation.lng]);
   }
   map.fitBounds(points, {padding: [28, 28], maxZoom: 15});
   setTimeout(() => map.invalidateSize(), 50);
+  return map;
 }
 
 // 클립보드 API가 막힌 환경(권한·일부 인앱 브라우저)에서는 선택 후 복사 명령으로 한 번 더 시도한다.
@@ -819,13 +824,18 @@ function storeActions(store) {
       ? "복사했어요 · 배달앱에서 검색해 보세요" : `복사할 수 없어요 · ${store.store_name}`;
     setTimeout(() => { copy.textContent = "가게 이름 복사"; }, 2500);
   });
-  const map = node("a", "지도에서 보기", "small-link");
-  map.href = `https://map.naver.com/p/search/${encodeURIComponent(`${store.store_name} 수원 ${store.district || ""}`.trim())}`;
+  actions.append(copy, storeMapLink(store));
+  return actions;
+}
+
+function storeMapLink(store, text = "지도에서 보기") {
+  const map = node("a", text, "small-link");
+  const search = store.store_name ? `${store.store_name} 수원 ${store.district || ""}`.trim() : store.address;
+  map.href = `https://map.naver.com/p/search/${encodeURIComponent(search)}`;
   map.target = "_blank";
   map.rel = "noopener noreferrer";
-  map.setAttribute("aria-label", `${store.store_name} 네이버 지도에서 보기 (새 창)`);
-  actions.append(copy, map);
-  return actions;
+  map.setAttribute("aria-label", `${store.store_name || store.address} 네이버 지도에서 보기 (새 창)`);
+  return map;
 }
 
 function familyStoreItem(store, family) {
@@ -853,7 +863,7 @@ function familyStoreItem(store, family) {
   const member = family.members.find(m => m.standard_menu_id === store.standard_menu_id);
   button.addEventListener("click", () => openDetail({standard_menu_id: store.standard_menu_id,
     reasons: member ? member.reasons : [], franchise_nutrition: store.franchise_nutrition,
-    franchise_menu_options: store.franchise_menu_options}, button));
+    franchise_menu_options: store.franchise_menu_options}, button, store));
   item.append(text, button);
   return item;
 }
@@ -1506,22 +1516,6 @@ document.querySelector("#chat-form").addEventListener("submit", event => {
   event.preventDefault();
   respond(chatInput.value);
 });
-
-// 메뉴 상세의 가게 목록(추천 기준표 v1.3 /api/v2/stores) 항목.
-function storeItem(store) {
-  const item = node("li");
-  const name = node("div", undefined, "store-name");
-  name.append(node("span", `${store.store_name} · ${store.district}`),
-    node("span", store.rating_display === null ? "별점 미표시" : `★${store.rating_display.toFixed(1)}`, "star"));
-  const parts = [store.menu_name, `리뷰 ${store.review_count}개 중 아쉬운 리뷰 ${store.disappointing_reviews}개`];
-  if (store.few_reviews) parts.push("리뷰 적음");
-  if (store.store_repeat_ratio !== null) parts.push(`이 가게 단골 주문 비율 ${Math.round(store.store_repeat_ratio * 100)}%`);
-  if (store.rice_included && store.portion_g) parts.push(`음식 ${Math.round(store.portion_g)}g(추정) + 공깃밥 210g 기준`);
-  item.append(name, node("p", parts.join(" · "), "store-meta"));
-  for (const note of store.notes) item.append(node("span", note, "tag warn"));
-  return item;
-}
-
 
 // 음식군 아이콘 시트의 왼쪽에서 오른쪽, 위에서 아래 순서.
 const mealCategoryIcons = [
