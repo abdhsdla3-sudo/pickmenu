@@ -1300,6 +1300,8 @@ function showPicked(payload) {
     payload.query ? `검색어 ${payload.query}` : "",
     payload.allergy ? `알레르기 ${payload.allergy}` : "", payload.exclude ? `기피 ${payload.exclude}` : ""];
   if (payload.avoid_menus) tags.push("제외 메뉴 " + payload.avoid_menus);
+  if (payload.exclude_categories) tags.push("뺀 음식군 " + payload.exclude_categories);
+  if (payload.exclude_groups) tags.push("뺀 음식 " + payload.exclude_groups);
   document.querySelector("#picked-tags").replaceChildren(...tags.filter(Boolean).map(text => node("span", text, "tag")));
   document.querySelector("#picked").hidden = false;
 }
@@ -1450,7 +1452,7 @@ async function respond(answer) {
     if (data.result.families?.length) rememberFoods(data.result.families.map(family => family.name));
     bubble(data.reply);
     const selected = data.conditions;
-    bubble(`적용 조건: ${goalLabels[selected.goal]} · ${selected.spice === "hot" ? "매콤한 맛 선호" : selected.spice === "mild" ? "안 매운 맛 선호" : "맵기 무관"} · ${selected.soup === "yes" ? "국물 선호" : selected.soup === "no" ? "국물 없는 메뉴 선호" : "국물 무관"}${selected.query ? ` · 검색: ${selected.query}` : ""}${selected.taste ? ` · 맛: ${tasteText(selected.taste)}` : ""}.`);
+    bubble(`적용 조건: ${goalLabels[selected.goal]} · ${selected.spice === "hot" ? "매콤한 맛 선호" : selected.spice === "mild" ? "안 매운 맛 선호" : "맵기 무관"} · ${selected.soup === "yes" ? "국물 선호" : selected.soup === "no" ? "국물 없는 메뉴 선호" : "국물 무관"}${selected.query ? ` · 검색: ${selected.query}` : ""}${selected.taste ? ` · 맛: ${tasteText(selected.taste)}` : ""}${selected.exclude_categories || selected.exclude_groups ? ` · 빼기: ${[selected.exclude_categories, selected.exclude_groups].filter(Boolean).join(",")}` : ""}.`);
     const button = node("button", "추천 결과와 매장 보기 →", "chat-results-link");
     button.type = "button";
     button.addEventListener("click", () => showScreen("results"));

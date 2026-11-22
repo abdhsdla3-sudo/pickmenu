@@ -12,7 +12,15 @@ from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-from recommend import ALIASES, DISTRICTS, TASTES, Profile, cooking_signal, reference_fat
+from recommend import (
+    ALIASES,
+    DISTRICTS,
+    STORY_GROUPS,
+    TASTES,
+    Profile,
+    cooking_signal,
+    reference_fat,
+)
 
 _slot = threading.BoundedSemaphore(1)
 
@@ -74,8 +82,8 @@ def conditions(payload: Any, categories: list[str],
     """대화 → 추천 조건. foods: 대표 음식명 → 그 음식이 속한 음식군(사용자가 말한 메뉴 이름을 찾는 데 쓴다).
 
     단계: 입력 확인 → AI 추출(extract_conditions) → 문장 정리(read_story) → 단서 확인(ground_cues)
-    → 음식군(resolve_category) → 재료(resolve_ingredients) → 맛 → 메뉴(resolve_menus)
-    → 문장에 명시한 식단·지역(apply_explicit). 단계 순서가 결과에 영향을 준다(뒤 단계가 앞 값을 고친다).
+    → 음식군(resolve_category) → 재료(resolve_ingredients) → 맛 → 메뉴(resolve_menus, 꾸밈말 메뉴 포함)
+    → 뺄 음식군·묶음(resolve_exclusions) → 문장에 명시한 식단·지역(apply_explicit). 단계 순서가 결과에 영향을 준다(뒤 단계가 앞 값을 고친다).
     """
     history = read_history(payload)
     profile = Profile.parse(payload.get("profile"), categories)
@@ -87,6 +95,7 @@ def conditions(payload: Any, categories: list[str],
     resolve_ingredients(values, result, story)
     values["taste"] = tastes(story.cue_text)
     resolve_menus(values, result, story, categories)
+    resolve_exclusions(values, story, categories)
     apply_explicit(values, history)
     try:
         return Profile.parse(values, categories), history
@@ -216,9 +225,98 @@ def resolve_menus(values: dict[str, Any], result: dict[str, Any], story: Story, 
             typo = [english] if english in foods else []
         if len(typo) == 1 and typo[0] not in avoided:
             values["query"] = typo[0]
+    resolve_modifiers(values, positives, avoided, story)
+    values["avoid_menus"] = ",".join(avoided)
     # 말한 메뉴가 속하지 않은 음식군은 버린다("김밥"을 밥·덮밥으로 보면 결과가 0개가 된다).
     if foods and values.get("query") in foods and values.get("meal_category") not in foods[values["query"]]:
         values["meal_category"] = ""
+
+
+def menu_modifiers(foods: Iterable[str]) -> list[tuple[str, str, str]]:
+    """(꾸밈말, 기본 메뉴, 꾸민 메뉴): 대표 메뉴 이름에서 자동으로 만든다(양념 + 치킨 = 양념치킨, 로제 + 떡볶이).
+    한 글자 꾸밈말(탕 + 수육, 순 + 두부찌개, 불 + 족발)은 낱말 일부와 헷갈려 쓰지 않는다."""
+    names = list(foods)
+    return [(food[:-len(base)], base, food) for base in names for food in names
+            if food != base and food.endswith(base) and len(base) >= 2 and len(food) - len(base) >= 2
+            and food[:-len(base)] not in MODIFIER_STOP]
+
+
+def resolve_modifiers(values: dict[str, Any], positives: list[str], avoided: list[str], story: Story) -> None:
+    """기본 메뉴를 말하고 꾸밈말을 따로 말한 경우("치킨 먹고 싶은데 후라이드 말고 양념", "떡볶이 / 로제로",
+    "국밥 / 돼지 말고 순대로")는 꾸민 메뉴를 검색어로 쓰고, 부정한 꾸밈말의 메뉴는 뺀다.
+    알레르기·기피 재료와 같은 꾸밈말(새우 알레르기 + 볶음밥 → 새우볶음밥)은 고르지 않는다."""
+    query, current = values.get("query", ""), story.current
+    blocked = {term for term in re.split(r"[,;/]", f"{values.get('allergy', '')},{values.get('exclude', '')}") if term}
+    latest: dict[str, tuple[int, bool, str, str]] = {}
+    for modifier, base, food in menu_modifiers(story.foods):
+        if base not in positives:
+            continue
+        pattern = rf"(?<![가-힣]){re.escape(modifier)}(?=으로|로|이|은|는|을|를|가|도|만|랑|\s|$|[!?.,])"
+        for match in re.finditer(pattern, current):
+            tail = current[match.end():]
+            wanted = not (modifier in blocked or FOOD_NEGATIVE.match(tail) or re.match(
+                rf"[^,.!?\n]{{0,6}}?(?:{ALLERGY_CUE}|{EXCLUDE_CUE})", tail))
+            latest[food] = (match.end(), wanted, modifier, base)
+    for food, (_, wanted, _, _) in latest.items():
+        if not wanted and food not in avoided and food != query:
+            avoided.append(food)
+    # 기본 메뉴를 뺐으면 그 꾸민 메뉴도 뺀다("떡볶이 먹지 말고" → 로제떡볶이도, "치킨 말고" → 양념치킨도).
+    for _, base, food in menu_modifiers(story.foods):
+        if base in avoided and food not in avoided and food != query and latest.get(food, (0, False))[1] is not True:
+            avoided.append(food)
+    chosen = [(end, food) for food, (end, wanted, modifier, base) in latest.items()
+              if wanted and query in (base, modifier) and food not in avoided]
+    if chosen:
+        values["query"] = max(chosen)[1]
+
+
+def group_negated(word: str, text: str, listed: str = "") -> bool:
+    """word 뒤에 부정이 오는가. listed(다른 묶음·음식군 말의 정규식)를 주면 나열 뒤의 부정도 본다
+    ("소고기 돼지고기 닭고기는 못 먹어요" → 셋 다)."""
+    words = r"\s*".join(re.escape(part) for part in word.split())
+    between = rf"(?:(?:\s*(?:,|이랑|랑|하고|와|과|이나|나)\s*|\s+)(?:{listed}))*" if listed else ""
+    return bool(re.search(rf"(?<![가-힣]){words}{between}{GROUP_NEGATIVE}", text))
+
+
+def resolve_exclusions(values: dict[str, Any], story: Story, categories: list[str]) -> None:
+    """뺄 음식군(exclude_categories)·음식 묶음(exclude_groups). 메뉴 이름이기도 한 말("피자", "짬뽕")은
+    그 메뉴만 빼고(avoid_menus) 음식군 전체를 빼지 않는다. 이전 대화에서 뺀 것도 마지막 말에서
+    부정 없이 다시 말하면 풀어 준다."""
+    current, foods = story.current, story.foods
+    last = story.history[-1]
+    group_words = [word for rule in STORY_GROUPS.values() for word in rule["words"]]
+    category_names = [word.strip() for category in categories for word in category_words(category)
+                      if word.strip() and word.strip() not in foods and word.strip() not in FOOD_ALIASES]
+    listed = "|".join(r"\s*".join(map(re.escape, word.split()))
+                      for word in sorted({*group_words, *category_names}, key=len, reverse=True))
+    groups = [name for name, rule in STORY_GROUPS.items()
+              if any(group_negated(word, current, listed) for word in rule["words"])]
+    cats = [category for category in categories
+            if any(word.strip() in category_names and group_negated(word.strip(), current, listed)
+                   for word in category_words(category))]
+
+    def released(words: Iterable[str]) -> bool:
+        return any(re.search(rf"(?<![가-힣]){re.escape(word.strip())}", last) and not group_negated(word.strip(), last)
+                   for word in words if word.strip())
+
+    kept_groups = [g for g in values.get("exclude_groups", "").split(",")
+                   if g in STORY_GROUPS and not released(STORY_GROUPS[g]["words"])]
+    kept_cats = [c for c in values.get("exclude_categories", "").split(",")
+                 if c in categories and not released(category_words(c))]
+    groups = list(dict.fromkeys(kept_groups + groups))
+    cats = list(dict.fromkeys(kept_cats + cats))
+    query = values.get("query", "")
+    # 말한 메뉴가 속한 음식군은 빼지 않는다("짜장면 말고 중식 아닌 거"는 드묾. "후라이드 치킨 말고 양념"의 치킨 보호).
+    cats = [c for c in cats if c not in foods.get(query, set())]
+    # 분명히 뺀 묶음에 걸리는 검색어·음식군은 버린다("닭 없이 … 치킨 비슷한" → 치킨 검색 안 함).
+    names = [word for g in groups for word in STORY_GROUPS[g]["names"]]
+    if query and any(word in query for word in names):
+        values["query"] = ""
+    excluded_cats = set(cats) | {c for g in groups for c in STORY_GROUPS[g]["categories"]}
+    if values.get("meal_category") in excluded_cats:
+        values["meal_category"] = ""
+    values["exclude_groups"] = ",".join(groups)
+    values["exclude_categories"] = ",".join(cats)
 
 
 def apply_explicit(values: dict[str, Any], history: list[str]) -> None:
@@ -310,10 +408,17 @@ def menu_query(value: Any) -> str:
 # 사용자가 줄여 부르거나 다르게 쓰는 메뉴 이름 → 대표 음식명
 FOOD_ALIASES = {"버거": "햄버거", "돈까스": "돈가스", "짜장": "짜장면", "자장면": "짜장면", "후라이드": "후라이드치킨",
                 "양념통닭": "양념치킨", "통닭": "치킨", "떡볶기": "떡볶이", "김치찌게": "김치찌개", "된장찌게": "된장찌개",
-                "부침개": "전", "전 요리": "전", "전요리": "전"}
-FOOD_NEGATIVE = re.compile(r"^\s*(?:은|는|이|가|도|을|를|만)?\s*"
+                "부침개": "전", "전 요리": "전", "전요리": "전",
+                "순댓국밥": "순대국밥", "순댓국": "순대국밥"}
+FOOD_NEGATIVE = re.compile(r"^\s*(?:류|종류)?\s*(?:까지는|까지도|까지|은|는|이|가|도|을|를|만)?\s*"
                            r"(?:(?:이|가)?\s*(?:들어간|들어\s*있는|든)\s*(?:건|거|것|메뉴|음식)?\s*(?:은|는|도)?\s*)?"
-                           r"(?:말고|빼|싫|별로|말구|아니|안\s*먹|못\s*먹|질려|물려|ㄴㄴ|노노|패스|극혐|극불호|사양)")
+                           r"(?:말고|빼|싫|별로|말구|아니|안\s*먹|못\s*먹|먹지\s*말|질려|물려|ㄴㄴ|노노|패스|극혐|극불호|사양|제외)")
+# 음식군·음식 묶음 이름 뒤의 부정("중식 말고", "면은 빼줘", "밀가루 음식 말고", "튀김류까지는 안 먹고", "닭 없이")
+GROUP_NEGATIVE = (r"(?:\s*(?:류|종류|음식|요리|들어간\s*(?:거|건|것|음식)?|든\s*(?:거|건|것)))?\s*"
+                  r"(?:까지는|까지도|까지|은|는|이|가|도|을|를|만)?\s*"
+                  r"(?:말고|빼|싫|별로|안\s*먹|못\s*먹|먹지\s*말|제외|없이|없는|피하|패스|ㄴㄴ|노노|극혐|극불호)")
+# 꾸밈말로 보지 않는 앞말(다른 메뉴 이름이라 '치킨마요덮밥'을 치킨 + 마요덮밥으로 보지 않는다).
+MODIFIER_STOP = {"치킨"}
 # "피자랑 치킨만 빼고": 나열한 앞 메뉴에도 뒤 메뉴의 부정이 걸린다.
 FOOD_LIST_JOIN = re.compile(r"\s*(?:이랑|랑|하고|와|과|이나|나|,)\s*")
 ENGLISH_FOOD_ALIASES = {

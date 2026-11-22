@@ -1,5 +1,6 @@
 """추천 조건 검사, 점수 계산, 설명 생성을 담당한다."""
 
+import json
 import math
 import re
 import unicodedata
@@ -7,6 +8,7 @@ from collections import Counter, defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from itertools import combinations
+from pathlib import Path
 from typing import Any
 
 # 추천점수 = 100 × (영양 0.40 + 취향 0.30 + 리뷰 근거 0.10 + 리뷰 만족도 0.12 + 단골 주문 0.08) − 감점
@@ -66,6 +68,10 @@ COOKING_NAME = {
     "끓이기": r"끓인|끓여낸",
 }
 VEGAN_EXCLUDE = re.compile(r"달걀|계란|우유|치즈|버터|유청|요거트|꿀|피자|크림|로제|리조또|오므라이스|토스트|마요")
+# 이야기 추천에서 통째로 뺄 수 있는 음식 묶음(면·밀가루·튀김·돼지고기 등). 팀이 고칠 수 있게 자료 파일로 둔다.
+STORY_GROUPS: dict[str, dict[str, list[str]]] = {
+    name: rule for name, rule in json.loads(Path(__file__).with_name("story_groups.json").read_text(encoding="utf-8")).items()
+    if not name.startswith("_")}
 ALIASES = (("계란", "달걀", "난류", "에그"), ("우유", "유제품", "치즈", "버터", "유청"),
            ("밀", "밀가루", "밀글루텐"), ("땅콩", "피넛"), ("돼지", "돼지고기", "돈육"),
            ("새우", "쉬림프"), ("대두", "콩", "두부", "두유"))
@@ -90,6 +96,9 @@ class Profile:
     # 맛 선호(TASTES 키, 쉼표 구분). 앞에 '-'가 붙으면 피하고 싶은 맛.
     taste: str = ""
     avoid_menus: str = ""
+    # 뺄 음식군(쉼표 구분, 목록 값)과 뺄 음식 묶음(STORY_GROUPS 이름). 이야기 추천에서 "중식 말고", "면 빼 줘"로 정한다.
+    exclude_categories: str = ""
+    exclude_groups: str = ""
 
     @classmethod
     def parse(cls, data: Any, categories: list[str]) -> "Profile":
@@ -116,6 +125,11 @@ class Profile:
                                             for item in taste.split(",") if item):
             raise ValueError("목록에 있는 조건을 선택해 주세요.")
         values["taste"] = taste
+        for field, allowed in (("exclude_categories", set(categories)), ("exclude_groups", set(STORY_GROUPS))):
+            value = data.get(field, "")
+            if not isinstance(value, str) or any(item not in allowed for item in value.split(",") if item):
+                raise ValueError("목록에 있는 조건을 선택해 주세요.")
+            values[field] = value
         return cls(**values)
 
 
@@ -435,6 +449,11 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
     region = profile.district or "수원시"
     query = compact(profile.query)
     avoided = {compact(name) for name in re.split(r"[,;/]", profile.avoid_menus) if name.strip()}
+    excluded_categories = {name for name in profile.exclude_categories.split(",") if name}
+    group_rules = [STORY_GROUPS[name] for name in profile.exclude_groups.split(",") if name]
+    excluded_categories.update(category for rule in group_rules for category in rule["categories"])
+    group_names = (re.compile("|".join(re.escape(compact(word)) for rule in group_rules for word in rule["names"]))
+                   if group_rules else None)
     for menu in menus:
         if OPTION_ONLY.fullmatch(compact(menu["name"])) or OPTION_ONLY.fullmatch(compact(menu["components"][0])):
             continue
@@ -444,6 +463,10 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
         evidence = menu["regions"].get(region)
         groups = menu.get("groups") or [menu["category"]]
         if not evidence or (profile.meal_category and profile.meal_category not in groups):
+            continue
+        if excluded_categories.intersection(groups) or (
+                group_names and group_names.search(compact(menu["name"] + " " + " ".join(menu["components"])))):
+            excluded += 1
             continue
         signal = " ".join((menu["name"], menu["category"], *menu["components"]))
         normalized_signal = compact(signal) if query or terms else ""

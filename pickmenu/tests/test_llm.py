@@ -335,6 +335,40 @@ class LLMTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             llm.read_history({"messages": []})
 
+    def test_modifier_menus_and_group_exclusions(self):
+        foods = {"치킨": {"치킨"}, "양념치킨": {"치킨"}, "후라이드치킨": {"치킨"}, "떡볶이": {"분식"},
+                 "로제떡볶이": {"분식"}, "국밥": {"국밥·해장국"}, "순대국밥": {"국밥·해장국"}, "돼지국밥": {"국밥·해장국"},
+                 "순대": {"분식"}, "볶음밥": {"밥·덮밥"}, "새우볶음밥": {"밥·덮밥"}, "짬뽕": {"중식", "면"},
+                 "탕수육": {"중식"}, "수육": {"족발·보쌈"}}
+        categories = ["치킨", "분식", "국밥·해장국", "밥·덮밥", "중식", "면", "족발·보쌈", "고기"]
+        cases = [
+            (["치킨 먹고 싶은데 후라이드 말고 양념"], {"query": "양념치킨", "avoid_menus": "후라이드치킨"}),
+            (["떡볶이 / 로제로"], {"query": "로제떡볶이"}),
+            (["국밥 / 돼지 말고 순대로"], {"query": "순대국밥", "avoid_menus": "돼지국밥"}),
+            (["새우 알레르기 있어. 볶음밥 먹고 싶어"], {"query": "볶음밥"}),
+            (["수육 먹고 싶어"], {"query": "수육"}),  # 한 글자 꾸밈말(탕 + 수육)은 쓰지 않는다
+            (["간식처럼 떡볶이 먹지 말고 분식 중에서"], {"query": "", "avoid_menus": "떡볶이,로제떡볶이"}),
+            (["치킨 말고 다른 거"], {"avoid_menus": "치킨,양념치킨,후라이드치킨", "exclude_categories": ""}),
+            (["중식 말고 일식"], {"exclude_categories": "중식"}),
+            (["짬뽕 말고 다른 거"], {"exclude_categories": "", "avoid_menus": "짬뽕"}),
+            (["면은 싫고 밥으로 줘"], {"exclude_categories": "면", "exclude_groups": "면"}),
+            (["밀가루 음식 말고"], {"exclude_groups": "밀가루"}),
+            (["튀김류까지는 안 먹고 싶어"], {"exclude_groups": "튀김"}),
+            (["소고기 돼지고기 닭고기는 못 먹어요"], {"exclude_groups": "돼지고기,소고기,닭고기"}),
+            (["닭 없이 먹을 수 있는 치킨 비슷한 거"], {"query": "", "exclude_groups": "닭고기"}),
+            (["라면 말고 국밥"], {"exclude_groups": ""}),
+        ]
+        for messages, want in cases:
+            with self.subTest(messages=messages), patch.object(llm, "generate", return_value={}):
+                profile, _ = llm.conditions({"messages": messages, "profile": {}}, categories, foods)
+                self.assertEqual({key: getattr(profile, key) for key in want}, want)
+        # 이전 대화에서 뺀 묶음은 마지막 말에서 부정 없이 다시 말하면 풀린다.
+        saved = {"exclude_groups": "면", "exclude_categories": "면"}
+        for messages, want in ((["오늘은 국밥"], "면"), (["역시 면 요리 먹을래"], "")):
+            with self.subTest(messages=messages), patch.object(llm, "generate", return_value={}):
+                profile, _ = llm.conditions({"messages": messages, "profile": saved}, categories, foods)
+                self.assertEqual((profile.exclude_groups, profile.exclude_categories), (want, want))
+
     def test_reply_without_understood_conditions_asks_back(self):
         family = {"name": "피자", "best": {"reasons": []}}
         with patch.object(llm, "generate") as generate:

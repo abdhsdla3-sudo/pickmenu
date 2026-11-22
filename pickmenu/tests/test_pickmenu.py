@@ -149,6 +149,21 @@ class RulesTest(unittest.TestCase):
         result, _ = recommend_relaxed(menus, Profile.parse({"query": "치팅"}, []))
         self.assertEqual(result["families"], [])
 
+    def test_excluded_categories_and_groups(self):
+        noodle = {**fixture("짬뽕", "MN_1"), "category": "중식", "groups": ["중식", "면"]}
+        fried = {**fixture("깐풍기", "MN_2"), "category": "중식"}
+        rice = {**fixture("비빔밥", "MN_3"), "category": "밥·덮밥"}
+        menus = [noodle, fried, rice]
+        names = lambda profile: [f["name"] for f in recommend(menus, profile)["families"]]  # noqa: E731
+        cats = ["중식", "면", "밥·덮밥"]
+        self.assertEqual(names(Profile.parse({"exclude_categories": "면"}, cats)), ["깐풍기", "비빔밥"])
+        self.assertEqual(names(Profile.parse({"exclude_categories": "중식"}, cats)), ["비빔밥"])
+        self.assertEqual(sorted(names(Profile.parse({"exclude_groups": "튀김"}, cats))), ["비빔밥", "짬뽕"])
+        self.assertEqual(names(Profile.parse({"exclude_groups": "밀가루"}, cats)), ["깐풍기", "비빔밥"])
+        for bad in ({"exclude_categories": "없는음식군"}, {"exclude_groups": "아무거나"}, {"exclude_groups": 3}):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                Profile.parse(bad, cats)
+
     def test_mild_excludes_inferred_hot_without_relaxing(self):
         menus = [fixture(name, str(i)) for i, name in enumerate(("불족발", "고추바사삭", "부대찌개"))]
         result, used = recommend_relaxed(menus, Profile.parse({"spice": "mild"}, []))

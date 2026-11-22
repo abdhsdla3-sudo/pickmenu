@@ -29,7 +29,7 @@ import server
 HERE = Path(__file__).resolve().parent
 VERSION_FILE = HERE.parents[1] / "VERSION"
 FIELDS = ("query", "meal_category", "spice", "soup", "goal", "taste", "allergy", "exclude", "diet", "district")
-KEYS = (*FIELDS, "avoid_menus")
+KEYS = (*FIELDS, "avoid_menus", "exclude_categories", "exclude_groups")
 DEFAULT = {"diet": "general", "goal": "balance"}
 
 

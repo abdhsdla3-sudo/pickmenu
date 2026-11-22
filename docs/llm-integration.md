@@ -45,6 +45,11 @@ Environment=PICKMENU_LLM_MODEL=pickmenu-llm:8b
     `pickmenu/eval/store_mood_eval.py`로 다시 할 수 있다(통과율·고유 비율·자주 쓴 낱말).
   - 8B 모델에 숫자까지 맡기면 "6명 중 10명"처럼 틀린 문장이 나와 이렇게 나눴다. `comment`는 두 부분을 합친 값이다.
   리뷰 수와 단골 비율은 평점이 아니다. AI 한마디의 적절성은 완전히 보장되지 않는다.
+- 꾸밈말 메뉴와 빼기(1.9.0)
+  - 기본 메뉴와 꾸밈말을 따로 말하면 꾸민 메뉴로 찾는다("치킨 … 양념" → 양념치킨). 꾸밈말 목록은 대표 메뉴 이름에서 자동으로 만든다.
+  - "중식 말고", "면 빼 줘", "밀가루 음식 말고"는 `exclude_categories`·`exclude_groups`가 된다. 음식 묶음은
+    `pickmenu/story_groups.json`에 있다. words는 사용자가 쓰는 말, categories는 통째로 뺄 음식군, names는 메뉴 이름 단서다.
+  - 이 파일을 고치면 단위 시험과 `eval/story_regression.py`를 돌린다.
 - 이야기 추천 회귀 시험(1.8.9): `pickmenu/eval/story_regression.jsonl`에 2,325문장과 기대 조건, 문장마다 기록된
   AI 원본 조건이 있다. 다섯 시험셋을 합쳤다.
   - 상황추론 128
