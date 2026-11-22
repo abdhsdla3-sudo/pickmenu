@@ -622,6 +622,14 @@ def recommend_relaxed(menus: list[dict[str, Any]], profile: Profile, recent: Seq
             if good(retry):
                 retry["relaxed"] = [label for _, label in chosen]
                 return retry, current
+    # 이야기 추천에서 대표 메뉴 이름이 아닌 검색어("치팅", "적당히 든든한")만으로 0개가 되면 검색어를 뺀다.
+    if conversation and query and not result["families"] and not any(
+            query == compact(m["components"][0]) for m in menus):
+        current = replace(profile, query="")
+        retry = recommend(menus, current, recent, conversation=conversation)
+        if retry["families"]:
+            retry["relaxed"] = [f"검색어({profile.query})"]
+            return retry, current
     return result, profile
 
 

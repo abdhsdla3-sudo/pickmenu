@@ -142,6 +142,12 @@ class RulesTest(unittest.TestCase):
         self.assertEqual((result["relaxed"], used.soup), ([], "yes"))
         result, used = recommend_relaxed([bulgogi], profile, conversation=True)
         self.assertEqual((result["families"], result["relaxed"], used.soup), ([], [], "yes"))
+        # 대표 메뉴 이름이 아닌 검색어만으로 0개가 되면 이야기 추천에서는 검색어를 뺀다.
+        result, used = recommend_relaxed(menus, Profile.parse({"query": "치팅"}, []), conversation=True)
+        self.assertEqual((result["relaxed"], used.query), (["검색어(치팅)"], ""))
+        self.assertTrue(result["families"])
+        result, _ = recommend_relaxed(menus, Profile.parse({"query": "치팅"}, []))
+        self.assertEqual(result["families"], [])
 
     def test_mild_excludes_inferred_hot_without_relaxing(self):
         menus = [fixture(name, str(i)) for i, name in enumerate(("불족발", "고추바사삭", "부대찌개"))]

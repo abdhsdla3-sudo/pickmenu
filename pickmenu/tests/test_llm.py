@@ -265,6 +265,64 @@ class LLMTest(unittest.TestCase):
                 profile, _ = llm.conditions({"messages": messages, "profile": {}}, ["분식"], foods)
                 self.assertEqual(profile.query, want)
 
+    def test_story_roles_and_negations(self):
+        foods = {"치킨": {"치킨"}, "피자": {"피자"}, "라면": {"분식"}, "회": {"해산물"}, "초밥": {"일식"},
+                 "전": {"전·부침"}, "죽": {"죽"}, "순대": {"분식"}, "국밥": {"국밥·해장국"}, "삼겹살": {"고기"},
+                 "샐러드": {"샐러드·건강식"}, "떡볶이": {"분식"}, "햄버거": {"버거·샌드위치"}}
+        categories = ["치킨", "피자", "분식", "해산물", "일식", "전·부침", "죽", "국밥·해장국", "고기", "샐러드·건강식"]
+        cases = [
+            (["점심에 치킨 먹어서 저녁은 다른 거 먹고 싶어"], {"query": "치킨"}, {"query": "", "avoid_menus": "치킨"}),
+            (["피자랑 치킨만 빼고 아무거나"], {}, {"query": "", "avoid_menus": "피자,치킨"}),
+            (["국밥 중에 순대 들어간 건 싫어"], {}, {"query": "국밥", "avoid_menus": "순대"}),
+            (["너라면 뭐 먹을 거야?"], {}, {"query": ""}),
+            (["치킨이라면 좋아"], {}, {"query": "치킨"}),
+            (["출근 전에 아침으로 간단히"], {"query": "간단한 전"}, {"query": ""}),
+            (["배고파 죽을 것 같아"], {}, {"query": ""}),
+            (["회는 좋은데 초밥은 별로"], {}, {"query": "회", "avoid_menus": "초밥"}),
+            (["치킨 먹을래", "아니다 어제 먹었다"], {}, {"query": "", "avoid_menus": "치킨"}),
+            (["고기 먹자", "삼겹살은 어제 먹었어"], {}, {"meal_category": "고기", "avoid_menus": "삼겹살"}),
+            (["점심 때 샐러드 먹었더니 배고파 죽겠어 저녁은 고기"], {"meal_category": "고기"},
+             {"meal_category": "고기", "avoid_menus": "샐러드"}),
+            (["친구가 매운 거 하나도 못 먹어"], {}, {"spice": "mild"}),
+            (["매운 거랑 느끼한 거 둘 다 싫어"], {}, {"spice": "mild", "taste": "-rich"}),
+            (["의사가 맵고 짠 거 먹지 말래"], {}, {"spice": "mild", "taste": "-salty"}),
+            (["매운 거 먹고 싶은데 느끼한 건 싫어"], {}, {"spice": "hot", "taste": "-rich"}),
+            (["맵찔이라 신라면도 매워"], {}, {"spice": "mild"}),
+            (["국물은 있었으면 좋겠는데 맵지는 않게"], {}, {"spice": "mild", "soup": "yes"}),
+            (["감기 걸려서 목이 칼칼해"], {}, {"spice": ""}),
+            (["속이 쓰려서 자극적인 거 못 먹겠어"], {}, {"spice": "mild", "taste": "plain"}),
+            (["추워서 몸 좀 녹이고 싶다"], {}, {"soup": "yes"}),
+            (["살 빼는 중인데 배는 고파"], {}, {"goal": "light"}),
+            (["다이어트는 내일부터 오늘은 맘껏 먹는다"], {}, {"goal": "balance"}),
+            (["적당히 든든한 거 추천해줘"], {"query": "적당히 든든한"}, {"query": ""}),
+            (["겉바속촉 먹고 싶다"], {}, {"taste": "crispy"}),
+            (["고수 극혐"], {}, {"exclude": "고수"}),
+            (["채식 중이야"], {}, {"diet": "vegetarian"}),
+            (["고기 달걀 우유 전부 빼는 완전 채식 중이야"], {}, {"diet": "vegan", "meal_category": ""}),
+            (["떡뽁이 먹고싶다"], {"query": "떡뽁이"}, {"query": "떡볶이"}),
+            (["burger 추천"], {"query": "burger"}, {"query": "햄버거"}),
+            (["속이 쓰려서 자극적인 거 못 먹겠어"], {"exclude": "자극적인"}, {"exclude": ""}),
+        ]
+        for messages, model, want in cases:
+            with self.subTest(messages=messages), patch.object(llm, "generate", return_value=model):
+                profile, _ = llm.conditions({"messages": messages, "profile": {}}, categories, foods)
+                self.assertEqual({key: getattr(profile, key) for key in want}, want)
+
+    def test_reply_without_understood_conditions_asks_back(self):
+        family = {"name": "피자", "best": {"reasons": []}}
+        with patch.object(llm, "generate") as generate:
+            answer = llm.reply({"families": [family]}, understood=False)
+            generate.assert_not_called()
+        self.assertIn("조건을 찾지 못해", answer)
+        self.assertNotIn("조건에 맞춰", answer)
+        payload = {"messages": ["안녕"], "profile": {"spice": "mild"}}
+        with patch.object(llm, "generate", return_value={}):
+            profile, _ = llm.conditions(payload, [])
+        self.assertFalse(llm.understood(profile, payload, []))
+        with patch.object(llm, "generate", return_value={}):
+            profile, _ = llm.conditions({**payload, "messages": ["국물 있는 거"]}, [])
+        self.assertTrue(llm.understood(profile, payload, []))
+
     def test_reply_mentions_relaxed(self):
         family = {"name": "비빔밥", "best": {"reasons": []}}
         with patch.object(llm, "generate", side_effect=llm.Unavailable("x")):
