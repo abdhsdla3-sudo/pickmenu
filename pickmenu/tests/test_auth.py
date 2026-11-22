@@ -6,6 +6,7 @@ import tempfile
 import threading
 import time
 import unittest
+from contextlib import closing
 from datetime import date
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -77,6 +78,24 @@ class AuthTest(unittest.TestCase):
         with self.assertRaises(auth.AuthError) as caught:
             auth.login({"username": "locked", "password": "password1"})
         self.assertEqual(caught.exception.status, 429)
+
+    def test_unknown_logins_do_not_create_lock_records(self):
+        auth.signup(registration("registered"))
+        for username in ("missing1", "missing2"):
+            with self.assertRaises(auth.AuthError) as caught:
+                auth.login({"username": username, "password": "wrong-pass"})
+            self.assertEqual(caught.exception.status, 401)
+        self.assertEqual(auth._failures, {})
+        token, _ = auth.login({"username": "registered", "password": "password1"})
+        self.assertIsNotNone(auth.session_user_id(token))
+
+    def test_schema_initialization_runs_once_for_open_database(self):
+        with patch.object(auth, "initialize_schema", wraps=auth.initialize_schema) as initialize:
+            token, _ = auth.signup(registration("schemauser"))
+            auth.session_user_id(token)
+            with closing(auth.connect()) as db:
+                self.assertTrue(any(row[1] == "sessions_expiry" for row in db.execute("PRAGMA index_list(sessions)")))
+            initialize.assert_called_once()
 
     def test_profile_keeps_only_allowed_fields(self):
         token, _ = auth.signup(registration("profile"))
@@ -290,15 +309,16 @@ class AuthHttpTest(unittest.TestCase):
             for _ in range(4):
                 auth._credential_slots.release()
 
-        with patch.object(auth, "MAX_FAILURE_ENTRIES", 1), patch("auth.time.monotonic") as clock:
+        with patch("auth.time.monotonic") as clock:
             clock.return_value = 10
-            auth._record_failure("owner-a")
-            auth._record_failure("owner-b")
+            for _ in range(auth.LOCK_FAILURES):
+                auth._record_failure("owner-a")
             self.assertEqual(len(auth._failures), 1)
             with self.assertRaises(auth.AuthError):
-                auth._check_lock("owner-b")
-            clock.return_value = 10 + auth.LOCK_SECONDS
+                auth._check_lock("owner-a")
             auth._check_lock("owner-b")
+            clock.return_value = 10 + auth.LOCK_SECONDS
+            auth._check_lock("owner-a")
             self.assertEqual(len(auth._failures), 0)
 
     def test_request_log_has_only_known_route_and_status(self):
@@ -324,6 +344,9 @@ class AuthHttpTest(unittest.TestCase):
             self.assertEqual(self.call("POST", "/api/recommend", {}, "pickmenu_session=invalid")[0], 401)
             _, _, cookie = self.call("POST", "/api/auth/signup", registration("member"))
             session = cookie.split(";")[0]
+            with patch("server.llm.extract_conditions") as extract:
+                self.assertEqual(self.call("POST", "/api/chat", {"messages": []}, session)[0], 400)
+                extract.assert_not_called()
             self.assertEqual(self.call("POST", "/api/recommend", {}, session)[0], 200)
             self.assertEqual(self.call("GET", "/api/menus/MN_1", cookie=session)[0], 200)
             self.call("POST", "/api/auth/logout", cookie=session)

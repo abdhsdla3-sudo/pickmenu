@@ -143,6 +143,13 @@ class Mention:
 
 def conditions(payload: Any, categories: list[str],
                foods: dict[str, set[str]] | None = None) -> tuple[Profile, list[str]]:
+    history = read_history(payload)
+    profile = Profile.parse(payload.get("profile"), categories)
+    return resolve_story(history, profile, categories, foods or {}), history
+
+
+def resolve_story(history: list[str], profile: Profile, categories: list[str],
+                  foods: dict[str, set[str]]) -> Profile:
     """대화 → 추천 조건. foods: 대표 음식명 → 그 음식이 속한 음식군(사용자가 말한 메뉴 이름을 찾는 데 쓴다).
 
     단계: 입력 확인 → AI 추출(extract_conditions) → 문장 정리(read_story) → 단서 확인(ground_cues)
@@ -150,11 +157,9 @@ def conditions(payload: Any, categories: list[str],
     → 뺄 음식군·묶음(resolve_exclusions) → 문장에 명시한 식단·지역(apply_explicit). 단계 순서가 결과에 영향을 준다(뒤 단계가 앞 값을 고친다).
     AI 출력에 mentions(v2)가 있으면 근거를 확인해(ground_mentions) 메뉴·묶음 단계에 반영한다. 없으면(v1) 지금과 같다.
     """
-    history = read_history(payload)
-    profile = Profile.parse(payload.get("profile"), categories)
     result = extract_conditions(history, categories)
-    v2_compat(result, categories, foods or {}, "\n".join(history))
-    story = read_story(history, foods or {})
+    v2_compat(result, categories, foods, "\n".join(history))
+    story = read_story(history, foods)
     values = dict(vars(profile))
     ground_cues(values, result, story)
     resolve_category(values, result, story, categories)
@@ -165,7 +170,7 @@ def conditions(payload: Any, categories: list[str],
     resolve_exclusions(values, story, categories, result)
     apply_explicit(values, history)
     try:
-        return Profile.parse(values, categories), history
+        return Profile.parse(values, categories)
     except ValueError as error:
         raise Unavailable(UNCLEAR) from error
 

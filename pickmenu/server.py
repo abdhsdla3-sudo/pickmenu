@@ -325,23 +325,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.location_request(path, payload)
             return
         if path == "/api/chat":
-            if not self.authorize_api() or not self.require_session():
-                return
-            if (payload := self.read_json(16384)) is INVALID:
-                return
-            if (menus := self.load()) is None:
-                return
-            try:
-                profile, history = llm.conditions(payload, categories(menus), foods(menus))
-                result = self.recommendation(menus, profile, recent_foods(payload), conversation=True)
-                saved = Profile.parse(payload.get("profile"), categories(menus))
-                answer = llm.reply(result, history, taste=profile.taste, profile=profile, saved=saved)
-                self.send_json(200, {"reply": answer, "result": result,
-                                     "conditions": vars(profile)})
-            except ValueError as error:
-                self.send_json(400, {"error": str(error)})
-            except llm.Unavailable as error:
-                self.send_json(503, {"error": str(error)})
+            self.chat()
             return
         if path in {"/api/auth/signup", "/api/auth/login", "/api/auth/logout"}:
             if self.authorize_api():
@@ -384,6 +368,27 @@ class Handler(BaseHTTPRequestHandler):
             return
         self.send_json(200, self.recommendation(menus, profile, recent))
 
+    def chat(self) -> None:
+        if not self.authorize_api() or not self.require_session():
+            return
+        if (payload := self.read_json(16384)) is INVALID:
+            return
+        try:
+            history = llm.read_history(payload)
+            recent = recent_foods(payload)
+            if (menus := self.load()) is None:
+                return
+            groups = categories(menus)
+            saved = Profile.parse(payload.get("profile"), groups)
+            profile = llm.resolve_story(history, saved, groups, foods(menus))
+            result = self.recommendation(menus, profile, recent, conversation=True)
+            answer = llm.reply(result, history, taste=profile.taste, profile=profile, saved=saved)
+            self.send_json(200, {"reply": answer, "result": result, "conditions": vars(profile)})
+        except ValueError as error:
+            self.send_json(400, {"error": str(error)})
+        except llm.Unavailable as error:
+            self.send_json(503, {"error": str(error)})
+
     def recommendation(self, menus: list[dict[str, Any]], profile: Profile,
                        recent: list[str] | None = None, *, conversation: bool = False) -> dict[str, Any]:
         result, used = recommend_relaxed(menus, profile, recent or [], conversation=conversation)
@@ -399,7 +404,7 @@ class Handler(BaseHTTPRequestHandler):
         has_franchise = False
         try:
             evidence: dict[str, int] | None = menu_stores.evidence(catalog_path(), ids, district)
-            if not (best["nutrition"] or best["references"]):
+            if not (best.get("nutrition") or best.get("references")):
                 has_franchise = menu_stores.has_franchise_nutrition(catalog_path(), ids, district)
         except sqlite3.Error as error:
             self.log_error("대표 메뉴 집계 오류 %s", type(error).__name__)

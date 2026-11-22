@@ -30,12 +30,12 @@ PROFILE_FIELDS = {"nickname": 12, "diet": 20, "goal": 20, "spice": 10, "soup": 1
                   "category": 40, "exclude": 100, "allergy": 100,
                   "age": 3, "birth_date": 10, "height": 5, "weight": 5, "gender": 12}
 LOCK_FAILURES, LOCK_SECONDS = 5, 5 * 60
-MAX_FAILURE_ENTRIES = 10_000
 _credential_slots = threading.BoundedSemaphore(4)
 SCRYPT = {"n": 2 ** 14, "r": 8, "p": 1}
 
 _failures: dict[str, tuple[int, float]] = {}
 _failures_lock = threading.Lock()
+_migration_lock = threading.Lock()
 _migrated: set[tuple[str, int]] = set()
 
 SCHEMA = """
@@ -86,33 +86,41 @@ def connect() -> sqlite3.Connection:
     db = sqlite3.connect(path, timeout=10)
     db.execute("PRAGMA foreign_keys = ON")
     db.execute("PRAGMA secure_delete = ON")
-    db.executescript(SCHEMA)
     marker = (str(path), path.stat().st_ino)
     if marker in _migrated:
         return db
-    try:
-        with db:
-            db.execute("BEGIN IMMEDIATE")
-            columns = {row[1] for row in db.execute("PRAGMA table_info(users)")}
-            for name in ("username_masked", "nickname_masked"):
-                if name not in columns:
-                    db.execute(f"ALTER TABLE users ADD COLUMN {name} TEXT")
-            # 기존 회원 ID·비밀번호 해시·세션은 유지하며 평문만 변환한다.
-            for user_id, username, profile in db.execute(
-                    "SELECT id, username, profile FROM users WHERE username NOT LIKE 'u1:%'").fetchall():
-                owner = privacy.lookup(username, path)
-                saved = clean_profile(json.loads(profile)) if profile else None
-                encrypted = privacy.encrypt(saved, owner, path) if saved else None
-                db.execute("UPDATE users SET username=?,profile=?,username_masked=?,nickname_masked=? WHERE id=?",
-                           (owner, encrypted, privacy.mask(username),
-                            privacy.mask(saved.get("nickname", "")) if saved else None, user_id))
-            db.execute("CREATE VIEW IF NOT EXISTS account_overview AS SELECT id,username_masked,"
-                       "nickname_masked,created_at,(profile IS NOT NULL) AS has_profile FROM users")
-    except Exception:
-        db.close()
-        raise
-    _migrated.add(marker)
+    with _migration_lock:
+        if marker in _migrated:
+            return db
+        try:
+            initialize_schema(db, path)
+        except Exception:
+            db.close()
+            raise
+        _migrated.add(marker)
     return db
+
+
+def initialize_schema(db: sqlite3.Connection, path: Path) -> None:
+    db.executescript(SCHEMA)
+    with db:
+        db.execute("BEGIN IMMEDIATE")
+        columns = {row[1] for row in db.execute("PRAGMA table_info(users)")}
+        for name in ("username_masked", "nickname_masked"):
+            if name not in columns:
+                db.execute(f"ALTER TABLE users ADD COLUMN {name} TEXT")
+        # 기존 회원 ID·비밀번호 해시·세션은 유지하며 평문만 변환한다.
+        for user_id, username, profile in db.execute(
+                "SELECT id, username, profile FROM users WHERE username NOT LIKE 'u1:%'").fetchall():
+            owner = privacy.lookup(username, path)
+            saved = clean_profile(json.loads(profile)) if profile else None
+            encrypted = privacy.encrypt(saved, owner, path) if saved else None
+            db.execute("UPDATE users SET username=?,profile=?,username_masked=?,nickname_masked=? WHERE id=?",
+                       (owner, encrypted, privacy.mask(username),
+                        privacy.mask(saved.get("nickname", "")) if saved else None, user_id))
+        db.execute("CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions(expires_at)")
+        db.execute("CREATE VIEW IF NOT EXISTS account_overview AS SELECT id,username_masked,"
+                   "nickname_masked,created_at,(profile IS NOT NULL) AS has_profile FROM users")
 
 
 def hash_password(password: str) -> str:
@@ -266,15 +274,12 @@ def _check_lock(username: str) -> None:
         count, _ = _failures.get(username, (0, now))
         if count >= LOCK_FAILURES:
             raise AuthError("로그인 시도가 많아요. 5분 뒤 다시 시도해 주세요.", 429)
-        if not count and len(_failures) >= MAX_FAILURE_ENTRIES:
-            raise AuthError("로그인 요청이 많아요. 잠시 뒤 다시 시도해 주세요.", 429)
 
 
 def _record_failure(username: str) -> None:
     with _failures_lock:
-        if username in _failures or len(_failures) < MAX_FAILURE_ENTRIES:
-            count, since = _failures.get(username, (0, time.monotonic()))
-            _failures[username] = (count + 1, since)
+        count, since = _failures.get(username, (0, time.monotonic()))
+        _failures[username] = (count + 1, since)
 
 
 def login(payload: Any) -> tuple[str, dict[str, Any]]:
@@ -287,7 +292,8 @@ def login(payload: Any) -> tuple[str, dict[str, Any]]:
         # 없는 아이디도 같은 시간이 걸리도록 비교용 해시를 계산한다.
         stored = row[1] if row else _DUMMY_HASH
         if not verify_password(password, stored) or row is None:
-            _record_failure(owner)
+            if row is not None:
+                _record_failure(owner)
             raise AuthError("아이디 또는 비밀번호가 맞지 않아요.", 401)
         with _failures_lock:
             _failures.pop(owner, None)

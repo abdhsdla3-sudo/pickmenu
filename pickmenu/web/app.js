@@ -56,6 +56,7 @@ const serverFields = ["nickname", ...personalFields, ...preferenceFields];
 const authForm = document.querySelector("#auth-form");
 const authStatus = document.querySelector("#auth-status");
 let account = null;
+let accountRevision = 0;
 // 둘러보기: 서버가 허용하면(PICKMENU_GUEST=1) 로그인 없이 선택지 추천과 가게 목록만 쓴다. 취향은 저장하지 않는다.
 let guestAllowed = false;
 let guest = false;
@@ -239,6 +240,7 @@ function empty(title, body) {
 }
 
 async function request(url, options) {
+  const revision = accountRevision;
   let response, data;
   try {
     response = await fetch(url, options);
@@ -247,7 +249,7 @@ async function request(url, options) {
     throw new Error("추천 서버에 연결할 수 없어요. 잠시 뒤 다시 시도해 주세요.");
   }
   if (!response.ok) {
-    if (response.status === 401 && !url.startsWith("/api/auth/")) {
+    if (response.status === 401 && revision === accountRevision && !url.startsWith("/api/auth/")) {
       account = null;
       clearLocalProfile();
       updateAccountUI();
@@ -962,14 +964,18 @@ function serverPayload() {
 
 async function pushProfile() {
   if (!account) return;
+  const revision = accountRevision;
   try {
     const data = await request("/api/profile", {method: "PUT", headers: {"Content-Type": "application/json"},
       body: JSON.stringify(serverPayload())});
+    if (revision !== accountRevision) return;
     if (adoptServerProfile(data.profile)) applyProfile();
     updateAccountUI();
     syncNotice = "";
   } catch (error) {
-    syncNotice = `서버 저장 실패: ${error.message} 현재 화면에만 유지돼요. 다시 저장해 주세요.`;
+    if (revision === accountRevision) {
+      syncNotice = `서버 저장 실패: ${error.message} 현재 화면에만 유지돼요. 다시 저장해 주세요.`;
+    }
   }
 }
 
@@ -1018,6 +1024,7 @@ function openAccount(mode = "login") {
       ? summary() : "아직 프로필이 없어요. 취향을 알려주면 추천에 반영해요.";
     document.querySelector("#account-settings").elements.namedItem("nickname").value = profile.nickname;
     document.querySelector("#settings-status").textContent = "";
+    document.querySelector("#logout-status").textContent = "";
     document.querySelector("#account-sync").textContent = [storageNotice, syncNotice].filter(Boolean).join(" ");
     document.querySelector("#delete-profile").hidden = !hasProfile;
   }
@@ -1041,6 +1048,7 @@ function setAuthMode() {
 }
 
 function clearLocalProfile() {
+  accountRevision++;
   sessionLocation = null;
   pickerTicket++;
   const locationDialog = document.querySelector("#location-dialog");
@@ -1067,9 +1075,16 @@ function clearLocalProfile() {
   document.querySelector("#meal").reset();
   chatMessages = [];
   chatConditions = {};
+  chatInput.value = "";
   chatLog.replaceChildren();
   chatChips.replaceChildren();
   results.replaceChildren();
+  document.querySelector("#picked").hidden = true;
+  document.querySelector("#picked-tags").replaceChildren();
+  for (const id of ["account-name", "account-profile-summary", "account-sync", "settings-status", "logout-status"]) {
+    document.getElementById(id).textContent = "";
+  }
+  document.querySelector("#account-settings").reset();
   document.querySelector("#resume").hidden = true;
   return true;
 }
@@ -1135,11 +1150,13 @@ document.querySelector("#account-settings").addEventListener("submit", async eve
   const button = form.querySelector("button");
   const feedback = document.querySelector("#settings-status");
   if (!form.reportValidity()) return;
+  const revision = accountRevision;
   button.disabled = true;
   feedback.textContent = "";
   try {
     const data = await request("/api/profile", {method: "PUT", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({nickname: form.elements.namedItem("nickname").value.trim()})});
+    if (revision !== accountRevision) return;
     adoptServerProfile(data.profile);
     applyProfile();
     updateAccountUI();
@@ -1147,7 +1164,7 @@ document.querySelector("#account-settings").addEventListener("submit", async eve
     form.elements.namedItem("nickname").value = profile.nickname;
     feedback.textContent = "닉네임을 변경했어요.";
   } catch (error) {
-    feedback.textContent = error.message;
+    if (revision === accountRevision) feedback.textContent = error.message;
   } finally {
     button.disabled = false;
   }
@@ -1164,13 +1181,21 @@ document.querySelector("#account-continue").addEventListener("click", () => {
 });
 document.querySelector("#logout").addEventListener("click", async event => {
   const button = event.currentTarget;
+  const feedback = document.querySelector("#logout-status");
+  const revision = accountRevision;
   button.disabled = true;
+  feedback.textContent = "";
   try {
     await request("/api/auth/logout", {method: "POST"});
   } catch {
-    // 서버 연결이 실패해도 이 브라우저의 로그인 표시는 지운다.
+    if (revision === accountRevision) {
+      feedback.textContent = "로그아웃을 확인하지 못했어요. 다시 눌러 주세요.";
+    }
+    return;
+  } finally {
+    button.disabled = false;
   }
-  button.disabled = false;
+  if (revision !== accountRevision) return;
   account = null;
   guest = false;
   syncNotice = "";
@@ -1209,8 +1234,11 @@ form.addEventListener("submit", async event => {
   persistLocal();
   profileStatus.textContent = "";
   const next = document.querySelector("#step-next");
+  const revision = accountRevision;
   next.disabled = true;
   await pushProfile();
+  next.disabled = false;
+  if (revision !== accountRevision) return;
   document.querySelector("#meal-category-profile").checked = true;
   chatMessages = [];
   chatConditions = {};
@@ -1218,7 +1246,6 @@ form.addEventListener("submit", async event => {
   chatChips.replaceChildren();
   lastRequest = null;
   lastResult = null;
-  next.disabled = false;
   openModes();
 });
 
@@ -1237,7 +1264,9 @@ document.querySelector("#skip-body").addEventListener("click", async () => {
   if (step === 0) return;
   for (const key of ["nickname", ...personalFields]) profile[key] = form.elements.namedItem(key).value.trim();
   hasProfile = true;
+  const revision = accountRevision;
   await pushProfile();
+  if (revision !== accountRevision) return;
   openModes();
 });
 for (const button of document.querySelectorAll("[data-action]")) {
@@ -1255,14 +1284,18 @@ document.querySelector("#delete-profile").addEventListener("click", () => {
 deleteProfileDialog.addEventListener("close", async () => {
   if (deleteProfileDialog.returnValue !== "delete") return;
   const peek = document.querySelector("#account-sync");
+  const revision = accountRevision;
   if (account) {
     try {
       await request("/api/profile", {method: "DELETE"});
     } catch (error) {
-      peek.textContent = `계정에 저장된 프로필을 지우지 못했어요. ${error.message}`;
+      if (revision === accountRevision) {
+        peek.textContent = `계정에 저장된 프로필을 지우지 못했어요. ${error.message}`;
+      }
       return;
     }
   }
+  if (revision !== accountRevision) return;
   if (!clearLocalProfile()) {
     peek.textContent = "저장소에 접근할 수 없어 삭제하지 못했어요. 브라우저 설정을 확인해 주세요.";
     return;
