@@ -13,9 +13,9 @@ from collections.abc import Iterable
 from contextlib import closing
 from typing import Any
 
-from drive_data import DRIVE, NUTRIENTS, OFFICIAL, records, scan_drive
+from drive_data import DRIVE, NUTRIENTS, OFFICIAL, RECIPE, records, scan_drive
 from raw import FIELDS, LOCAL, key, ordered_menus, scan
-from recommend import compact
+from recommend import COOKING_EFFECT, compact
 
 CATALOG = LOCAL / "catalog.sqlite3"
 FULL = "01_수원시_전체리뷰.csv"
@@ -25,7 +25,6 @@ CLEAN = "03_수원시_리뷰정제_2607-2609.xlsx"
 AGG = "05_수원시_매장메뉴집계_2607-2609.xlsx"
 NUTR = "06_공공영양정보.xlsx"
 NUTR_MAP = "07_메뉴영양정보_연결후보.xlsx"
-RECIPE = "09_식약처_레시피DB.xlsx"
 TYPES = "메뉴정규화_최종/메뉴_음식종류.csv"
 BETA = "메뉴_음식종류_영양결합.csv"
 TYPE_NUTR = "음식종류_영양연결표.csv"
@@ -178,6 +177,19 @@ def validate_links(src: sqlite3.Connection, db: sqlite3.Connection,
     return {f: dict(c) for f, c in sorted(linked.items())}
 
 
+def recipe_cooking_methods(src: sqlite3.Connection) -> dict[str, str]:
+    """검토 후 연결된 공개 레시피의 조리방법을 표준 메뉴 ID로 조회한다."""
+    methods = {row["레시피ID"]: row.get("조리방법", "").strip()
+               for row in records(src, RECIPE, "레시피자료") if row.get("레시피ID")}
+    links: dict[str, set[str]] = defaultdict(set)
+    for row in records(src, RECIPE, "메뉴레시피검색"):
+        if (row.get("표준메뉴ID") and row.get("레시피연결승인여부") == "1"
+                and row.get("참고연결검토상태") == "AI본문검토·유형참고연결"):
+            links[row["표준메뉴ID"]].add(row.get("참고레시피ID", ""))
+    return {mid: method for mid, recipes in links.items()
+            if len(recipes) == 1 and (method := methods.get(next(iter(recipes)), "")) in COOKING_EFFECT}
+
+
 def build() -> None:
     with tempfile.NamedTemporaryFile(dir=LOCAL, suffix=".sqlite3", delete=False) as temp:
         temporary = temp.name
@@ -218,6 +230,7 @@ def build() -> None:
             type_links = {r["음식종류"]: r for r in records(src, TYPE_NUTR)}
             beta = {r["표준메뉴ID"]: r for r in records(src, BETA)}
             provided = {r["표준메뉴ID"]: r for r in records(src, NUTR_MAP, "메뉴영양연결후보")}
+            cooking_methods = recipe_cooking_methods(src)
             for row in records(src, TYPES):
                 mid = row["표준메뉴ID"]
                 category = row.get("그룹", "")
@@ -244,6 +257,9 @@ def build() -> None:
                                              "검토 필요" if candidate.get("선택영양식품ID") else "자료 없음"),
                         "mapping_method": row.get("판정방법", ""),
                         "mapping_note": descriptions[mid].get("검토사유", "")}
+                if not compound and len(components) == 1 and (method := cooking_methods.get(mid)):
+                    menu["cooking_method"] = method
+                    counts["reference_cooking_method"] += 1
                 db.execute("INSERT INTO catalog VALUES(?,?)", (mid, json.dumps(menu, ensure_ascii=False)))
             counts["catalog"] = db.execute("SELECT count(*) FROM catalog").fetchone()[0]
             if not counts["catalog"] or not counts["scored_nutrition"]:

@@ -11,7 +11,7 @@ from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-from recommend import ALIASES, DISTRICTS, TASTES, Profile, reference_fat
+from recommend import ALIASES, DISTRICTS, TASTES, Profile, cooking_signal, reference_fat
 
 _slot = threading.BoundedSemaphore(1)
 
@@ -435,11 +435,16 @@ def taste_note(history: list[str], result: dict[str, Any] | None = None, *,
     choices = (tastes(" ".join(history)) if taste is None else taste).split(",")
     notes = []
     if "-rich" in choices and (families := (result or {}).get("families")):
-        fats = [reference_fat(family["best"].get("nutrition")) for family in families[:5]]
-        if any(fat is not None for fat in fats):
-            notes.append("기름지지 않은 쪽은 100g당 지방 참고값이 낮을수록 점수를 높였어요. 실제 매장 메뉴와 다를 수 있어요.")
-        if any(fat is None for fat in fats):
-            notes.append("지방 참고값이 없는 메뉴는 이름에서 기름진 음식의 단서를 살폈어요.")
+        menus = [family["best"] for family in families[:5]]
+        if any(reference_fat(menu.get("nutrition")) is not None for menu in menus):
+            notes.append("100g당 지방 참고값이 낮은 음식에 점수를 더 줬어요.")
+        sources = {cooking_signal(menu)[1] for menu in menus}
+        if "공개 참고 레시피" in sources:
+            notes.append("공개 참고 레시피의 조리법도 살폈어요. 실제 매장 조리법과 다를 수 있어요.")
+        if "대표 메뉴명 추정" in sources:
+            notes.append("일부 메뉴는 이름에서 조리법을 추정했어요.")
+        if any(reference_fat(menu.get("nutrition")) is None for menu in menus):
+            notes.append("지방 참고값이 없는 메뉴는 조리법이나 메뉴 이름을 단서로 살폈어요.")
     names = "·".join(TASTE_NAMES[item.lstrip("-")] for item in choices if item and item != "-rich")
     if names:
         notes.append(f"{names}은 맛 자료가 없어 메뉴 이름으로 짐작해 반영했어요.")

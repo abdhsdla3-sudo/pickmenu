@@ -54,6 +54,17 @@ TASTES = {
     "chewy": ("쫄깃한 식감", r"쫄면|떡|냉면|곱창|막창|족발|오징어|쭈꾸미|주꾸미|낙지|우동|칼국수|수제비|순대"),
     "soft": ("부드러운 식감", r"죽|계란|달걀|오므라이스|두부|순두부|찜|수육|보쌈|리조또|크림|그라탕|스튜|카레|커리"),
 }
+# 조리법은 식감 평가와 별개인 기름 사용 단서다. 끓이기·굽기·볶기는 기름 양을 추정하지 않는다.
+COOKING_EFFECT = {"튀기기": -1, "찌기": 1, "삶기": 1, "데치기": 1, "굽기": 0, "볶기": 0, "끓이기": 0}
+COOKING_NAME = {
+    "튀기기": r"튀김|튀긴|후라이드|프라이드|돈가스|돈까스|돈카츠|탕수육|가라아게",
+    "찌기": r"^찐[가-힣]|쪄낸|찜기|증기찜|계란찜|달걀찜",
+    "삶기": r"삶은|삶아서",
+    "데치기": r"데친|데쳐낸",
+    "굽기": r"구운|구이|오븐에구운",
+    "볶기": r"볶음|볶은",
+    "끓이기": r"끓인|끓여낸",
+}
 VEGAN_EXCLUDE = re.compile(r"달걀|계란|우유|치즈|버터|유청|요거트|꿀|피자|크림|로제|리조또|오므라이스|토스트|마요")
 ALIASES = (("계란", "달걀", "난류", "에그"), ("우유", "유제품", "치즈", "버터", "유청"),
            ("밀", "밀가루", "밀글루텐"), ("땅콩", "피넛"), ("돼지", "돼지고기", "돈육"),
@@ -126,6 +137,44 @@ def reference_fat(nutrition: dict[str, Any] | None) -> float | None:
     return nutrition["values"][3]
 
 
+def cooking_signal(menu: dict[str, Any]) -> tuple[str, str]:
+    method = menu.get("cooking_method")
+    if method in COOKING_EFFECT and not menu.get("compound") and len(menu["components"]) == 1:
+        return method, "공개 참고 레시피"
+    name = compact(menu["components"][0])
+    hints = [method for method, pattern in COOKING_NAME.items() if re.search(pattern, name)]
+    return (hints[0], "대표 메뉴명 추정") if len(hints) == 1 else ("", "")
+
+
+def less_greasy(menu: dict[str, Any], rich_name: bool) -> tuple[float, str]:
+    fat = reference_fat(menu["nutrition"])
+    method, source = cooking_signal(menu)
+    if fat is None:
+        score = 0.0 if rich_name and not COOKING_EFFECT.get(method) else 0.35
+        note = "지방 참고값 없음"
+    else:
+        # 20g은 점수 환산 범위다. 비교 가능한 수치가 있으면 이 점수가 우선한다.
+        score = clip(1 - fat / 20)
+        note = f"지방 100g당 {fat:g}g (일반음식 참고값)"
+    if method:
+        weight = 0.10 if fat is not None else 0.25
+        if source == "대표 메뉴명 추정":
+            weight *= 0.5
+        score += weight * COOKING_EFFECT[method]
+        note += f" · {method} ({source})"
+        if not COOKING_EFFECT[method]:
+            note += " · 기름 사용량은 알 수 없음"
+    elif fat is None:
+        note += " · 메뉴 이름 단서만 참고"
+    return clip(score), note
+
+
+def serving_grams(nutrition: dict[str, Any]) -> float | None:
+    portion = str(nutrition.get("serving_reference") or "").strip()
+    grams = re.fullmatch(r"(?:1인분\s*\(?)?(\d+(?:\.\d+)?)\s*g\)?", portion, re.I)
+    return float(grams[1]) if grams and float(grams[1]) > 0 else None
+
+
 def nutrition_score(nutrition: dict[str, Any] | None, goal: str) -> float | None:
     if not nutrition or nutrition["basis"] != 100 or nutrition["unit"] != "g":
         return None
@@ -136,10 +185,8 @@ def nutrition_score(nutrition: dict[str, Any] | None, goal: str) -> float | None
         if kcal is None:
             return None
         # 공공 자료의 명시된 g 단위 1회 참고량만 쓰고, 기준량(100g)을 한 끼로 보지 않는다.
-        portion = str(nutrition.get("serving_reference") or "").strip()
-        grams = re.fullmatch(r"(?:1인분\s*\(?)?(\d+(?:\.\d+)?)\s*g\)?", portion, re.I)
-        if grams and float(grams[1]) > 0:
-            ratio = float(grams[1]) / 100
+        if (grams := serving_grams(nutrition)) is not None:
+            ratio = grams / 100
             energy_score = clip(1 - (kcal * ratio - 200) / 550)
             sodium_score = clip(1 - sodium * ratio / 1800) if sodium is not None else None
             return 0.7 * energy_score + 0.3 * sodium_score if sodium_score is not None else min(0.85, energy_score)
@@ -449,14 +496,9 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
             name, clue = TASTES[item.lstrip("-")]
             found = bool(re.search(clue, taste_signal))
             if item == "-rich":
-                fat = reference_fat(menu["nutrition"])
-                if fat is None:
-                    preferences.append(0 if found else 0.35)
-                    matches.append("지방 참고값 없음 · 메뉴 이름 단서만 참고")
-                else:
-                    # 20g은 점수 환산에 쓰는 범위다.
-                    preferences.append(clip(1 - fat / 20))
-                    matches.append(f"지방 100g당 {fat:g}g (일반음식 참고값)")
+                score, note = less_greasy(menu, found)
+                preferences.append(score)
+                matches.append(note)
             elif item.startswith("-"):
                 preferences.append(0 if found else 1)
                 matches.append(f"{name} 피하기 {'불일치' if found else '일치'} (메뉴 이름으로 짐작)")
@@ -468,8 +510,11 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
         e = (0.7 * clip(math.log1p(evidence["reviews"]) / math.log1p(150))
              + 0.3 * clip(math.log1p(evidence["stores"]) / math.log1p(10)))
         s, r, quality_text = quality_parts(menu, profile.district)
+        basis = "일반음식 참고값"
+        if profile.goal == "light" and n is not None:
+            basis = "1인분 일반음식 참고값" if serving_grams(menu["nutrition"]) is not None else "100g 일반음식 참고값 · 1인분 정보 없음"
         reasons = [f"{region} 이 메뉴 리뷰 {evidence['reviews']:,}건 · 매장 {evidence['stores']:,}곳",
-                   f"{GOALS[profile.goal]} 적합도 {round(n * 100)}점 (일반음식 참고값)"
+                   f"{GOALS[profile.goal]} 적합도 {round(n * 100)}점 ({basis})"
                    if n is not None else "비교할 참고 영양값 부족", quality_text, *matches]
         if check_note:
             reasons.append(check_note)

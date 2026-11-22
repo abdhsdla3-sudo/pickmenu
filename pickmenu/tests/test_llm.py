@@ -50,13 +50,17 @@ class LLMTest(unittest.TestCase):
     def test_reply_distinguishes_measured_fat_and_name_cues(self):
         info = {"basis": 100, "unit": "g", "values": [120, 10, 15, 2, None]}
         result = {"families": [
-            {"name": "비빔밥", "best": {"reasons": [], "nutrition": info}},
-            {"name": "샐러드", "best": {"reasons": [], "nutrition": None}},
+            {"name": "비빔밥", "best": {"reasons": [], "nutrition": info, "components": ["비빔밥"]}},
+            {"name": "두부 요리", "best": {"reasons": [], "nutrition": None,
+                                      "components": ["두부 요리"], "cooking_method": "찌기"}},
+            {"name": "고구마튀김", "best": {"reasons": [], "nutrition": None, "components": ["고구마튀김"]}},
         ]}
         with patch.object(llm, "generate", return_value={}):
             reply = llm.reply(result, taste="-rich")
         self.assertIn("100g당 지방 참고값", reply)
         self.assertIn("지방 참고값이 없는 메뉴", reply)
+        self.assertIn("공개 참고 레시피", reply)
+        self.assertIn("이름에서 조리법을 추정", reply)
 
     def test_unspoken_conditions_and_negation(self):
         with patch.object(llm, "generate", return_value={"goal": "balance", "spice": "hot",

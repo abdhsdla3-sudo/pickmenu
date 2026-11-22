@@ -15,6 +15,7 @@ from openpyxl import load_workbook
 from raw import LOCAL, digest
 
 DRIVE = LOCAL / "drive"
+RECIPE = "09_식약처_레시피DB.xlsx"
 EXPECTED = """
 README.md
 01_수원시_매장기준정보_2607-2609_설명.md
@@ -76,6 +77,7 @@ source_file source_review_row district platform created_at_KST menus order_count
 영양성분함량기준량 1인(회)분량\u0020참고량 식품중량
 연결승인여부 검수상태 매칭방법 매칭근거및주의 참고연결검토상태 참고영양기준상태
 사람검수완료여부 메뉴전체영양값확정여부 베타포함여부 레시피명 1인분중량_원문
+조리방법 레시피연결승인여부
 영양기준검수상태 평가속성 비교결과 항목 건수 내용 설명 영양연결상태
 """.split()) | set(OFFICIAL) | {"1인(회)분량 참고량"} | {
     prefix + field for prefix in ("", "음식1_", "음식2_") for field in
@@ -150,13 +152,16 @@ def scan_drive() -> None:
             db.execute("BEGIN IMMEDIATE")
             cached = db.execute("SELECT audit FROM sources WHERE file=? AND sha=?",
                                 (name, sha)).fetchone()
-            if cached:
-                output.append(json.loads(cached[0]))
+            cached_audit = json.loads(cached[0]) if cached else {}
+            if cached_audit and (name != RECIPE or cached_audit.get("cooking_columns")):
+                output.append(cached_audit)
                 db.commit()
                 continue
             db.execute("DELETE FROM records WHERE file=? OR file GLOB ?", (name, name + "!*"))
             audit: dict[str, Any] = {"file": name, "bytes": path.stat().st_size, "sha256": sha,
                                      "tables": [], "encoding": "UTF-8"}
+            if name == RECIPE:
+                audit["cooking_columns"] = True
             if path.suffix == ".md":
                 body = path.read_text(encoding="utf-8-sig")
                 audit["document_lines"] = len(body.splitlines())

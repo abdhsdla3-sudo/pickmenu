@@ -7,11 +7,12 @@ from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
-from drive_data import EXPECTED
-from prepare import CATALOG, reference, taste_tags
+from drive_data import EXPECTED, RECIPE, inspect_table
+from prepare import CATALOG, recipe_cooking_methods, reference, taste_tags
 from raw import LOCAL, ordered_menus
 from recommend import (
     Profile,
+    cooking_signal,
     ingredient_terms,
     nutrition_score,
     recommend,
@@ -84,6 +85,38 @@ class RulesTest(unittest.TestCase):
         self.assertEqual([item["name"] for item in result["items"]], ["채소덮밥", "버섯덮밥", "돼지고기덮밥"])
         self.assertIn("지방 100g당 3g (일반음식 참고값)", result["items"][0]["reasons"])
         self.assertIn("지방 참고값 없음 · 메뉴 이름 단서만 참고", result["items"][1]["reasons"])
+
+    def test_cooking_is_secondary_and_its_source_is_shown(self):
+        lean = {"basis": 100, "unit": "g", "values": [140, 8, 16, 2, 250]}
+        rich = {**lean, "values": [140, 8, 16, 16, 250], "serving_reference": "1인분 (100g)"}
+        steam = {**fixture("두부 요리", "MN_1", rich), "cooking_method": "찌기"}
+        fry = fixture("두부튀김", "MN_2", lean)
+        profile = Profile.parse({"goal": "light", "taste": "-rich"}, [])
+        result = recommend([steam, fry], profile)
+        self.assertEqual(result["items"][0]["name"], "두부튀김")
+        self.assertTrue(any("튀기기 (대표 메뉴명 추정)" in note for note in result["items"][0]["reasons"]))
+        self.assertTrue(any("찌기 (공개 참고 레시피)" in note for note in result["items"][1]["reasons"]))
+        self.assertTrue(any("1인분 정보 없음" in note for note in result["items"][0]["reasons"]))
+        self.assertTrue(any("1인분 일반음식 참고값" in note for note in result["items"][1]["reasons"]))
+        self.assertEqual(cooking_signal(fixture("아구찜")), ("", ""))
+        self.assertEqual(cooking_signal({**steam, "compound": True}), ("", ""))
+        menus = [{**steam, "nutrition": None}, {**fry, "nutrition": None}, fixture("두부구이", "MN_3")]
+        result = recommend(menus, profile)
+        self.assertEqual([item["name"] for item in result["items"]], ["두부 요리", "두부구이", "두부튀김"])
+
+    def test_only_unambiguous_reviewed_recipe_links_are_used(self):
+        with closing(sqlite3.connect(":memory:")) as db:
+            db.execute("CREATE TABLE records(file, sheet, row_number, data)")
+            inspect_table(db, RECIPE, "레시피자료", [
+                ["레시피ID", "조리방법"], ["1", "찌기"], ["2", "튀기기"], ["3", "기타"],
+            ])
+            approved = "AI본문검토·유형참고연결"
+            inspect_table(db, RECIPE, "메뉴레시피검색", [
+                ["표준메뉴ID", "참고레시피ID", "레시피연결승인여부", "참고연결검토상태"],
+                ["MN_1", "1", 1, approved], ["MN_2", "2", 0, approved],
+                ["MN_3", "1", 1, approved], ["MN_3", "2", 1, approved], ["MN_4", "3", 1, approved],
+            ])
+            self.assertEqual(recipe_cooking_methods(db), {"MN_1": "찌기"})
 
     def test_saved_group_first_and_options_removed(self):
         menus = [fixture("육회", "MN_1"), {**fixture("샐러드", "MN_2"), "category": "샐러드·건강식"},
