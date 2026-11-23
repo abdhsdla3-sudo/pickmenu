@@ -107,6 +107,22 @@ class LLMTest(unittest.TestCase):
                 for field, value in expected.items():
                     self.assertEqual(getattr(profile, field), value)
 
+    def test_short_weather_words_set_soup_or_cool(self):
+        """AI가 조건을 하나도 내지 않아도 "추워", "더워"처럼 짧은 날씨 말을 받는다(1.13.5)."""
+        cases = [
+            ("추워", {"soup": "yes"}), ("춥다", {"soup": "yes"}), ("넘 추워ㅠ", {"soup": "yes"}),
+            ("오늘 날씨 쌀쌀하네", {"soup": "yes"}), ("눈 온다", {"soup": "yes"}),
+            ("하나도 안 추워", {"soup": ""}),
+            ("더워", {"taste": "cool"}), ("덥다", {"taste": "cool"}), ("더워 죽겠어", {"taste": "cool"}),
+            ("찜통이야", {"taste": "cool"}), ("오늘은 안 더워", {"taste": ""}),
+            ("땀 뻘뻘 흘리면서 먹을 매운 거", {"taste": ""}),  # 매운 음식 땀은 더위가 아니다
+        ]
+        for text, expected in cases:
+            with self.subTest(text=text), patch.object(llm, "generate", return_value={}):
+                profile, _ = llm.conditions({"messages": [text], "profile": {}}, [], {"국밥": {"국밥·해장국"}})
+                for field, value in expected.items():
+                    self.assertEqual(getattr(profile, field), value)
+
     def test_goal_note_uses_serving_estimate_only_when_known(self):
         family = {"name": "육회", "best": {"serving_estimate": {"grams": 150, "energy_kcal": 210, "protein_g": 30.0}}}
         light = llm.Profile.parse({"goal": "light"}, [])
