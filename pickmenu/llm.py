@@ -27,6 +27,8 @@ from recommend import (
     serving_estimate,
 )
 
+CHAT_TURN_LIMIT = 10
+
 _slot = threading.BoundedSemaphore(1)
 # AI는 한 번에 하나만 부른다. 이야기 추천 조건 추출은 앞 요청이 끝나기를 짧게 기다린다(대기 인원·시간 제한).
 # 가게 한마디처럼 없어도 되는 호출은 기다리지 않는다.
@@ -466,10 +468,10 @@ def read_history(payload: Any) -> list[str]:
     if not isinstance(payload, dict):
         raise ValueError("대화 입력을 확인해 주세요.")
     history = payload.get("messages")
-    if (not isinstance(history, list) or not 1 <= len(history) <= 6
+    if (not isinstance(history, list) or not 1 <= len(history) <= CHAT_TURN_LIMIT
             or any(not isinstance(text, str) or not text.strip() or len(text) > 300
                    or any(ord(c) < 32 for c in text) for text in history)):
-        raise ValueError("대화는 최대 6개, 각각 300자 이내로 입력해 주세요.")
+        raise ValueError(f"대화는 최대 {CHAT_TURN_LIMIT}개, 각각 300자 이내로 입력해 주세요.")
     return history
 
 

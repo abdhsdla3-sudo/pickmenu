@@ -23,7 +23,7 @@ let profile = {...defaults};
 let hasProfile = false;
 let step = 0;
 let sourceMode = "choice";
-const CHAT_TURN_LIMIT = 6;
+const CHAT_TURN_LIMIT = 10;
 let chatMessages = [];
 let chatConditions = {};
 let activeRecommendation = null;
@@ -1547,7 +1547,7 @@ function updateChatTurns() {
   const remaining = CHAT_TURN_LIMIT - chatMessages.length;
   document.querySelector("#chat-turns").textContent = remaining
     ? "대화 " + chatMessages.length + "/" + CHAT_TURN_LIMIT + " · " + remaining + "회 더 보낼 수 있어요."
-    : "대화 6회를 모두 사용했어요. 새 대화를 시작해 주세요.";
+    : "대화 " + CHAT_TURN_LIMIT + "회를 모두 사용했어요. 새 대화를 시작해 주세요.";
 }
 
 async function respond(answer) {

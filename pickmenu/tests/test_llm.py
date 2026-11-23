@@ -166,7 +166,7 @@ class LLMTest(unittest.TestCase):
         self.assertEqual(llm.goal_note(light, [{"name": "보쌈", "best": {"serving_estimate": None}}]), "")
 
     def test_invalid_input_never_calls_model(self):
-        for messages in ([], [3], ["x" * 301], ["x"] * 7, ["a\nb"]):
+        for messages in ([], [3], ["x" * 301], ["x"] * 11, ["a\nb"]):
             with self.subTest(messages=messages), patch.object(llm, "generate") as generate:
                 with self.assertRaises(ValueError):
                     llm.conditions({"messages": messages, "profile": {}}, [])
@@ -555,6 +555,12 @@ class LLMTest(unittest.TestCase):
         self.assertEqual((values["diet"], values["district"]), ("vegan", "영통구"))
         with self.assertRaises(ValueError):
             llm.read_history({"messages": []})
+
+    def test_story_history_accepts_ten_turns_and_rejects_eleven(self):
+        messages = ["안 매운 음식으로 추천해 줘"] * 9 + ["국물도 빼 줘"]
+        self.assertEqual(llm.read_history({"messages": messages}), messages)
+        with self.assertRaisesRegex(ValueError, "최대 10개"):
+            llm.read_history({"messages": messages + ["다른 음식도 추천해 줘"]})
 
     def test_modifier_menus_and_group_exclusions(self):
         foods = {"치킨": {"치킨"}, "양념치킨": {"치킨"}, "후라이드치킨": {"치킨"}, "떡볶이": {"분식"},
