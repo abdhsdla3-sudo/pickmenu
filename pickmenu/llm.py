@@ -16,11 +16,13 @@ from urllib.request import Request, urlopen
 
 from recommend import (
     ALIASES,
+    ALLERGEN_DISHES,
     DISTRICTS,
     STORY_GROUPS,
     TASTES,
     Profile,
     cooking_signal,
+    ingredient_terms,
     reference_fat,
     serving_estimate,
 )
@@ -196,6 +198,9 @@ GRASS_ONLY = re.compile(r"풀만\s*(?:있|나오|든|가득)|풀\s*(?:떼기|때
 # 대표 음식이 여러 개로 나뉜 부위 이름(곱창 → 곱창구이·곱창볶음). 먹은 절에서만 그 음식들을 모두 뺀다.
 # 원하는 메뉴로 말하면 검색어가 두 음식 메뉴에 다 맞으므로 고치지 않는다.
 DISH_STEMS = ("곱창", "대창", "막창", "똥집", "쭈꾸미", "주꾸미")
+AGAIN = re.compile(r"또|다시|한\s*번\s*더|또다시")
+ALLERGY_WORD = re.compile(r"알레르기|알러지")
+CONDITIONAL = re.compile(r"있으면|이라면|라면|이면|일\s*때")
 DONE = re.compile(r"추천\s*(?:은|는)?\s*(?:여기서|이제)?\s*(?:그만|됐|끝)|(?<![가-힣])(?:메뉴\s*)?(?:다\s*)?정했어(?:요)?(?![가-힣?])")
 
 
@@ -219,6 +224,13 @@ def final_fixes(values: dict[str, Any], story: Story) -> None:
         values["spice"] = "mild"
     values["taste"] = ",".join(dict.fromkeys(taste))
     avoided = [name for name in values.get("avoid_menus", "").split(",") if name]
+    # "어제 족발 먹었는데 남은 거 있어서 족발이랑 어울리는 국물": 먹은 절에서 말한 메뉴는 뒤에서 다시 나와도
+    # 원하는 메뉴가 아니면 뺀다("또 땡김"처럼 다시 원하면 두고, 검색어로 고른 메뉴도 둔다).
+    if not AGAIN.search(story.text):
+        for start, end in story.past:
+            for food in food_mentions(story.text[start:end], food_names)[0]:
+                if food not in avoided and food != values.get("query"):
+                    avoided.append(food)
     # "어제 친구들이랑 곱창 먹고": 먹은 절의 부위 이름은 그 이름으로 시작하는 대표 음식을 모두 뺀다.
     for start, end in story.past:
         clause = story.text[start:end]
@@ -254,6 +266,15 @@ def final_fixes(values: dict[str, Any], story: Story) -> None:
     # "해산물 말고 소고기 먹고 싶어": 고기 종류를 원하면 그 이름으로 찾는다.
     if not query and (meat := MEAT_WANT.search(current)):
         values["query"] = query = meat.group(1)
+    # "회 먹고 싶어 / 아 근데 생선 알레르기 있었지": 앞 말에서 고른 메뉴를 뒤에서 알레르기로 물렸으면 검색어를 지운다.
+    # 한 문장 안("새우 알레르기인데 새우튀김 땡겨")이나 가정("밀 알레르기 있으면 …?")은 원한 메뉴를 그대로 둔다.
+    if (query and len(history) > 1 and values.get("allergy") and ALLERGY_WORD.search(last)
+            and not CONDITIONAL.search(last) and query not in last
+            and any(query in message for message in history[:-1])):
+        terms = ingredient_terms(values["allergy"])
+        dishes = "|".join(pattern for name, pattern in ALLERGEN_DISHES.items() if name in terms)
+        if any(term and term in query for term in terms) or (dishes and re.search(dishes, query)):
+            values["query"] = query = ""
     # "맵찔이라 신라면도 매워": 맵다고 한 메뉴는 원하는 메뉴가 아니다.
     if query and re.search(rf"{re.escape(query)}\s*(?:도|는|은)\s*(?:너무\s*)?(?:매워|맵더라|맵다|맵고)", current):
         values["query"] = query = ""
@@ -1115,7 +1136,7 @@ TASTE_WORDS = {
     "crispy": r"바삭|튀긴|튀김|크리스피|바사삭|겉바|(?i:crispy|crunchy)",
     "cool": r"시원|차가운|차갑|(?<![가-힣])찬\s*(?:거|것|건|음식|게)",
     "chewy": r"쫄깃|쫀득|쫀쫀|탱글",
-    "soft": r"부드러|촉촉|폭신|말랑|연한",
+    "soft": r"부드러|촉촉|폭신|말랑|연한|속촉",
 }
 
 

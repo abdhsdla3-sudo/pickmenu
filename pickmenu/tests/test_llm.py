@@ -63,6 +63,26 @@ class LLMTest(unittest.TestCase):
             profile, _ = llm.conditions({"messages": ["곱창 먹고 싶어"], "profile": {}}, [], foods)
         self.assertEqual((profile.query, profile.avoid_menus), ("곱창", ""))
 
+    def test_eaten_menu_and_allergy_correction(self):
+        foods = {"족발": {"족발·보쌈"}, "순대국밥": {"국밥·해장국"}, "회": {"일식"}, "새우튀김": {"분식"},
+                 "칼국수": {"면"}}
+        cases = [
+            (["어제 족발 먹었는데 남은 거 있어서 오늘은 족발이랑 어울리는 국물"], {"soup": "yes"},
+             {"avoid_menus": "족발"}),
+            (["어제 시킨 족발 아직 남았는데 같이 먹을 거 추천해줘"], {}, {"avoid_menus": ""}),
+            (["순댓국밥 어제 먹었는데 또 땡김"], {"query": "순댓국밥", "mentions": [{"text": "순댓국밥", "role": "want"}]}, {"query": "순대국밥", "avoid_menus": ""}),
+            (["회 먹고 싶어", "아 근데 생선 알레르기 있었지"], {"query": "회", "allergy": "생선"},
+             {"query": "", "allergy": "생선"}),
+            (["새우 알레르기인데 새우튀김 땡겨"], {"query": "새우튀김", "allergy": "새우"}, {"query": "새우튀김"}),
+            (["칼국수 당긴다", "근데 밀 알레르기 있으면 같은 메뉴는 피해야겠지?"], {"query": "칼국수", "allergy": "밀"},
+             {"query": "칼국수"}),
+        ]
+        for messages, output, expected in cases:
+            with self.subTest(messages=messages), patch.object(llm, "generate", return_value=output):
+                profile, _ = llm.conditions({"messages": messages, "profile": {}}, [], foods)
+                for field, value in expected.items():
+                    self.assertEqual(getattr(profile, field), value)
+
     def test_goal_note_uses_serving_estimate_only_when_known(self):
         family = {"name": "육회", "best": {"serving_estimate": {"grams": 150, "energy_kcal": 210, "protein_g": 30.0}}}
         light = llm.Profile.parse({"goal": "light"}, [])
@@ -351,7 +371,7 @@ class LLMTest(unittest.TestCase):
             (["살 빼는 중인데 배는 고파"], {}, {"goal": "light"}),
             (["다이어트는 내일부터 오늘은 맘껏 먹는다"], {}, {"goal": "balance"}),
             (["적당히 든든한 거 추천해줘"], {"query": "적당히 든든한"}, {"query": ""}),
-            (["겉바속촉 먹고 싶다"], {}, {"taste": "crispy"}),
+            (["겉바속촉 먹고 싶다"], {}, {"taste": "crispy,soft"}),
             (["고수 극혐"], {}, {"exclude": "고수"}),
             (["채식 중이야"], {}, {"diet": "vegetarian"}),
             (["고기 달걀 우유 전부 빼는 완전 채식 중이야"], {}, {"diet": "vegan", "meal_category": ""}),
