@@ -11,6 +11,7 @@
 - 100g·100mL 원문 단위를 그대로 두고 1인분으로 환산하지 않는다. 빈 수치는 null이다.
 - 같은 메뉴에 같은 식품코드(옵션)가 이미 있으면 다시 붙이지 않는다. 같은 입력으로 다시 실행해도 결과가 같다.
 - 식약처 외식 자료집의 동명 음식 조사 제공량은 `survey_servings`로 따로 붙인다(매장 1인분 아님).
+- 검수한 대표음식 조리법(`cooking_approvals.json`)을 단품 메뉴의 `cooking_method`로 붙인다(공개 참고 레시피 기준).
 """
 
 import argparse
@@ -27,7 +28,9 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
-from recommend import SOUP_NAME
+from recommend import COOKING_EFFECT, SOUP_NAME
+
+COOKING_METHODS = set(COOKING_EFFECT)
 
 FIELDS = ("에너지(kcal)", "단백질(g)", "탄수화물(g)", "지방(g)", "나트륨(mg)")
 GENERAL_ORIGINS = re.compile(r"^(가정식|외식)\(분석")
@@ -159,8 +162,41 @@ def group_servings(menus: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]
     return result
 
 
+def apply_cooking(menus: dict[str, dict[str, Any]], records: list[dict[str, Any]], counts: Counter[str]) -> set[str]:
+    """검수한 대표음식 조리법(cooking_approvals.json)을 단품 메뉴의 cooking_method로 붙인다.
+
+    예전 빌드(prepare.py)가 메뉴별 레시피 연결로 붙인 조리법은 그대로 둔다. 다시 실행하면 이 함수가 붙인 값만
+    지우고 새로 붙인다(cooking_reference가 그 표시).
+    """
+    changed: set[str] = set()
+    before = {}
+    for mid, menu in menus.items():
+        if menu.get("cooking_reference"):
+            before[mid] = (menu.pop("cooking_method", None), menu.pop("cooking_reference"))
+    approved = {r["food"]: r for r in records if r["decision"] == "approved"}
+    for food, item in approved.items():
+        if item["method"] not in COOKING_METHODS:
+            raise ValueError(f"{food}: 알 수 없는 조리법 {item['method']}")
+    for mid, menu in menus.items():
+        record = approved.get(menu["components"][0])
+        if record is None or menu.get("compound") or len(menu["components"]) != 1:
+            continue
+        if menu.get("cooking_method"):
+            counts["cooking_kept_existing"] += 1
+            continue
+        menu["cooking_method"] = record["method"]
+        menu["cooking_reference"] = {"food": record["food"], "titles": [e["title"] for e in record["evidence"]][:3],
+                                     "source": record["evidence"][0]["source"], "url": record["evidence"][0]["url"]}
+        counts["cooking_added"] += 1
+    for mid, menu in menus.items():
+        if before.get(mid) != ((menu.get("cooking_method"), menu.get("cooking_reference"))
+                               if menu.get("cooking_reference") else None):
+            changed.add(mid)
+    return changed
+
+
 def apply(catalog: Path, approvals_path: Path, food_csv: Path, research_path: Path | None,
-          output: Path) -> dict[str, Any]:
+          output: Path, cooking_path: Path | None = None) -> dict[str, Any]:
     if catalog.resolve() == output.resolve():
         raise ValueError("원본 보존을 위해 출력 카탈로그는 다른 경로여야 합니다.")
     approvals = json.loads(approvals_path.read_text(encoding="utf-8"))["records"]
@@ -230,6 +266,9 @@ def apply(catalog: Path, approvals_path: Path, food_csv: Path, research_path: Pa
                 menus[mid]["group_serving"] = group
                 counts["group_serving_menus"] += 1
             changed.update(mid for mid, menu in menus.items() if menu.get("group_serving") != group_before[mid])
+            if cooking_path:
+                cooking = json.loads(cooking_path.read_text(encoding="utf-8"))["records"]
+                changed |= apply_cooking(menus, cooking, counts)
             for mid in changed:
                 db.execute("UPDATE catalog SET data=? WHERE id=?", (json.dumps(menus[mid], ensure_ascii=False), mid))
             if any(menus[mid]["nutrition"] != scored_before[mid] for mid in menus):
@@ -252,7 +291,8 @@ def apply(catalog: Path, approvals_path: Path, food_csv: Path, research_path: Pa
     report = {"counts": dict(counts), "catalog_logical_sha256": digest.hexdigest(),
               "approved": [row for row in log if row[1] != "hold"],
               "held": [row[0] for row in log if row[1] == "hold"],
-              "policy": "새 값은 references와 survey_servings에만 더한다. nutrition(추천 점수)은 바꾸지 않는다."}
+              "policy": "새 값은 references와 survey_servings에만 더한다. nutrition(추천 점수)은 바꾸지 않는다. "
+                        "조리법(cooking_method)은 검수한 대표음식 레시피 기준이며 열량 계산에 쓰지 않는다."}
     output.with_suffix(".nutrition-audit.json").write_text(json.dumps(report, ensure_ascii=False, indent=1),
                                                            encoding="utf-8")
     return report
@@ -265,6 +305,7 @@ if __name__ == "__main__":
     parser.add_argument("--food-csv", type=Path, required=True)
     parser.add_argument("--research", type=Path)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--cooking", type=Path, default=Path(__file__).with_name("cooking_approvals.json"))
     args = parser.parse_args()
-    result = apply(args.catalog, args.approvals, args.food_csv, args.research, args.output)
+    result = apply(args.catalog, args.approvals, args.food_csv, args.research, args.output, args.cooking)
     print(json.dumps(result["counts"], ensure_ascii=False))

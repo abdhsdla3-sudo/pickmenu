@@ -135,6 +135,36 @@ class NutritionLinkTest(unittest.TestCase):
         # 대표음식마다 한 번씩: 칼국수 700·냉면 550·쫄면 450 → 550. 100g 튀김우동과 국물 요리(짬뽕)는 빼고 센다.
         self.assertEqual(result, {"N1": {"category": "면", "soup": False, "grams": 550.0, "foods": 3}})
 
+    def test_cooking_methods_from_reviewed_recipes(self):
+        from collections import Counter
+        evidence = [{"source": "식약처", "title": "닭강정", "url": "https://example.org/r"}]
+        records = [{"food": "닭강정", "decision": "approved", "method": "튀기기", "evidence": evidence},
+                   {"food": "치킨", "decision": "hold", "evidence": evidence}]
+        menus = {"A": {"components": ["닭강정"], "compound": False},
+                 "B": {"components": ["닭강정", "떡볶이"], "compound": True},  # 세트는 붙이지 않는다
+                 "C": {"components": ["닭강정"], "compound": False, "cooking_method": "끓이기"},  # 기존 연결 유지
+                 "D": {"components": ["치킨"], "compound": False}}
+        counts: Counter[str] = Counter()
+        self.assertEqual(nutrition_links.apply_cooking(menus, records, counts), {"A"})
+        self.assertEqual((menus["A"]["cooking_method"], menus["A"]["cooking_reference"]["food"]), ("튀기기", "닭강정"))
+        self.assertNotIn("cooking_method", menus["B"])
+        self.assertEqual((menus["C"]["cooking_method"], menus["D"].get("cooking_method")), ("끓이기", None))
+        self.assertEqual(nutrition_links.apply_cooking(menus, records, counts), set())  # 다시 해도 같다
+        records[0]["decision"] = "hold"
+        self.assertEqual(nutrition_links.apply_cooking(menus, records, counts), {"A"})  # 보류로 바꾸면 지운다
+        self.assertNotIn("cooking_method", menus["A"])
+        with self.assertRaises(ValueError):
+            nutrition_links.apply_cooking(menus, [{**records[0], "decision": "approved", "method": "훈제"}], counts)
+
+    def test_committed_cooking_approvals(self):
+        doc = json.loads(Path(nutrition_links.__file__).with_name("cooking_approvals.json").read_text(encoding="utf-8"))
+        foods = [r["food"] for r in doc["records"]]
+        self.assertEqual(len(foods), len(set(foods)))
+        for record in doc["records"]:
+            self.assertTrue(record["reason"] and record["evidence"])
+            if record["decision"] == "approved":
+                self.assertIn(record["method"], nutrition_links.COOKING_METHODS)
+
     def test_ml_basis_is_kept(self):
         records = [{"standard_menu_id": "M6", "decision": "approved", "kind": "general", "food_code": "D406-1",
                     "reason": "시험"}]

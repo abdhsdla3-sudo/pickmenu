@@ -386,6 +386,11 @@ async function openDetail(item, button, store) {
     body.replaceChildren(node("p", [menu.category, ...menu.components].join(" · "), "muted"));
     addReasons(body, item.reasons);
     body.append(node("p", "실제 매장 레시피와 원재료, 알레르기 및 교차접촉 정보는 확인이 필요해요.", "muted"));
+    if (menu.cooking_reference) {
+      const ref = menu.cooking_reference;
+      body.append(node("p", `조리법 참고: ${menu.cooking_method} · ${ref.source}의 ${ref.food} 레시피(${ref.titles.join(", ")}) 기준이에요. `
+        + "이 매장의 조리법과 다를 수 있어요.", "muted"));
+    }
     appendFranchiseNutrition(body, item);
     if (menu.references?.length) {
       const kinds = new Set(menu.references.map(ref => ref.kind));

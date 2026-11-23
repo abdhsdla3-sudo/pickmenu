@@ -88,6 +88,15 @@ class RulesTest(unittest.TestCase):
         self.assertIn("지방 100g당 3g (일반음식 참고값)", result["items"][0]["reasons"])
         self.assertIn("지방 참고값 없음 · 메뉴 이름 단서만 참고", result["items"][1]["reasons"])
 
+    def test_known_fried_is_not_better_than_unknown(self):
+        from recommend import less_greasy
+        unknown = fixture("양념 닭강정", "MN_1")
+        fried = {**unknown, "cooking_method": "튀기기"}
+        steamed = {**unknown, "cooking_method": "찌기"}
+        self.assertLessEqual(less_greasy(fried, True)[0], less_greasy(unknown, True)[0])
+        self.assertLess(less_greasy(unknown, True)[0], less_greasy(steamed, True)[0])
+        self.assertLess(less_greasy(fried, False)[0], less_greasy(unknown, False)[0])
+
     def test_cooking_is_secondary_and_its_source_is_shown(self):
         lean = {"basis": 100, "unit": "g", "values": [140, 8, 16, 2, 250]}
         rich = {**lean, "values": [140, 8, 16, 16, 250], "serving_reference": "1인분 (100g)"}

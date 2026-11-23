@@ -1,0 +1,1616 @@
+{
+ "기준일": "2026-11-23",
+ "설명": "대표음식 단위 조리법 검수. approved는 단품 메뉴(구성 음식 1개)에 cooking_method로 붙인다. 이 매장의 조리법이 아니라 공개 참고 레시피 기준이다. 열량 계산에는 쓰지 않는다.",
+ "records": [
+  {
+   "food": "닭강정",
+   "decision": "approved",
+   "reason": "식약처 동명 레시피가 튀기기다. 판매 메뉴도 튀긴 닭에 양념을 버무린 음식이다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "489",
+     "title": "닭강정",
+     "method": "튀기기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "튀기기"
+  },
+  {
+   "food": "돈가스",
+   "decision": "approved",
+   "reason": "식약처 돈가스 변형 레시피 2건이 모두 튀기기다. 빵가루를 입혀 튀기는 음식이다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "449",
+     "title": "샐러드돈가스",
+     "method": "튀기기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "440",
+     "title": "리코타치즈돈가스",
+     "method": "튀기기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "튀기기"
+  },
+  {
+   "food": "치즈돈가스",
+   "decision": "approved",
+   "reason": "식약처 리코타치즈돈가스 레시피가 튀기기다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "440",
+     "title": "리코타치즈돈가스",
+     "method": "튀기기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "튀기기"
+  },
+  {
+   "food": "탕수육",
+   "decision": "approved",
+   "reason": "식약처 탕수육 변형 레시피 2건이 모두 튀기기다. 튀긴 고기에 소스를 곁들인다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "3246",
+     "title": "가지 탕수육",
+     "method": "튀기기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "442",
+     "title": "황태탕수육",
+     "method": "튀기기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "튀기기"
+  },
+  {
+   "food": "꿔바로우",
+   "decision": "approved",
+   "reason": "식약처 꿔바로우 변형 레시피가 튀기기다. 찹쌀 반죽을 입혀 튀기는 음식이다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "1076",
+     "title": "유자 치킨 꿔바로우",
+     "method": "튀기기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "튀기기"
+  },
+  {
+   "food": "새우튀김",
+   "decision": "approved",
+   "reason": "식약처 새우튀김 변형 레시피가 튀기기다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "533",
+     "title": "누룽지새우튀김",
+     "method": "튀기기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "튀기기"
+  },
+  {
+   "food": "튀김",
+   "decision": "approved",
+   "reason": "식약처 튀김 변형 레시피 6건이 모두 튀기기다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "505",
+     "title": "둥지튀김",
+     "method": "튀기기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "556",
+     "title": "둥지튀김",
+     "method": "튀기기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "451",
+     "title": "닭날개튀김",
+     "method": "튀기기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "3087",
+     "title": "잎채소튀김",
+     "method": "튀기기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "538",
+     "title": "생선카레튀김",
+     "method": "튀기기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "3214",
+     "title": "치즈 두부 튀김",
+     "method": "튀기기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "튀기기"
+  },
+  {
+   "food": "가라아게",
+   "decision": "approved",
+   "reason": "기꼬만 가라아게 레시피가 기름에 튀기는 조리법이다.",
+   "evidence": [
+    {
+     "source": "Kikkoman",
+     "title": "Crispy Karaage Recipe",
+     "url": "https://www.kikkoman.com/en/cookbook/washoku/karaage.html"
+    }
+   ],
+   "method": "튀기기"
+  },
+  {
+   "food": "순대",
+   "decision": "approved",
+   "reason": "식약처 순대 변형 레시피 6건 중 5건이 찌기다(오징어콩순대 굽기는 다른 음식). 분식 순대는 쪄서 판다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "649",
+     "title": "닭순대",
+     "method": "찌기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "3213",
+     "title": "애호박 순대",
+     "method": "찌기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "513",
+     "title": "오징어순대",
+     "method": "찌기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "390",
+     "title": "오징어콩순대",
+     "method": "굽기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "414",
+     "title": "주꾸미머리순대",
+     "method": "찌기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "752",
+     "title": "오징어오곡밥순대",
+     "method": "찌기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "찌기"
+  },
+  {
+   "food": "보쌈",
+   "decision": "approved",
+   "reason": "샘표 수육보쌈 레시피가 돼지고기를 삶는 조리법이다.",
+   "evidence": [
+    {
+     "source": "샘표 새미네부엌",
+     "title": "초간단 수육보쌈",
+     "url": "https://semie.cooking/recipe-lab/archive/suyuk-bosam"
+    }
+   ],
+   "method": "삶기"
+  },
+  {
+   "food": "볶음밥",
+   "decision": "approved",
+   "reason": "식약처 볶음밥 변형 레시피 6건이 모두 볶기다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "215",
+     "title": "가지볶음밥",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "217",
+     "title": "미역볶음밥",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "219",
+     "title": "해물볶음밥",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "931",
+     "title": "향향 볶음밥",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "216",
+     "title": "닭고기볶음밥",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "218",
+     "title": "청국장볶음밥",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "볶기"
+  },
+  {
+   "food": "볶음면",
+   "decision": "approved",
+   "reason": "식약처 볶음면 변형 레시피 5건이 모두 볶기다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "869",
+     "title": "낙지볶음면",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "306",
+     "title": "오색볶음면",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "491",
+     "title": "황태볶음면",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "305",
+     "title": "닭갈비볶음면",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "1015",
+     "title": "바지락 볶음면",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "볶기"
+  },
+  {
+   "food": "제육볶음",
+   "decision": "approved",
+   "reason": "식약처 제육볶음 변형 레시피가 볶기다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "250",
+     "title": "단호박제육볶음",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "볶기"
+  },
+  {
+   "food": "두루치기",
+   "decision": "approved",
+   "reason": "식약처 두루치기 변형 레시피가 볶기다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "254",
+     "title": "토마토두루치기",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "볶기"
+  },
+  {
+   "food": "닭갈비",
+   "decision": "approved",
+   "reason": "식약처 닭갈비 변형 레시피가 볶기다. 철판에 볶는 음식이다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "552",
+     "title": "토마토소스닭갈비",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "볶기"
+  },
+  {
+   "food": "로제파스타",
+   "decision": "approved",
+   "reason": "식약처 동명 레시피가 볶기다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "373",
+     "title": "로제파스타",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "볶기"
+  },
+  {
+   "food": "콩나물불고기",
+   "decision": "approved",
+   "reason": "만개의레시피 콩나물불고기가 볶는 조리법이다.",
+   "evidence": [
+    {
+     "source": "만개의레시피 작성자",
+     "title": "콩나물불고기 레시피",
+     "url": "https://www.10000recipe.com/recipe/print.html?seq=7005129"
+    }
+   ],
+   "method": "볶기"
+  },
+  {
+   "food": "마라샹궈",
+   "decision": "approved",
+   "reason": "샘표 마라샹궈 레시피가 볶는 조리법이다.",
+   "evidence": [
+    {
+     "source": "샘표 새미네부엌",
+     "title": "얼얼한 진짜 마라샹궈",
+     "url": "https://semie.cooking/recipe-lab/archive/the-real-mala-xiang-guo"
+    }
+   ],
+   "method": "볶기"
+  },
+  {
+   "food": "함박스테이크",
+   "decision": "approved",
+   "reason": "식약처 동명 레시피가 굽기다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "481",
+     "title": "함박스테이크",
+     "method": "굽기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "굽기"
+  },
+  {
+   "food": "피자",
+   "decision": "approved",
+   "reason": "식약처 피자 변형 레시피 3건이 모두 굽기다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "964",
+     "title": "롤피자",
+     "method": "굽기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "958",
+     "title": "누룽지 피자",
+     "method": "굽기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "467",
+     "title": "단호박피자",
+     "method": "굽기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "굽기"
+  },
+  {
+   "food": "김치찌개",
+   "decision": "approved",
+   "reason": "식약처 김치찌개 변형 레시피 5건이 모두 끓이기다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "272",
+     "title": "완자김치찌개",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "275",
+     "title": "해물김치찌개",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "271",
+     "title": "닭고기김치찌개",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "274",
+     "title": "오징어김치찌개",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "270",
+     "title": "해물토마토김치찌개",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "끓이기"
+  },
+  {
+   "food": "된장찌개",
+   "decision": "approved",
+   "reason": "식약처 된장찌개 변형 레시피 4건이 모두 끓이기다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "138",
+     "title": "부대된장찌개",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "292",
+     "title": "산나물된장찌개",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "285",
+     "title": "검은콩보리된장찌개",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "295",
+     "title": "해물순두부된장찌개",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "끓이기"
+  },
+  {
+   "food": "부대찌개",
+   "decision": "approved",
+   "reason": "식약처 부대찌개 변형 레시피 4건이 모두 끓이기다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "276",
+     "title": "맑은부대찌개",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "278",
+     "title": "삼계부대찌개",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "279",
+     "title": "쑥갓부대찌개",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "277",
+     "title": "나가사키부대찌개",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "끓이기"
+  },
+  {
+   "food": "순두부찌개",
+   "decision": "approved",
+   "reason": "식약처 순두부찌개 변형 레시피 4건이 모두 끓이기다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "280",
+     "title": "들깨순두부찌개",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "281",
+     "title": "백태순두부찌개",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "282",
+     "title": "버섯순두부찌개",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "283",
+     "title": "토란순두부찌개",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "끓이기"
+  },
+  {
+   "food": "두부찌개",
+   "decision": "approved",
+   "reason": "식약처 두부찌개 변형 레시피 5건이 모두 끓이기다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "137",
+     "title": "된장 두부찌개",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "280",
+     "title": "들깨순두부찌개",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "281",
+     "title": "백태순두부찌개",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "282",
+     "title": "버섯순두부찌개",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "283",
+     "title": "토란순두부찌개",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "끓이기"
+  },
+  {
+   "food": "육개장",
+   "decision": "approved",
+   "reason": "식약처 육개장 변형 레시피 2건이 모두 끓이기다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "408",
+     "title": "맑은육개장",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "288",
+     "title": "들깨된장육개장",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "끓이기"
+  },
+  {
+   "food": "해장국",
+   "decision": "approved",
+   "reason": "식약처 해장국 변형 레시피 3건이 모두 끓이기다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "263",
+     "title": "관자해장국",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "267",
+     "title": "양지해장국",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "268",
+     "title": "토마토돼지고기해장국",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "끓이기"
+  },
+  {
+   "food": "칼국수",
+   "decision": "approved",
+   "reason": "식약처 칼국수 변형 레시피 2건이 모두 끓이기다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "547",
+     "title": "들깨칼국수",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "516",
+     "title": "해물칼국수",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "끓이기"
+  },
+  {
+   "food": "삼계탕",
+   "decision": "approved",
+   "reason": "식약처 삼계탕 변형 레시피 2건이 모두 끓이기다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "777",
+     "title": "롤 삼계탕",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "639",
+     "title": "호박잎 삼계탕",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "끓이기"
+  },
+  {
+   "food": "매운탕",
+   "decision": "approved",
+   "reason": "식약처 매운탕 변형 레시피가 끓이기다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "677",
+     "title": "민어매운탕",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "끓이기"
+  },
+  {
+   "food": "리조또",
+   "decision": "approved",
+   "reason": "식약처 리조또 변형 레시피 6건이 모두 끓이기다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "517",
+     "title": "버섯리조또",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "919",
+     "title": "버섯 리조또",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "788",
+     "title": "버섯 리조또",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "576",
+     "title": "전복리조또",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "353",
+     "title": "치즈리조또",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "499",
+     "title": "황태리조또",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "끓이기"
+  },
+  {
+   "food": "라면",
+   "decision": "approved",
+   "reason": "식약처 라면 변형 레시피 6건이 모두 끓이기다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "549",
+     "title": "숙주라면",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "309",
+     "title": "삼겹살라면",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "311",
+     "title": "토마토라면",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "307",
+     "title": "로제소스라면",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "310",
+     "title": "유자샐러드라면",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "312",
+     "title": "토마토샐러드라면",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ],
+   "method": "끓이기"
+  },
+  {
+   "food": "치킨",
+   "decision": "hold",
+   "reason": "변형 레시피가 굽기·튀기기로 갈린다. 판매 메뉴도 후라이드·양념·구이가 섞여 있다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "566",
+     "title": "삼계치킨",
+     "method": "굽기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "561",
+     "title": "머스터드튤립치킨",
+     "method": "튀기기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ]
+  },
+  {
+   "food": "후라이드치킨",
+   "decision": "hold",
+   "reason": "근거가 브랜드 영양값이며 레시피가 아니다. 이름 짐작(튀기기)은 그대로 쓴다.",
+   "evidence": [
+    {
+     "source": "식약처 K-FIND",
+     "title": "호식이두마리치킨 후라이드 치킨",
+     "url": "https://various.foodsafetykorea.go.kr/nutrient/general/food/detail.do?searchFoodCd=D212-549000000-0143&searchMonthCd=AVG&searchRegionCd=ZZ"
+    }
+   ]
+  },
+  {
+   "food": "구운치킨",
+   "decision": "hold",
+   "reason": "굽네 오븐구이는 해당 제품 사례이며 출처도 구운치킨 전체로 넓히지 말라고 적었다.",
+   "evidence": [
+    {
+     "source": "굽네치킨",
+     "title": "New 오리지널",
+     "url": "https://www.goobne.co.kr/menu/new_p?gubun=brand_guide"
+    }
+   ]
+  },
+  {
+   "food": "만두",
+   "decision": "hold",
+   "reason": "변형 레시피가 찌기·끓이기로 갈리고 판매 메뉴에 야끼만두(튀김)가 있다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "245",
+     "title": "계만두",
+     "method": "찌기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "794",
+     "title": "호박만두",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "706",
+     "title": "새우두부만두",
+     "method": "찌기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "518",
+     "title": "삼색소고기만두",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "114",
+     "title": "닭가슴살 브로콜리 만두",
+     "method": "찌기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ]
+  },
+  {
+   "food": "수육",
+   "decision": "hold",
+   "reason": "변형 레시피가 끓이기·찌기로 갈리고 탕수육(다른 음식)이 섞였다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "325",
+     "title": "족발수육",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "3246",
+     "title": "가지 탕수육",
+     "method": "튀기기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "442",
+     "title": "황태탕수육",
+     "method": "튀기기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "3077",
+     "title": "된장숙성저수분수육",
+     "method": "찌기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ]
+  },
+  {
+   "food": "갈비찜",
+   "decision": "hold",
+   "reason": "변형 레시피가 찌기·끓이기로 갈린다. 갈비찜은 조림에 가깝다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "248",
+     "title": "떡갈비찜",
+     "method": "찌기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "551",
+     "title": "과일갈비찜",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "331",
+     "title": "해초갈비찜",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ]
+  },
+  {
+   "food": "찜닭",
+   "decision": "hold",
+   "reason": "레시피에 조리방법 칸이 없다. 찜닭은 간장에 졸이는 음식이라 찌기로 보지 않는다.",
+   "evidence": [
+    {
+     "source": "농촌진흥청 농식품올바로",
+     "title": "안동찜닭",
+     "url": "https://www.nics.go.kr/food/kfi/tfSrch08/view?menuId=PS03520&tfcode=91167"
+    },
+    {
+     "source": "한식문화상자",
+     "title": "찜닭",
+     "url": "https://kculture.or.kr/cms/content/view/855"
+    }
+   ]
+  },
+  {
+   "food": "닭볶음탕",
+   "decision": "hold",
+   "reason": "변형 레시피는 볶기지만 판매 메뉴는 국물에 졸이는 음식이다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "3081",
+     "title": "매실입은가지닭볶음탕",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "3571",
+     "title": "토마토시금치 닭볶음탕",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ]
+  },
+  {
+   "food": "닭발",
+   "decision": "hold",
+   "reason": "무뼈 볶음 레시피뿐인데 판매 메뉴에 국물닭발·직화가 섞여 있다.",
+   "evidence": [
+    {
+     "source": "전북특별자치도 음식문화플라자",
+     "title": "무뼈 닭발 볶음",
+     "url": "https://www.jbfood.go.kr/ai/recipe/tbf_news-80228.html"
+    }
+   ]
+  },
+  {
+   "food": "핫도그",
+   "decision": "hold",
+   "reason": "밥핫도그 튀기기 레시피뿐이다. 판매 메뉴에 빵 핫도그와 튀긴 핫도그가 섞여 있다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "443",
+     "title": "밥핫도그",
+     "method": "튀기기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ]
+  },
+  {
+   "food": "어묵",
+   "decision": "hold",
+   "reason": "채소어묵(튀기기)은 어묵을 만드는 법이다. 판매 메뉴는 어묵꼬치·국물 어묵일 수 있다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "473",
+     "title": "채소어묵",
+     "method": "튀기기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ]
+  },
+  {
+   "food": "소불고기",
+   "decision": "hold",
+   "reason": "소고기채소불고기 굽기뿐인데 판매 메뉴는 볶음·뚝배기가 섞여 있다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "548",
+     "title": "소고기채소불고기",
+     "method": "굽기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ]
+  },
+  {
+   "food": "쌈밥",
+   "decision": "hold",
+   "reason": "동명 레시피(볶기)는 쌈밥의 일부 재료를 볶는 법이다. 메뉴 전체의 조리법으로 보지 않는다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "791",
+     "title": "쌈밥",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ]
+  },
+  {
+   "food": "김밥",
+   "decision": "hold",
+   "reason": "변형 레시피가 끓이기·기타로 갈리고 김밥 전체의 조리법이 아니다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "227",
+     "title": "새싹참치김밥",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "229",
+     "title": "오징어불고기김밥",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "3467",
+     "title": "두부샐러드 메밀김밥",
+     "method": "기타",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ]
+  },
+  {
+   "food": "떡볶이",
+   "decision": "hold",
+   "reason": "변형 레시피가 끓이기·볶기로 갈린다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "759",
+     "title": "호두떡볶이",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "3095",
+     "title": "단호박떡볶이",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "457",
+     "title": "토마토떡볶이",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "630",
+     "title": "설렁탕쑥떡볶이",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "463",
+     "title": "크림치즈떡볶이",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ]
+  },
+  {
+   "food": "비빔밥",
+   "decision": "hold",
+   "reason": "변형 레시피가 기타·끓이기·볶기로 갈린다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "761",
+     "title": "멍게비빔밥",
+     "method": "기타",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "124",
+     "title": "북어비빔밥",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "805",
+     "title": "새싹 비빔밥",
+     "method": "기타",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "329",
+     "title": "채소비빔밥",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "519",
+     "title": "콩가루비빔밥",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "230",
+     "title": "닭가슴살청포묵비빔밥",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ]
+  },
+  {
+   "food": "샐러드",
+   "decision": "hold",
+   "reason": "변형 레시피가 기타·굽기·끓이기로 갈린다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "210",
+     "title": "두릅 샐러드",
+     "method": "굽기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "369",
+     "title": "망고샐러드",
+     "method": "기타",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "1042",
+     "title": "시저 샐러드",
+     "method": "기타",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "634",
+     "title": "연어샐러드",
+     "method": "기타",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "348",
+     "title": "초계샐러드",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "3175",
+     "title": "감귤콩샐러드",
+     "method": "기타",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ]
+  },
+  {
+   "food": "샌드위치",
+   "decision": "hold",
+   "reason": "변형 레시피가 기타·굽기·튀기기로 갈린다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "1016",
+     "title": "밥 샌드위치",
+     "method": "기타",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "960",
+     "title": "두부 샌드위치",
+     "method": "굽기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "441",
+     "title": "삼색샌드위치",
+     "method": "기타",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "1030",
+     "title": "클럽 샌드위치",
+     "method": "기타",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "1085",
+     "title": "연근고구마샌드위치",
+     "method": "튀기기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "3296",
+     "title": "단호박 양파잼 샌드위치",
+     "method": "기타",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ]
+  },
+  {
+   "food": "파스타",
+   "decision": "hold",
+   "reason": "변형 레시피가 볶기·끓이기·튀기기로 갈린다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "482",
+     "title": "냉파스타",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "488",
+     "title": "깐풍파스타",
+     "method": "튀기기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "373",
+     "title": "로제파스타",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "469",
+     "title": "닭고기파스타",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "303",
+     "title": "산채쌀파스타",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "510",
+     "title": "냉토마토파스타",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ]
+  },
+  {
+   "food": "크림파스타",
+   "decision": "hold",
+   "reason": "변형 레시피가 끓이기·볶기로 갈린다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "450",
+     "title": "조개크림파스타",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "493",
+     "title": "표고크림파스타",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "496",
+     "title": "단호박크림파스타",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "302",
+     "title": "바나나크림파스타",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ]
+  },
+  {
+   "food": "스프",
+   "decision": "hold",
+   "reason": "변형 레시피가 끓이기·굽기·기타로 갈린다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "915",
+     "title": "멜론스프",
+     "method": "기타",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "830",
+     "title": "검은콩 스프",
+     "method": "굽기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "935",
+     "title": "단호박 스프",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "455",
+     "title": "마마무스프",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "939",
+     "title": "알파벳 스프",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "927",
+     "title": "완두콩 스프",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ]
+  },
+  {
+   "food": "주먹밥",
+   "decision": "hold",
+   "reason": "변형 레시피가 끓이기·굽기·볶기로 갈린다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "224",
+     "title": "봄주먹밥",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "774",
+     "title": "봄주먹밥",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "1006",
+     "title": "감자 주먹밥",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "221",
+     "title": "구운주먹밥",
+     "method": "굽기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "775",
+     "title": "구운 주먹밥",
+     "method": "굽기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "222",
+     "title": "깐풍주먹밥",
+     "method": "볶기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ]
+  },
+  {
+   "food": "초밥",
+   "decision": "hold",
+   "reason": "변형 레시피가 기타·끓이기로 갈린다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "3017",
+     "title": "채소초밥",
+     "method": "기타",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "406",
+     "title": "울금해초밥",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "3281",
+     "title": "채소롤초밥",
+     "method": "기타",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "662",
+     "title": "소금없는 초밥",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "658",
+     "title": "산나물 유부초밥",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "573",
+     "title": "와사비 연어초밥",
+     "method": "기타",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ]
+  },
+  {
+   "food": "냉면",
+   "decision": "hold",
+   "reason": "곤약냉면(끓이기)은 면을 삶는 단계이며 냉면 전체의 조리법이 아니다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "550",
+     "title": "곤약냉면",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ]
+  },
+  {
+   "food": "콩국수",
+   "decision": "hold",
+   "reason": "끓이기는 콩·면을 삶는 단계이며 차게 먹는 콩국수 전체의 조리법이 아니다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "342",
+     "title": "간편콩국수",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    },
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "644",
+     "title": "검은콩국수",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ]
+  },
+  {
+   "food": "곰탕·설렁탕",
+   "decision": "hold",
+   "reason": "닭곰탕은 다른 음식이다.",
+   "evidence": [
+    {
+     "source": "식품의약품안전처 조리식품 레시피 DB",
+     "recipe_id": "2991",
+     "title": "닭곰탕",
+     "method": "끓이기",
+     "url": "https://www.foodsafetykorea.go.kr/api/newDatasetDetail.do?svc_no=COOKRCP01"
+    }
+   ]
+  }
+ ]
+}

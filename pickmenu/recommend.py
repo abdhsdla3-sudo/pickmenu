@@ -164,7 +164,9 @@ def less_greasy(menu: dict[str, Any], rich_name: bool) -> tuple[float, str]:
     fat = reference_fat(menu["nutrition"])
     method, source = cooking_signal(menu)
     if fat is None:
-        score = 0.0 if rich_name and not COOKING_EFFECT.get(method) else 0.35
+        # 이름에 기름진 단서가 있으면 찌기·삶기·데치기로 확인될 때만 기본점을 준다. 튀기기로 확인되면
+        # 조리법을 모를 때보다 높아지면 안 된다(1.11.0까지는 튀기기에도 기본점 0.35를 줬다).
+        score = 0.0 if rich_name and COOKING_EFFECT.get(method, 0) <= 0 else 0.35
         note = "지방 참고값 없음"
     else:
         # 20g은 점수 환산 범위다. 비교 가능한 수치가 있으면 이 점수가 우선한다.
