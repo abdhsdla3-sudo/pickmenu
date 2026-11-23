@@ -32,6 +32,26 @@ class LLMTest(unittest.TestCase):
                 for field, value in expected.items():
                     self.assertEqual(getattr(profile, field), value)
 
+    def test_final_fixes_for_switches_stomach_and_closing(self):
+        foods = {"떡볶이": {"분식"}, "죽": {"죽"}, "신라면": {"분식"}, "우동": {"일식"},
+                 "족발": {"족발·보쌈"}, "불족발": {"족발·보쌈"}, "국밥": {"국밥·해장국"}}
+        cases = [
+            (["떡볶이 추천해줘", "아니 죽로 바꿔줘"], {"query": "떡볶이"}, {"query": "죽"}),
+            (["어제 많이 먹었더니 속이 안 좋아"], {}, {"spice": "mild", "taste": "plain", "meal_category": ""}),
+            (["맵찔이라 신라면도 매워"], {"query": "신라면"}, {"query": "", "spice": "mild"}),
+            (["단 우동!"], {"query": "우동"}, {"query": "우동", "taste": "sweet"}),
+            (["족발 먹고 싶어", "매운 족발로"], {"query": "족발", "spice": "hot"}, {"query": "불족발"}),
+            (["엄청 매운 족발 먹고 싶어"], {"query": "족발", "spice": "hot"}, {"query": "족발"}),
+            (["팔달구서 국물 뭐먹음?"], {"soup": "yes"}, {"soup": "yes"}),
+            (["국밥 추천", "아 정했어요, 메뉴 추천은 여기서 그만할게요"], {"query": "국밥"}, {"done": True}),
+            (["국밥 추천해줘"], {"query": "국밥"}, {"done": False}),
+        ]
+        for messages, output, expected in cases:
+            with self.subTest(messages=messages), patch.object(llm, "generate", return_value=output):
+                profile, _ = llm.conditions({"messages": messages, "profile": {}}, [], foods)
+                for field, value in expected.items():
+                    self.assertEqual(getattr(profile, field), value)
+
     def test_goal_note_uses_serving_estimate_only_when_known(self):
         family = {"name": "육회", "best": {"serving_estimate": {"grams": 150, "energy_kcal": 210, "protein_g": 30.0}}}
         light = llm.Profile.parse({"goal": "light"}, [])

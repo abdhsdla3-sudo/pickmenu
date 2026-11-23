@@ -8,7 +8,7 @@ import re
 import threading
 from collections import Counter
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from difflib import SequenceMatcher
 from typing import Any
 from urllib.error import URLError
@@ -171,11 +171,106 @@ def resolve_story(history: list[str], profile: Profile, categories: list[str],
     mentions = ground_mentions(result, story)
     resolve_menus(values, result, story, categories, mentions)
     resolve_exclusions(values, story, categories, result)
+    final_fixes(values, story)
     apply_explicit(values, history)
     try:
-        return Profile.parse(values, categories)
+        parsed = Profile.parse(values, categories)
     except ValueError as error:
         raise Unavailable(UNCLEAR) from error
+    return replace(parsed, done=True) if conversation_done(history, story) else parsed
+
+
+# 1.13.1 마지막 보정. 앞 단계 결과를 문장의 분명한 단서로만 고친다.
+WANT_AFTER = re.compile(r"\s*(?:ㄱㄱ|고고|콜(?![가-힣])|먹고\s*싶|땡|당기)")
+STOMACH = re.compile(r"속(?:이)?\s*(?:쓰려|쓰리|안\s*좋|불편|더부룩)|더부룩|속\s*편한|소화(?:가)?\s*(?:안\s*되|잘\s*안)")
+HANGOVER = re.compile(r"해장|숙취|술\s*(?:마셔|먹어|마신|먹은|마셨)")
+DENTAL = re.compile(r"(?<![가-힣])이가?\s*(?:안\s*좋|아프|약하|불편)|씹기\s*(?:가\s*)?(?:힘들|어려|불편)|틀니|치아")
+NO_BELLYACHE = re.compile(r"배\s*(?:가\s*)?아프면\s*안|배탈\s*(?:나면|날까)|속\s*(?:버리면|탈\s*나면)\s*안")
+SWITCH = re.compile(r"([가-힣]+?)\s*(?:으로|로)\s*(?:바꿔|변경|고쳐|할래|갈래|해\s*줘|해줘|주세요)")
+SHORT_PICK = re.compile(r"(?:그냥|아니|아냐|차라리)\s*([가-힣]{2,})(?=\s*(?:로|으로|요|$|[!?.,~ㅋㅎ]))")
+THIS_EATEN = re.compile(r"(?:이건|이거|그건|그거)\s*(?:\S+\s*){0,3}?(?:먹었|먹음|먹고\s*왔)")
+MEAT_WANT = re.compile(r"(?<![가-힣])(소고기|돼지고기|닭고기|오리고기|양고기)\s*(?:이|가|를|을|로|으로)?\s*"
+                       r"(?:먹고\s*싶|땡|당기|먹을래|추천|ㄱㄱ)")
+MALA = re.compile(r"(?<![가-힣])마라(?!탕|샹궈|샹|볶음|전골)")
+GRASS_ONLY = re.compile(r"풀만\s*(?:있|나오|든|가득)|풀\s*(?:떼기|때기)")
+DONE = re.compile(r"추천\s*(?:은|는)?\s*(?:여기서|이제)?\s*(?:그만|됐|끝)|(?<![가-힣])(?:메뉴\s*)?(?:다\s*)?정했어(?:요)?(?![가-힣?])")
+
+
+def final_fixes(values: dict[str, Any], story: Story) -> None:
+    """앞 단계가 놓친 분명한 표현을 고친다(1.13.1, 회귀 시험 남은 오답 정리)."""
+    history, current, foods = story.history, story.current, story.foods
+    last = history[-1]
+    food_names = list(foods)
+    taste = [item for item in values.get("taste", "").split(",") if item]
+    # 속이 안 좋다·더부룩하다: 해장이 아니면 국밥으로 고정하지 않고 안 매운·담백한 쪽으로 본다.
+    if STOMACH.search(story.cue_text) and not HANGOVER.search(story.text):
+        if not values.get("spice"):
+            values["spice"] = "mild"
+        if not any(item.lstrip("-") == "plain" for item in taste):
+            taste.append("plain")
+    # 이가 안 좋다·씹기 힘들다: 죽으로 찾는다(부드러운 맛 짐작보다 분명하다).
+    if DENTAL.search(story.text) and not values.get("query") and "죽" in foods:
+        values["meal_category"] = "죽"
+    # "매운 거 / 아 나 내일 시험이라 배 아프면 안 돼": 뒤에 한 말이 맵기를 바꾼다.
+    if NO_BELLYACHE.search(last):
+        values["spice"] = "mild"
+    values["taste"] = ",".join(dict.fromkeys(taste))
+    avoided = [name for name in values.get("avoid_menus", "").split(",") if name]
+    # "돈까쓰 땡기는디 / 아 이건 점심에 먹었다 비빔밥으로 고쳐줘": 앞 말의 메뉴를 뺄 메뉴로 돌린다.
+    if len(history) > 1 and THIS_EATEN.search(last):
+        for message in history[:-1]:
+            for food in food_mentions(message, food_names)[0]:
+                if food not in avoided:
+                    avoided.append(food)
+                if values.get("query") == food:
+                    values["query"] = ""
+    # "아니 죽로 바꿔줘", "비빔밥으로 고쳐줘": 마지막 말에서 바꾼 메뉴(한 글자 메뉴 포함)를 검색어로 쓴다.
+    switched = [match.group(1) for match in SWITCH.finditer(last) if match.group(1) in foods]
+    if switched:
+        values["query"] = switched[-1]
+        avoided = [name for name in avoided if name != switched[-1]]
+    # "치킨 추천 / 아 그냥 너겟": 메뉴 이름의 끝부분만 말했고 그런 메뉴가 하나뿐이면 그 메뉴다.
+    elif len(history) > 1 and (short := SHORT_PICK.search(last)) and short.group(1) not in foods:
+        ends = [food for food in foods if food.endswith(short.group(1)) and food != short.group(1)]
+        if len(ends) == 1:
+            values["query"] = ends[0]
+    query = values.get("query", "")
+    # "족발 먹고 싶어 / 매운 족발로": 매운 변형(불족발)이 대표 메뉴로 있으면 그것을 찾는다.
+    if query and values.get("spice") == "hot" and f"불{query}" in foods and re.search(
+            rf"(?:매운|매콤한|맵게|매콤)\s*{re.escape(query)}\s*(?:으로|로)", current):
+        values["query"] = query = f"불{query}"
+    # "마라 땡기는 날": 마라는 맛(매운맛)이지 마라탕만 뜻하지 않는다.
+    if query.startswith("마라") and query not in current and MALA.search(current):
+        values["query"] = query = ""
+    # "해산물 말고 소고기 먹고 싶어": 고기 종류를 원하면 그 이름으로 찾는다.
+    if not query and (meat := MEAT_WANT.search(current)):
+        values["query"] = query = meat.group(1)
+    # "맵찔이라 신라면도 매워": 맵다고 한 메뉴는 원하는 메뉴가 아니다.
+    if query and re.search(rf"{re.escape(query)}\s*(?:도|는|은)\s*(?:너무\s*)?(?:매워|맵더라|맵다|맵고)", current):
+        values["query"] = query = ""
+    # "국밥 / 돼지 말고 순대로": 꾸밈말 메뉴를 고른 것이지 재료(돼지)를 빼는 말이 아니다.
+    excluded = [term for term in values.get("exclude", "").split(",") if term]
+    excluded = [term for term in excluded
+                if not (query and any(name.startswith(term) and name != term and query.endswith(name[len(term):])
+                                      for name in avoided)
+                        and not re.search(rf"{re.escape(term)}\s*(?:말고|빼고)\s*(?:소|돼지|닭|오리|양)(?:고기)?", current))]
+    # "너무 풀만 있는 건 싫어": 재료가 아니라 샐러드류를 뜻한다.
+    if GRASS_ONLY.search(story.text):
+        excluded = [term for term in excluded if term not in ("풀", "풀만")]
+        avoided.extend(name for name in ("샐러드", "포케") if name in foods and name not in avoided)
+    # "샐러드 말고": 샐러드는 메뉴 이름에 붙어 여러 메뉴에 들어 있어(치킨샐러드 등) 재료처럼도 뺀다.
+    if ("샐러드" in avoided and "샐러드" not in excluded and "샐러드" != query
+            and re.search(r"샐러드\s*(?:은|는|도)?\s*(?:말고|빼|싫|별로|ㄴㄴ|제외)", current)):
+        excluded.append("샐러드")
+    values["exclude"] = ",".join(excluded)
+    values["avoid_menus"] = ",".join(avoided)
+
+
+def conversation_done(history: list[str], story: Story) -> bool:
+    """마지막 말이 추천을 끝내는 말이고 새 메뉴·요청이 없다("아 정했어요, 메뉴 추천은 여기서 그만할게요")."""
+    last = history[-1]
+    return bool(DONE.search(last) and not MEAL_REQUEST.search(last)
+                and not food_mentions(last, list(story.foods))[0])
 
 
 def read_history(payload: Any) -> list[str]:
@@ -357,6 +452,12 @@ def ground_mentions(result: dict[str, Any], story: Story) -> list[Mention]:
             role = "want"
         elif role == "eaten" and not span and any(s < end <= e for s, e in story.others):
             role = "other"  # 남의 몫·남은 음식 절이다("동생은 짜장면 먹는대"). Story.others(1.9.2)와 같은 기준.
+        elif role in ("leftover", "other") and span and not again:
+            role = "eaten"  # 먹은 절 속 메뉴("아까 김밥 먹고 나왔는데")
+        elif role == "avoid" and WANT_AFTER.match(text[end:]):
+            role = "want"  # "탕수육 ㄴㄴ 돈가스 ㄱㄱ"
+        elif role == "want" and any(s < end <= e for s, e in story.others):
+            role = "other"  # "사진 속 메뉴는 돈가스"
         old = grounded.get(food)
         if old is not None and old.end == end and old.role != role:
             # 같은 자리를 서로 다른 역할로 표시했으면 믿지 않는다(정규식 결과를 따른다).
@@ -666,7 +767,7 @@ CATEGORY_WORDS = {"국밥·해장국": ("국밥", "해장국", "해장"), "닭�
                   "찌개·탕": ("찌개", "탕"), "면": ("면", "국수"), "죽": ("죽",)}
 # AI가 음식군을 넘기지 않았을 때만 쓰는 분명한 단서(메뉴 이름을 지운 문장에서 찾는다).
 CATEGORY_HINTS = {"닭요리": r"닭\s*요리", "면": r"(?<![가-힣])국수|면\s*요리",
-                  "국밥·해장국": r"해장|숙취|술\s*(?:마셔|먹어|마신|먹은)|속(?:이)?\s*(?:쓰려|쓰리|안\s*좋)",
+                  "국밥·해장국": r"해장|숙취|술\s*(?:마셔|먹어|마신|먹은)",
                   "샐러드·건강식": r"건강식",
                   "중식": r"(?<![가-힣])중식(?![^,.!?\n]{0,8}?(?:말고|빼|싫|별로))",
                   "해산물": r"해산물(?![^,.!?\n]{0,8}?(?:말고|빼|싫|별로|알레|알러))",
@@ -674,23 +775,24 @@ CATEGORY_HINTS = {"닭요리": r"닭\s*요리", "면": r"(?<![가-힣])국수|�
                   "고기": r"(?<![가-힣])고기(?![^,.!?\n]{0,12}?(?:말고|빼|싫|별로|안\s*(?:먹|들어)|못\s*먹|없이|없는|제외))",
                   "전·부침": r"부침|(?<![가-힣])전\s*(?:요리|생각|땡|이나|에\s*막걸리)"}
 ALLERGY_CUE = r"알레르기|알러지|앨러지"
-EXCLUDE_CUE = r"싫|빼|말고|안\s*들어|못\s*먹|안\s*먹|별로|제외|없이|넣지|피하고\s*싶|극혐|극불호|ㄴㄴ|노노|패스"
+EXCLUDE_CUE = r"싫|빼|말고|안\s*들어|못\s*먹|안\s*먹|별로|제외|없이|넣지|피하고\s*싶|극혐|극불호|ㄴㄴ|노노|패스|사양"
 # '못 먹어'는 알레르기일 수도 있지만 이 말들은 분명한 기피다(AI가 알레르기로 넘겨도 기피로 둔다).
-DISLIKE_CUE = r"싫|빼|말고|안\s*들어|별로|제외|없이|넣지|극혐|극불호|ㄴㄴ|노노|패스"
+DISLIKE_CUE = r"싫|빼|말고|안\s*들어|별로|제외|없이|넣지|극혐|극불호|ㄴㄴ|노노|패스|사양"
 # 재료 뒤의 단서는 같은 마디 안에서만 본다("라면 먹고 싶은데 가지 싫어"의 '싫어'는 라면이 아니라 가지에 걸린다).
 CLAUSE_END = r"[,.!?\n]|[은는인]데|지만|하고\s|고\s"
 # 알레르기·기피로 자주 말하는 재료. 모델이 누락해도 문장에서 직접 찾는다.
 COMMON_INGREDIENTS = {"해물", "해산물", "게", "꽃게", "오이", "가지", "버섯", "피망", "파프리카", "당근", "고수", "양파", "파",
                       "대파", "마늘", "생강", "셀러리", "토마토", "생선", "고등어", "연어", "참치", "굴", "조개", "홍합", "전복",
                       "오징어", "문어", "낙지", "견과", "호두", "아몬드", "잣", "메밀", "복숭아", "키위", "참깨", "깨", "내장",
-                      "곱창", "닭고기", "소고기", "양고기", "순대", "날것", "회", "고기"}
+                      "곱창", "닭고기", "소고기", "양고기", "순대", "날것", "회", "고기", "육수", "닭"}
 # 모델이 이전 대화에서 확인한 제한을 누락해도 문장에 명시한 제한은 이어간다.
 KNOWN_INGREDIENTS = "|".join(sorted({word for aliases in ALIASES for word in aliases} | COMMON_INGREDIENTS,
                                     key=lambda word: (-len(word), word)))
 EXPLICIT_INGREDIENT = {
     "allergy": re.compile(rf"(?<![가-힣])({KNOWN_INGREDIENTS})(?:에|은|는|이|가)?\s*(?:{ALLERGY_CUE})"),
     "exclude": re.compile(rf"(?<![가-힣])({KNOWN_INGREDIENTS})(?:은|는|이|가|을|를|도|랑|이랑)?\s*"
-                          r"(?:못\s*먹|빼|제외|피하고\s*싶|싫|별로|안\s*들어|말고|없이|넣지|극혐|극불호|ㄴㄴ|노노|패스)"),
+                          r"(?:(?:이|가)?\s*(?:들어간|들어\s*있는|든)\s*(?:건|거|것|음식|메뉴)?\s*(?:은|는|도)?\s*)?"
+                          r"(?:못\s*먹|빼|제외|피하고\s*싶|싫|별로|안\s*들어|말고|없이|넣지|극혐|극불호|ㄴㄴ|노노|패스|사양)"),
 }
 # 영어로 말한 알레르기·기피 재료("I'm allergic to peanuts", "no shrimp please"). 재료 이름이 한글이 아니라
 # AI가 한글로 넘겨도 문장 확인(ingredients)에서 빠지므로 따로 찾는다. 단어 경계로만 맞춘다(eggplant의 egg 제외).
@@ -755,7 +857,7 @@ FOOD_NEGATIVE = re.compile(r"^\s*(?:류|종류)?\s*(?:까지는|까지도|까지
                            r"(?:(?:이|가)?\s*(?:들어간|들어\s*있는|든)\s*(?:건|거|것|메뉴|음식)?\s*(?:은|는|도)?\s*)?"
                            r"(?:(?:아예|완전|진짜|정말|이번엔|이번에는|오늘은|좀)\s*)?"
                            r"(?:무거워서\s*(?:이번에는\s*|이번엔\s*|오늘은\s*)?(?=빼))?"
-                           r"(?:말고|빼|싫|별로|말구|아니|안\s*먹|못\s*먹|먹지\s*말|질려|물려|ㄴㄴ|노노|패스|극혐|극불호|사양|제외"
+                           r"(?:(?:너무\s*)?(?:매워|맵더라|맵다)(?!도|서\s*좋)|말고|빼|싫|별로|말구|아니|안\s*먹|못\s*먹|먹지\s*말|질려|물려|ㄴㄴ|노노|패스|극혐|극불호|사양|제외"
                            r"|쉬는|ㄴ(?![가-힣ㄱ-ㅎ])|(?i:pass)\b|담에|다음에)")
 # 음식군·음식 묶음 이름 뒤의 부정("중식 말고", "면은 빼줘", "밀가루 음식 말고", "튀김류까지는 안 먹고", "닭 없이")
 GROUP_NEGATIVE = (r"(?:\s*(?:류|종류|음식|요리|들어간\s*(?:거|건|것|음식)?|든\s*(?:거|건|것)))?\s*"
@@ -853,20 +955,21 @@ def without_foods(text: str, foods: dict[str, set[str]]) -> str:
 MEAL_CLAUSE_BREAK = re.compile(
     r"[.!?;,\n]+|(?<=먹었고)\s+|(?<=먹었는데)\s+|(?<=먹었지만)\s+|(?<=먹었더니)\s+|(?<=먹었으니까)\s+"
     r"|(?<=먹었으니)\s+|(?<=먹었길래)\s+|(?<=먹어서)\s+|(?<=나왔는데)\s+|(?<=때웠고)\s+|(?<=때웠는데)\s+|(?<=클리어)[^\s가-힣A-Za-z0-9]*\s+"
-    r"|(?<=먹었어)\s+(?=오늘|이번|저녁|지금|내일)|(?<=먹었음)\s+(?=오늘|이번|저녁|지금|내일)|(?<=먹음)\s+(?=오늘|이번|저녁|지금|내일)"
+    r"|(?<=먹었다)[ㅋㅎ~!]*\s+|(?<=먹었어)\s+(?=오늘|이번|저녁|지금|내일)|(?<=먹었음)\s+(?=오늘|이번|저녁|지금|내일)|(?<=먹음)\s+(?=오늘|이번|저녁|지금|내일)"
 )
 # '먹어서'는 때를 함께 말했을 때만 먹은 것으로 본다("점심에 치킨 먹어서", "든든하게 먹어서 힘내고 싶어"는 아니다).
 PAST_MEAL = re.compile(r"먹었|먹은\s|먹고\s*왔|먹어\s*봤|먹고\s*나서|(?<!못)(?<!못\s)(?<!안)(?<!안\s)먹음(?:\s|$)|마셨|식사했|시켜\s*먹었"
                        r"|먹고\s*나왔|때웠|클리어|먹으려다가?\s*말았"
                        r"|(?:아침|점심|저녁|어제|아까|낮|방금|그제|저번|지난|오전)\S*\s.*먹어서")
 PAST_MEAL_SHORT = re.compile(r"\s*(?:어제|그제|지난번|아까|방금)(?:는|도|에)?\s+\S+\s*")
-MEAL_REQUEST = re.compile(r"먹고\s*싶|먹을\s*래|추천해|추천받고\s*싶|골라|먹을까|먹을게")
+MEAL_REQUEST = re.compile(r"먹고\s*싶|먹을\s*래|추천해|추천받고\s*싶|골라|먹을까|먹을게|뭐\s*먹(?:음|지|을|어)")
 
 
 # 남이 시킨 메뉴·사진·후기 속 메뉴·남은 음식은 지금 먹고 싶은 메뉴가 아니다
 # ("친구는 치킨 시켰는데 난 가볍게", "사진은 돈가스고 오늘은 라이트하게", "냉장고에 치킨이 남아 있지만").
 # 그 절 안에서 먹고 싶다고 하면("친구가 추천한 떡볶이 먹고 싶어") 그대로 둔다. 뺄 메뉴로도 보지 않는다.
-NOT_MINE = re.compile(r"(?:친구|동행|동료|일행|남친|여친|남편|아내|엄마|아빠|언니|오빠|누나|동생|팀원|가족)(?:들)?"
+NOT_MINE = re.compile(r"(?:친구|동행|동료|일행|남친|여친|남편|아내|엄마|아빠|언니|오빠|누나|동생|팀원|가족)"
+                      r"(?!들?(?:이랑|랑|하고|와\s*같이|과\s*같이|와\s*함께|과\s*함께))(?:들)?"
                       r"(?:픽|은|는|이|가|만|도|랑)?|사진|후기|냉장고|남은|남아\s*있|주문해\s*둔")
 NOT_MINE_BREAK = re.compile(MEAL_CLAUSE_BREAK.pattern + r"|(?<=는데)\s+|(?<=지만)\s+|(?<=한데)\s+|(?<=는디)\s+"
                             r"|(?<=[고])\s+(?=(?:난|나는|저는|전|제|오늘|이번|저녁|점심|이제)(?:\s|은|는|엔|에))")
@@ -993,14 +1096,15 @@ def object_particle(word: str) -> str:
 
 # 맛 표현(키는 recommend.TASTES). 맵기는 SUPPORT의 spice가 맡는다.
 TASTE_WORDS = {
-    "sweet": r"맵단|달달|달콤|달짝|달게|달고|(?<![가-힣])단\s*(?:거|것|건|게|음식|맛|걸)|(?<![가-힣])단고(?=\s)|단짠|들큰",
+    "sweet": r"맵단|달달|달콤|달짝|달게|달고|(?<![가-힣])단\s*(?:거|것|건|게|음식|맛|걸)|(?<![가-힣])단고(?=\s)|단짠|들큰"
+             r"|(?<![가-힣])단\s+(?!하나|한\s|한번|둘|몇|하루)(?=[가-힣]|[!~.]|$)",
     "salty": r"짠|짜고|짜게|짭짤|짭조름|단짠|간이\s*(?:센|세|쎈|강한)|간간",
     "sour": r"새콤|새큼|시큼|상큼|신맛|시큰|새콤달콤",
     "nutty": r"고소",
     "plain": r"담백|깔끔|슴슴|심심|삼삼|자극(?:적이지|\s*없|\s+적|적지\s*않)|싱거",
     "rich": r"느끼|기름진|기름지|헤비|꾸덕|진한|진하게|크리미|묵직",
-    "crispy": r"바삭|튀긴|튀김|크리스피|바사삭|겉바",
-    "cool": r"시원",
+    "crispy": r"바삭|튀긴|튀김|크리스피|바사삭|겉바|(?i:crispy|crunchy)",
+    "cool": r"시원|차가운|차갑|(?<![가-힣])찬\s*(?:거|것|건|음식|게)",
     "chewy": r"쫄깃|쫀득|쫀쫀|탱글",
     "soft": r"부드러|촉촉|폭신|말랑|연한",
 }
@@ -1281,6 +1385,8 @@ def reply(result: dict[str, Any], history: list[str] | None = None, *, taste: st
     understood를 따로 주지 않았으면 새로 알아들은 조건이 있는지로 정한다.
     사실(메뉴·조건·뺀 조건·주의 문구)은 그대로 두고 첫마디·문장 틀·되묻는 말만 상황에 따라 바꾼다.
     """
+    if profile is not None and profile.done:
+        return "알겠어요. 고르신 메뉴로 맛있게 드세요. 다시 추천이 필요하면 언제든 말씀해 주세요."
     note = taste_note(history or [], result, taste=taste)
     families = result.get("families", [])[:5]
     if not families:

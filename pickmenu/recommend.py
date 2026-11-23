@@ -34,6 +34,15 @@ ALLERGEN_DISHES = {
     "달걀": r"오므라이스|계란|달걀|에그|마요|카스테라|빵|케이크",
     "새우": r"짬뽕|해물|팟타이|똠얌|새우",
     "대두": r"된장|청국장|간장|두부|콩",
+    # 1.13.1: 이름에 재료가 없어도 그 재료가 주재료인 음식(회·초밥·게장·팟타이 등)을 뺀다.
+    "생선": r"(?<!육)회(?!오리|식|전)|초밥|스시|사시미|연어|참치|광어|우럭|고등어|갈치|삼치|꽁치|조기|명태|북어|북엇|황태|"
+          r"코다리|동태|대구|아구|아귀|알탕|알곤이|매운탕|생선|피시|장어|멸치|어묵|오뎅|물회|회덮밥|마키|롤",
+    "갑각류": r"새우|꽃게|대게|게살|게장|킹크랩|크랩|랍스터|가재|해물|짬뽕|팟타이|똠얌",
+    "조개": r"조개|바지락|홍합|굴|꼬막|전복|가리비|해물|짬뽕",
+    "오징어": r"오징어|오삼|해물|짬뽕",
+    "땅콩": r"땅콩|피넛|팟타이|탄탄|사테",
+    "견과": r"견과|호두|아몬드|땅콩|피넛|잣|캐슈|팟타이|탄탄",
+    "메밀": r"메밀|소바|막국수|냉면",
 }
 # 맛 선호. 메뉴 자료에 맛 정보가 없어 메뉴 이름·분류·구성 음식 이름의 단서로 짐작한다(맵기·국물은 따로 있다).
 # 키: (화면 이름, 메뉴 단서). 단서가 없는 메뉴는 '정보 부족'으로 점수만 낮춘다.
@@ -74,7 +83,8 @@ STORY_GROUPS: dict[str, dict[str, list[str]]] = {
     if not name.startswith("_")}
 ALIASES = (("계란", "달걀", "난류", "에그"), ("우유", "유제품", "치즈", "버터", "유청"),
            ("밀", "밀가루", "밀글루텐"), ("땅콩", "피넛"), ("돼지", "돼지고기", "돈육"),
-           ("새우", "쉬림프"), ("대두", "콩", "두부", "두유"))
+           ("새우", "쉬림프"), ("대두", "콩", "두부", "두유"), ("생선", "물고기", "어류", "생선류"),
+           ("갑각류", "갑각"), ("조개", "조개류", "패류"), ("견과", "견과류", "너트"))
 
 
 def compact(value: str) -> str:
@@ -99,12 +109,14 @@ class Profile:
     # 뺄 음식군(쉼표 구분, 목록 값)과 뺄 음식 묶음(STORY_GROUPS 이름). 이야기 추천에서 "중식 말고", "면 빼 줘"로 정한다.
     exclude_categories: str = ""
     exclude_groups: str = ""
+    # 이야기에서 "추천은 여기서 그만"처럼 대화를 끝냈다(화면 입력으로는 정하지 않는다).
+    done: bool = False
 
     @classmethod
     def parse(cls, data: Any, categories: list[str]) -> "Profile":
         if not isinstance(data, dict):
             raise ValueError("입력 형식을 확인해 주세요.")
-        values = {}
+        values: dict[str, Any] = {}
         enums = {"diet": {"general", "vegetarian", "vegan", "meat"}, "goal": set(GOALS),
                  "spice": {"", "mild", "hot"}, "soup": {"", "yes", "no"},
                  "category": {"", *categories}, "meal_category": {"", *categories}, "district": DISTRICTS}
@@ -777,13 +789,16 @@ def recommend_relaxed(menus: list[dict[str, Any]], profile: Profile, recent: Seq
 
     result = recommend(menus, profile, recent, conversation=conversation)
     result["relaxed"] = []
+    if profile.done:
+        return {**result, "items": [], "families": [], "eligible": 0}, profile
     if good(result):
         return result, profile
     fields = [(field, label) for field, label in RELAXABLE
               if getattr(profile, field) and not (field == "soup" and conversation)]
     for size in range(1, len(fields) + 1):
         for chosen in combinations(fields, size):
-            current = replace(profile, **{field: "" for field, _ in chosen})
+            blank: dict[str, Any] = {field: "" for field, _ in chosen}
+            current = replace(profile, **blank)
             retry = recommend(menus, current, recent, conversation=conversation)
             if good(retry):
                 retry["relaxed"] = [label for _, label in chosen]
@@ -792,6 +807,14 @@ def recommend_relaxed(menus: list[dict[str, Any]], profile: Profile, recent: Seq
     # (짬뽕 + 국물 없음 → 신짬뽕죽·짬뽕 파스타)만 남으면, 엉뚱한 음식 대신 맞는 메뉴가 없다고 알린다.
     if conversation and result["families"] and not good(result):
         return {**result, "items": [], "families": [], "eligible": 0}, profile
+    # 채식·비건인데 고기 음식군을 말해 0개면("채식인데 오늘은 고기 땡겨") 음식군을 빼고 찾고 그렇게 알린다.
+    if conversation and not result["families"] and profile.diet in {"vegan", "vegetarian"} and profile.meal_category:
+        current = replace(profile, meal_category="", category="" if profile.category == profile.meal_category
+                          else profile.category)
+        retry = recommend(menus, current, recent, conversation=conversation)
+        if retry["families"]:
+            retry["relaxed"] = [f"음식군({profile.meal_category})"]
+            return retry, current
     # 이야기 추천에서 대표 메뉴 이름이 아닌 검색어("치팅", "적당히 든든한")만으로 0개가 되면 검색어를 뺀다.
     if conversation and query and not result["families"] and not any(
             query == compact(m["components"][0]) for m in menus):

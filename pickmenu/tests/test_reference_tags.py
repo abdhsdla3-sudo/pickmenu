@@ -1,4 +1,5 @@
 import unittest
+from dataclasses import replace
 from typing import Any
 from unittest.mock import patch
 
@@ -221,6 +222,18 @@ class ReferenceTagTest(unittest.TestCase):
         story, _ = recommend_relaxed(menus, Profile.parse({"query": "짬뽕", "soup": "no"}, categories), [],
                                      conversation=True)
         self.assertEqual(story["families"], [])
+
+    def test_fish_allergy_removes_raw_fish_dishes_and_done_stops(self):
+        from recommend import recommend_relaxed
+        menus = apply_reference([menu("광어회", "일식", soup="no", menu_id="MN_1", food="회"),
+                                 menu("연어초밥", "일식", soup="no", menu_id="MN_2", food="초밥"),
+                                 menu("돈가스", "일식", soup="no", menu_id="MN_3")], {})
+        categories = ["일식"]
+        names = [item["name"] for item in recommend(menus, Profile.parse({"allergy": "생선"}, categories))["items"]]
+        self.assertEqual(names, ["돈가스"])  # 이름에 '생선'이 없어도 회·초밥은 뺀다
+        done = replace(Profile.parse({}, categories), done=True)
+        result, _ = recommend_relaxed(menus, done, [], conversation=True)
+        self.assertEqual(result["families"], [])
 
     def test_reference_data_backs_off_after_failure(self):
         with patch.dict(menu_reco._failed, {"at": float("-inf")}), \
