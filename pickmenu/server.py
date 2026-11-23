@@ -28,6 +28,7 @@ from recommend import (
     apply_reference,
     recommend_relaxed,
     reference_tags,
+    serving_estimate,
 )
 
 CATALOG = LOCAL / "catalog.sqlite3"
@@ -123,7 +124,11 @@ def foods(menus: list[dict[str, Any]]) -> dict[str, set[str]]:
 
 
 def public_menu(menu: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in menu.items() if key not in {"regions", "mapping_note"}}
+    result = {key: value for key, value in menu.items() if key not in {"regions", "mapping_note"}}
+    # 카드·상세가 추천 점수와 같은 추정치를 보이게 서버에서 한 번 계산한다.
+    if (estimate := serving_estimate(menu)) is not None:
+        result["serving_estimate"] = estimate
+    return result
 
 
 def guest_allowed() -> bool:

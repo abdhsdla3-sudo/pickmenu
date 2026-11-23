@@ -288,15 +288,26 @@ function reviewedSummary(refs) {
   return `${label} · ${ref.basis}${ref.unit}당 ${amount(ref.values[0])} kcal · 단백질 ${amount(ref.values[1])} g`;
 }
 
+// 서버가 100g당 값 × 조사 제공량으로 낸 한 그릇 추정치(serving_estimate). 매장 1인분이 아니다.
+function servingLabel(estimate) {
+  return estimate.basis_label;
+}
+
+function estimateSummary(menu) {
+  const estimate = menu.serving_estimate;
+  return estimate ? ` · ${servingLabel(estimate)} ${amount(estimate.grams)}g이면 약 ${amount(estimate.energy_kcal)} kcal(추정)` : "";
+}
+
 function nutritionSummary(menu) {
   if (!menu.nutrition) {
     const reviewed = (menu.references || []).filter(ref => ref.kind);
-    if (reviewed.length) return reviewedSummary(reviewed);
+    if (reviewed.length) return reviewedSummary(reviewed) + estimateSummary(menu);
     return menu.references.length ? "구성 음식의 100g 참고값 · 메뉴 전체값 미확인"
       : "일반 메뉴 영양정보 없음";
   }
   const ref = menu.nutrition;
-  return `${ref.name} 100g 참고 · ${ref.values[0]} kcal · 단백질 ${ref.values[1]} g · ${ref.source} · 자동 연결`;
+  return `${ref.name} 100g 참고 · ${ref.values[0]} kcal · 단백질 ${ref.values[1]} g · ${ref.source} · 자동 연결`
+    + estimateSummary(menu);
 }
 
 function showReference(parent, ref) {
@@ -390,10 +401,23 @@ async function openDetail(item, button, store) {
     } else if (!item.franchise_nutrition && !item.franchise_menu_options?.length) {
       body.append(node("p", "일반 메뉴 영양정보 없음", "muted"));
     }
+    if (menu.serving_estimate) {
+      const estimate = menu.serving_estimate;
+      const parts = [`약 ${amount(estimate.energy_kcal)} kcal`];
+      if (estimate.protein_g !== null) parts.push(`단백질 약 ${amount(estimate.protein_g)} g`);
+      if (estimate.fat_g !== null) parts.push(`지방 약 ${amount(estimate.fat_g)} g`);
+      if (estimate.sodium_mg !== null) parts.push(`나트륨 약 ${amount(estimate.sodium_mg)} mg`);
+      body.append(node("p", `한 그릇 추정 (${servingLabel(estimate)} ${amount(estimate.grams)}g 기준): ${parts.join(" · ")}`,
+        "serving-estimate"));
+      body.append(node("p", `${estimate.base_name} 100g당 값에 ${amount(estimate.grams)}g을 곱한 추정치예요. `
+        + "이 매장의 실제 1인분과 다를 수 있어요. '가볍게' 추천은 이 양의 열량·지방·나트륨과 조리법(튀김 등)으로 계산해요.",
+        "muted"));
+    }
     for (const serving of menu.survey_servings || []) {
       const nutrients = Object.entries(serving.nutrients || {})
         .map(([key, value]) => `${key.replace(/_.*$/, "")} ${amount(value)}${key.split("_")[1] || ""}`);
-      body.append(node("p", `출처가 제시한 조사 제공량: ${serving.food} ${amount(serving.grams)}g`
+      const label = serving.stated_one_serving ? "식약처가 1인분으로 안내한 양" : "출처가 제시한 조사 제공량";
+      body.append(node("p", `${label}: ${serving.food} ${amount(serving.grams)}g`
         + `${nutrients.length ? ` (${nutrients.join(" · ")})` : ""} · ${serving.source}`
         + " · 자료집 조사 기준이며 이 매장의 1인분이 아니에요.", "muted survey-serving"));
     }

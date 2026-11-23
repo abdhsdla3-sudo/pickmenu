@@ -17,6 +17,8 @@ from recommend import (
     nutrition_score,
     recommend,
     recommend_relaxed,
+    serving_estimate,
+    survey_serving,
 )
 from server import catalog, categories, public_menu
 
@@ -195,6 +197,55 @@ class RulesTest(unittest.TestCase):
         serving = {**stew, "serving_reference": "1인분(400g)"}
         self.assertLess(nutrition_score(stew, "light"), nutrition_score(lighter, "light"))
         self.assertLess(nutrition_score(serving, "light"), nutrition_score(stew, "light"))
+
+    def test_survey_serving_estimate(self):
+        # 조사 제공량은 1회 참고량이 없을 때만 쓰고, 추정이라 최고 0.9점이다. 단백질·균형 점수는 그대로다.
+        stew = {"name": "김치찌개", "basis": 100, "unit": "g", "values": [61, 3.8, 3, 3.8, 491]}
+        self.assertEqual(nutrition_score(stew, "light", 400), nutrition_score({**stew, "serving_reference": "400g"},
+                                                                             "light"))
+        tiny = {**stew, "values": [20, 1, 1, 1, 10]}
+        self.assertEqual(nutrition_score(tiny, "light", 100), 0.9)
+        self.assertGreater(nutrition_score({**tiny, "serving_reference": "100g"}, "light", 600), 0.9)
+        self.assertEqual(nutrition_score(stew, "protein", 400), nutrition_score(stew, "protein"))
+        survey = [{"food": "김치찌개", "grams": 400.0, "stated_one_serving": True}]
+        menu = {**fixture("김치찌개", "MN_1", stew), "references": [stew], "survey_servings": survey}
+        estimate = serving_estimate(menu)
+        self.assertEqual((estimate["grams"], estimate["energy_kcal"], estimate["sodium_mg"], estimate["protein_g"],
+                          estimate["fat_g"], estimate["basis_label"]), (400.0, 244, 1964, 15.2, 15.2, "식약처 안내 1인분"))
+        self.assertEqual(public_menu(menu)["serving_estimate"], estimate)
+        # 100mL 값, 구성 음식 값만 있는 메뉴, 조사 제공량이 없는 메뉴는 추정하지 않는다.
+        ml = {**stew, "unit": "mL"}
+        self.assertIsNone(serving_estimate({**menu, "nutrition": ml, "references": [ml]}))
+        self.assertIsNone(serving_estimate({**menu, "nutrition": None, "references": [stew]}))
+        self.assertNotIn("serving_estimate", public_menu({**menu, "survey_servings": []}))
+        # 검수 연결 일반 음식 참고값(references, kind=general)은 표시용 추정에 쓴다.
+        reviewed = {**stew, "kind": "general"}
+        self.assertEqual(serving_estimate({**menu, "nutrition": None, "references": [reviewed]})["energy_kcal"], 244)
+        # 자료가 여럿이면 가운데 값, 모두 식약처 1인분 안내일 때만 1인분 안내로 표시한다.
+        two = [{"food": "곰탕", "grams": 700.0, "stated_one_serving": False}, survey[0]]
+        self.assertEqual(serving_estimate({**menu, "survey_servings": two})["grams"], 550.0)
+        self.assertEqual(serving_estimate({**menu, "survey_servings": two})["basis_label"], "자료집 조사 제공량")
+        # 조사 제공량이 없으면 카탈로그가 붙인 음식군 중앙값을 쓴다.
+        group = {**menu, "survey_servings": [], "group_serving": {"category": "찌개·탕", "soup": True, "grams": 500.0, "foods": 9}}
+        self.assertEqual((serving_estimate(group)["grams"], serving_estimate(group)["basis_label"]),
+                         (500.0, "찌개·탕 국물 요리 음식군 조사 제공량 중앙값"))
+        self.assertEqual(nutrition_score(stew, "light", 500), nutrition_score(stew, "light", *survey_serving(group)[:1]))
+        ranked = recommend([{**menu, "regions": {"수원시": {"reviews": 3, "stores": 1}}}],
+                           Profile.parse({"goal": "light"}, []))["items"][0]
+        self.assertIn("식약처 안내 1인분 400g으로 추정 · 매장 1인분 아님", ranked["reasons"][1])
+
+    def test_light_means_less_greasy_too(self):
+        # 가볍게: 양이 같아도 지방이 많거나 튀긴 음식은 낮고, 찌거나 삶은 음식은 높다.
+        lean = {"basis": 100, "unit": "g", "values": [100, 8, 10, 2, 300]}
+        greasy = {**lean, "values": [100, 8, 10, 9, 300]}
+        self.assertLess(nutrition_score(greasy, "light", 300), nutrition_score(lean, "light", 300))
+        fried = nutrition_score(lean, "light", 300, ("튀기기", "공개 참고 레시피"))
+        steamed = nutrition_score(lean, "light", 300, ("찌기", "공개 참고 레시피"))
+        guessed = nutrition_score(lean, "light", 300, ("튀기기", "대표 메뉴명 추정"))
+        self.assertLess(fried, guessed)
+        self.assertLess(guessed, nutrition_score(lean, "light", 300))
+        self.assertLess(nutrition_score(lean, "light", 300), steamed)
+        self.assertLessEqual(steamed, 0.9)  # 추정 양은 최고 0.9점
 
     def test_relax_impossible_combination(self):
         menus = [fixture("비빔밥", "MN_1")]  # 국물 없는 밥·덮밥

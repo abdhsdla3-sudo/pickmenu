@@ -189,7 +189,71 @@ def serving_grams(nutrition: dict[str, Any]) -> float | None:
     return float(grams[1]) if grams and float(grams[1]) > 0 else None
 
 
-def nutrition_score(nutrition: dict[str, Any] | None, goal: str) -> float | None:
+def survey_serving(menu: dict[str, Any]) -> tuple[float, str] | None:
+    """한 그릇 추정에 쓸 양(g)과 그 근거 이름. 어느 것도 이 매장의 1인분이 아니다.
+
+    1) 식약처 외식 자료집의 동명 음식 조사 제공량(식약처가 1인분이라고 밝혔으면 그렇게 부른다). 여럿이면 가운데 값.
+    2) 없으면 같은 음식군의 조사 제공량 중앙값(카탈로그 빌드 때 group_serving으로 붙인다).
+    """
+    items = [item for item in menu.get("survey_servings") or [] if item.get("grams")]
+    if items:
+        grams = sorted(float(item["grams"]) for item in items)
+        middle = len(grams) // 2
+        value = grams[middle] if len(grams) % 2 else (grams[middle - 1] + grams[middle]) / 2
+        stated = all(item.get("stated_one_serving") for item in items)
+        return value, "식약처 안내 1인분" if stated else "자료집 조사 제공량"
+    if group := menu.get("group_serving"):
+        kind = " 국물 요리" if group.get("soup") else ""
+        scope = "전체" if group["category"] == "전체" else f"{group['category']}{kind} 음식군"
+        return float(group["grams"]), f"{scope}{kind if scope == '전체' else ''} 조사 제공량 중앙값"
+    return None
+
+
+def serving_estimate(menu: dict[str, Any]) -> dict[str, Any] | None:
+    """100g당 값 × 추정 양으로 낸 한 그릇 추정치. 화면 표시와 '가볍게' 점수가 같은 양을 쓴다.
+
+    메뉴 전체에 맞는 100g 값(자동 연결 nutrition 또는 검수 연결 일반 음식 참고값)만 쓴다. 구성 음식 값,
+    100mL 값, 제품값은 쓰지 않는다.
+    """
+    if (survey := survey_serving(menu)) is None:
+        return None
+    candidates = [menu.get("nutrition"), *[ref for ref in menu.get("references") or [] if ref.get("kind") == "general"]]
+    base = next((ref for ref in candidates if ref and ref["basis"] == 100 and ref["unit"] == "g"
+                 and ref["values"][0] is not None), None)
+    if base is None:
+        return None
+    grams, label = survey
+    kcal, protein, _, fat, sodium = base["values"]
+    ratio = grams / 100
+    return {"grams": grams, "basis_label": label, "energy_kcal": round(kcal * ratio),
+            "protein_g": round(protein * ratio, 1) if protein is not None else None,
+            "fat_g": round(fat * ratio, 1) if fat is not None else None,
+            "sodium_mg": round(sodium * ratio) if sodium is not None else None, "base_name": base["name"]}
+
+
+# '가볍게'는 양(열량)만이 아니라 덜 기름지고 더부룩하지 않은 음식이다(팀 정의, 2026-11-23).
+# 한 끼 기준: 열량 200kcal 이하 만점·750kcal 0점, 지방 30g·나트륨 1,800mg이면 0점.
+# 100g 비교일 때: 열량 80kcal 이하 만점·300kcal 0점, 지방 12g·나트륨 750mg이면 0점.
+LIGHT_WEIGHTS = (0.5, 0.25, 0.25)  # 열량·지방·나트륨
+LIGHT_COOKING = 0.10  # 튀기기 -0.10, 찌기·삶기·데치기 +0.10 (메뉴 이름으로만 짐작하면 절반)
+
+
+def light_score(kcal: float, fat: float | None, sodium: float | None, grams: float | None) -> float:
+    if grams is not None:
+        ratio = grams / 100
+        parts = [clip(1 - (kcal * ratio - 200) / 550),
+                 clip(1 - fat * ratio / 30) if fat is not None else None,
+                 clip(1 - sodium * ratio / 1800) if sodium is not None else None]
+    else:
+        parts = [clip(1 - (kcal - 80) / 220), clip(1 - fat / 12) if fat is not None else None,
+                 clip(1 - sodium / 750) if sodium is not None else None]
+    known = [(w, p) for w, p in zip(LIGHT_WEIGHTS, parts) if p is not None]
+    score = sum(w * p for w, p in known) / sum(w for w, _ in known)
+    return min(0.85, score) if len(known) == 1 else score
+
+
+def nutrition_score(nutrition: dict[str, Any] | None, goal: str, survey_grams: float | None = None,
+                    cooking: tuple[str, str] = ("", "")) -> float | None:
     if not nutrition or nutrition["basis"] != 100 or nutrition["unit"] != "g":
         return None
     kcal, protein, carbs, fat, sodium = nutrition["values"]
@@ -198,16 +262,18 @@ def nutrition_score(nutrition: dict[str, Any] | None, goal: str) -> float | None
     if goal == "light":
         if kcal is None:
             return None
-        # 공공 자료의 명시된 g 단위 1회 참고량만 쓰고, 기준량(100g)을 한 끼로 보지 않는다.
-        if (grams := serving_grams(nutrition)) is not None:
-            ratio = grams / 100
-            energy_score = clip(1 - (kcal * ratio - 200) / 550)
-            sodium_score = clip(1 - sodium * ratio / 1800) if sodium is not None else None
-            return 0.7 * energy_score + 0.3 * sodium_score if sodium_score is not None else min(0.85, energy_score)
-        energy_score = clip(1 - (kcal - 80) / 220)
-        if sodium is None:
-            return min(0.85, energy_score)
-        return min(0.9, 0.7 * energy_score + 0.3 * clip(1 - sodium / 750))
+        # 공공 자료의 명시된 g 단위 1회 참고량을 먼저 쓰고, 기준량(100g)을 한 끼로 보지 않는다.
+        # 없으면 조사 제공량(또는 음식군 중앙값)으로 한 그릇을 추정한다(팀 결정, 2026-11-23).
+        grams = serving_grams(nutrition)
+        exact = grams is not None
+        if not exact:
+            grams = survey_grams
+        score = light_score(kcal, fat, sodium, grams)
+        method, source = cooking
+        if method in COOKING_EFFECT:
+            score += LIGHT_COOKING * COOKING_EFFECT[method] * (0.5 if source == "대표 메뉴명 추정" else 1)
+        # 매장 1인분이 확인된 값만 만점까지 준다. 추정 양과 100g 비교는 최고 0.9점이다.
+        return clip(score) if exact else min(0.9, clip(score))
     if kcal is None or kcal <= 0 or None in (protein, carbs, fat):
         return None
     total = 4 * protein + 4 * carbs + 9 * fat
@@ -531,14 +597,24 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
             else:
                 preferences.append(1 if found else 0.35)
                 matches.append(f"{name} {'단서 있음' if found else '정보 부족'} (메뉴 이름으로 짐작)")
-        n = nutrition_score(menu["nutrition"], profile.goal)
+        survey = survey_serving(menu)
+        cooking = cooking_signal(menu)
+        n = nutrition_score(menu["nutrition"], profile.goal, survey[0] if survey else None, cooking)
         t = sum(preferences) / len(preferences) if preferences else 0.5
         e = (0.7 * clip(math.log1p(evidence["reviews"]) / math.log1p(150))
              + 0.3 * clip(math.log1p(evidence["stores"]) / math.log1p(10)))
         s, r, quality_text = quality_parts(menu, profile.district)
         basis = "일반음식 참고값"
         if profile.goal == "light" and n is not None:
-            basis = "1인분 일반음식 참고값" if serving_grams(menu["nutrition"]) is not None else "100g 일반음식 참고값 · 1인분 정보 없음"
+            if serving_grams(menu["nutrition"]) is not None:
+                basis = "1인분 일반음식 참고값"
+            elif survey:
+                basis = f"{survey[1]} {survey[0]:g}g으로 추정 · 매장 1인분 아님"
+            else:
+                basis = "100g 일반음식 참고값 · 1인분 정보 없음"
+            basis += " · 열량·지방·나트륨"
+            if cooking[0] in COOKING_EFFECT and COOKING_EFFECT[cooking[0]]:
+                basis += f" · {cooking[0]} ({cooking[1]})"
         reasons = [f"{region} 이 메뉴 리뷰 {evidence['reviews']:,}건 · 매장 {evidence['stores']:,}곳",
                    f"{GOALS[profile.goal]} 적합도 {round(n * 100)}점 ({basis})"
                    if n is not None else "비교할 참고 영양값 부족", quality_text, *matches]

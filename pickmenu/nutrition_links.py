@@ -20,11 +20,14 @@ import json
 import os
 import re
 import sqlite3
+import statistics
 import tempfile
 from collections import Counter
 from contextlib import closing
 from pathlib import Path
 from typing import Any
+
+from recommend import SOUP_NAME
 
 FIELDS = ("에너지(kcal)", "단백질(g)", "탄수화물(g)", "지방(g)", "나트륨(mg)")
 GENERAL_ORIGINS = re.compile(r"^(가정식|외식)\(분석")
@@ -93,6 +96,8 @@ def survey_servings(research: dict[str, Any]) -> dict[str, list[dict[str, Any]]]
     """대표 음식 이름 → 식약처 외식 자료집의 동명 음식 조사 제공량."""
     result: dict[str, list[dict[str, Any]]] = {}
     for food in research.get("메뉴별 자료", []):
+        # 식약처 외식 영양 안내가 1인분이라고 밝힌 양. 자료집 제공량과 같을 때만 표시를 붙인다.
+        stated = {entry.get("1인분_g") for entry in food.get("1인분 명시 웹 근거", [])}
         items = []
         for entry in food.get("식약처 외식 자료집 제공량", []):
             grams = entry.get("자료집 제공량_g")
@@ -100,9 +105,57 @@ def survey_servings(research: dict[str, Any]) -> dict[str, list[dict[str, Any]]]
                 continue
             items.append({"food": entry["음식명"], "grams": grams, "source": entry["자료명"],
                           "page": entry.get("PDF 페이지"), "source_url": entry["출처 URL"],
-                          "nutrients": entry.get("자료집 제공량당 영양", {})})
+                          "nutrients": entry.get("자료집 제공량당 영양", {}),
+                          "stated_one_serving": grams in stated})
         if items:
             result[food["대표 음식"]] = items
+    return result
+
+
+GROUP_MIN_FOODS = 3  # 음식군 중앙값은 조사 제공량이 있는 대표음식이 이만큼 있을 때만 쓴다.
+GROUP_MEAL_MIN_G = 200
+ALL_SOUP = ("", True)
+
+
+def group_key(menu: dict[str, Any]) -> tuple[str, bool]:
+    """음식군과 국물 여부. 국밥 900g이 국물 없는 메뉴에, 볶음 200g이 국물 메뉴에 붙지 않게 나눈다.
+
+    국물 여부가 비어 있으면 대표음식 이름 끝(탕·국·찌개·전골·국밥)으로 본다(마라탕 → 국물).
+    """
+    return menu["category"], menu.get("soup") == "yes" or bool(SOUP_NAME.search(menu["components"][0]))
+
+
+def gram_base(menu: dict[str, Any]) -> bool:
+    """메뉴 전체에 맞는 100g 값(자동 연결 nutrition 또는 검수 일반 음식 참고값)이 있는지."""
+    refs = [menu.get("nutrition"), *[r for r in menu["references"] if r.get("kind") == "general"]]
+    return any(r and r["basis"] == 100 and r["unit"] == "g" for r in refs)
+
+
+def group_servings(menus: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """조사 제공량이 없는 메뉴에 같은 음식군(category)의 조사 제공량 중앙값을 준다(팀 결정, 2026-11-23).
+
+    대표음식마다 한 번만 센다(메뉴 수가 많은 대표음식에 끌려가지 않게). 100g 값이 있는 메뉴에만 붙인다.
+    """
+    foods: dict[tuple[str, bool], dict[str, float]] = {}
+    for menu in menus.values():
+        if items := menu.get("survey_servings"):
+            grams = sorted(item["grams"] for item in items)[len(items) // 2]
+            # 튀김·곁들임처럼 100g 안팎으로 조사된 양은 한 끼 양으로 보지 않는다(물회에 튀김 100g이 붙지 않게).
+            if grams >= GROUP_MEAL_MIN_G:
+                foods.setdefault(group_key(menu), {})[menu["components"][0]] = grams
+    # 음식군 안에 국물 요리 자료가 모자라면 전체 국물 요리 중앙값을 쓴다(국물 없는 음식은 음식군 차이가 커서 넘기지 않는다).
+    foods[ALL_SOUP] = {food: grams for (_, soup), values in foods.items() if soup for food, grams in values.items()}
+    medians = {key: statistics.median(values.values()) for key, values in foods.items()
+               if len(values) >= GROUP_MIN_FOODS}
+    result = {}
+    for mid, menu in menus.items():
+        if menu.get("survey_servings") or not gram_base(menu):
+            continue
+        key = group_key(menu)
+        if key not in medians and key[1]:
+            key = ALL_SOUP
+        if key in medians:
+            result[mid] = {"category": key[0] or "전체", "soup": key[1], "grams": medians[key], "foods": len(foods[key])}
     return result
 
 
@@ -166,10 +219,17 @@ def apply(catalog: Path, approvals_path: Path, food_csv: Path, research_path: Pa
             for mid, menu in menus.items():
                 before = menu.pop("survey_servings", None)
                 if items := servings.get(menu["components"][0]):
-                    menu["survey_servings"] = items
+                    # 대표음식에 자료가 여럿이면(곰탕 700g·설렁탕 600g) 메뉴 이름에 든 음식만 남긴다.
+                    named = [item for item in items if item["food"].replace(" ", "") in menu["name"].replace(" ", "")]
+                    menu["survey_servings"] = named or items
                     counts["survey_serving_menus"] += 1
                 if before != menu.get("survey_servings"):
                     changed.add(mid)
+            group_before = {mid: menu.pop("group_serving", None) for mid, menu in menus.items()}
+            for mid, group in group_servings(menus).items():
+                menus[mid]["group_serving"] = group
+                counts["group_serving_menus"] += 1
+            changed.update(mid for mid, menu in menus.items() if menu.get("group_serving") != group_before[mid])
             for mid in changed:
                 db.execute("UPDATE catalog SET data=? WHERE id=?", (json.dumps(menus[mid], ensure_ascii=False), mid))
             if any(menus[mid]["nutrition"] != scored_before[mid] for mid in menus):

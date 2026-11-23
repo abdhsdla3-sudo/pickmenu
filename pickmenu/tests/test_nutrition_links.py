@@ -45,9 +45,13 @@ class NutritionLinkTest(unittest.TestCase):
             writer.writerow(HEADER)
             writer.writerows(ROWS)
         self.research = self.dir / "research.json"
-        self.research.write_text(json.dumps({"메뉴별 자료": [{"대표 음식": "갈비탕", "식약처 외식 자료집 제공량": [
-            {"자료명": "자료집", "음식명": "갈비탕", "PDF 페이지": 433, "자료집 제공량_g": 600.0,
-             "자료집 제공량당 영양": {"나트륨_mg": 1717.54}, "출처 URL": "https://example.org/a"}]}]}),
+        self.research.write_text(json.dumps({"메뉴별 자료": [
+            {"대표 음식": "갈비탕", "1인분 명시 웹 근거": [{"자료": "안내", "1인분_g": 600}], "식약처 외식 자료집 제공량": [
+                {"자료명": "자료집", "음식명": "갈비탕", "PDF 페이지": 433, "자료집 제공량_g": 600.0,
+                 "자료집 제공량당 영양": {"나트륨_mg": 1717.54}, "출처 URL": "https://example.org/a"}]},
+            {"대표 음식": "공깃밥", "식약처 외식 자료집 제공량": [
+                {"자료명": "자료집", "음식명": "공기밥", "자료집 제공량_g": 210.0, "출처 URL": "https://example.org/c"},
+                {"자료명": "자료집", "음식명": "흑미밥", "자료집 제공량_g": 230.0, "출처 URL": "https://example.org/d"}]}]}),
             encoding="utf-8")
         self.approvals = self.write_approvals(self.records())
 
@@ -108,9 +112,28 @@ class NutritionLinkTest(unittest.TestCase):
     def test_survey_serving_is_separate_and_not_a_portion(self):
         _, menus = self.run_apply()
         serving = menus["M5"]["survey_servings"][0]
-        self.assertEqual((serving["food"], serving["grams"]), ("갈비탕", 600.0))
+        self.assertEqual((serving["food"], serving["grams"], serving["stated_one_serving"]), ("갈비탕", 600.0, True))
         self.assertEqual(menus["M5"]["references"], [])
-        self.assertNotIn("survey_servings", menus["M1"])
+        # 자료가 여럿이면 메뉴 이름에 든 음식(공기밥)만 남긴다.
+        self.assertEqual([(s["food"], s["stated_one_serving"]) for s in menus["M1"]["survey_servings"]],
+                         [("공기밥", False)])
+        self.assertNotIn("survey_servings", menus["M2"])
+
+    def test_group_serving_uses_category_median_of_foods(self):
+        menus = {f"G{i}": {"category": "면", "components": [food], "nutrition": None, "references": [],
+                           "survey_servings": [{"grams": grams}]}
+                 for i, (food, grams) in enumerate([("칼국수", 700.0), ("칼국수", 700.0), ("냉면", 550.0),
+                                                    ("쫄면", 450.0), ("튀김우동", 100.0)])}
+        menus["S1"] = {"category": "면", "components": ["짬뽕"], "nutrition": None, "references": [], "soup": "yes",
+                       "survey_servings": [{"grams": 1000.0}]}
+        scored = {"basis": 100, "unit": "g", "values": [1, 2, 3, 4, 5]}
+        menus["N1"] = {"category": "면", "components": ["라멘"], "nutrition": scored, "references": [],
+                       "survey_servings": None}
+        menus["N2"] = {"category": "면", "components": ["우동"], "nutrition": None, "references": []}  # 100g 값 없음
+        menus["N3"] = {"category": "피자", "components": ["피자"], "nutrition": scored, "references": []}
+        result = nutrition_links.group_servings(menus)
+        # 대표음식마다 한 번씩: 칼국수 700·냉면 550·쫄면 450 → 550. 100g 튀김우동과 국물 요리(짬뽕)는 빼고 센다.
+        self.assertEqual(result, {"N1": {"category": "면", "soup": False, "grams": 550.0, "foods": 3}})
 
     def test_ml_basis_is_kept(self):
         records = [{"standard_menu_id": "M6", "decision": "approved", "kind": "general", "food_code": "D406-1",
