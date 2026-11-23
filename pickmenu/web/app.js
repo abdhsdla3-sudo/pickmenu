@@ -267,8 +267,31 @@ function addReasons(parent, reasons) {
   parent.append(list);
 }
 
+// 검수 연결(kind)이 있는 참고값의 종류 이름. 예전 자동 연결 참고값에는 kind가 없다.
+const referenceKinds = {
+  general: "일반 음식 참고값",
+  product: "해당 제품 기준",
+  product_option: "해당 브랜드 제품 · 옵션별",
+};
+
+function amount(value) {
+  return value === null || value === undefined ? "정보 없음" : value.toLocaleString("ko-KR");
+}
+
+function reviewedSummary(refs) {
+  const options = refs.filter(ref => ref.kind === "product_option");
+  if (options.length) {
+    return `${options[0].brand} ${options[0].product_name} 제품값 · ${options.map(ref => ref.option).join("·")} 옵션별 ${options[0].basis}${options[0].unit} 기준 · 판매 옵션 미확정`;
+  }
+  const ref = refs[0];
+  const label = ref.kind === "product" ? `${ref.brand} ${ref.product_name} 해당 제품 기준` : `${ref.name} 일반 음식 참고값`;
+  return `${label} · ${ref.basis}${ref.unit}당 ${amount(ref.values[0])} kcal · 단백질 ${amount(ref.values[1])} g`;
+}
+
 function nutritionSummary(menu) {
   if (!menu.nutrition) {
+    const reviewed = (menu.references || []).filter(ref => ref.kind);
+    if (reviewed.length) return reviewedSummary(reviewed);
     return menu.references.length ? "구성 음식의 100g 참고값 · 메뉴 전체값 미확인"
       : "일반 메뉴 영양정보 없음";
   }
@@ -278,17 +301,28 @@ function nutritionSummary(menu) {
 
 function showReference(parent, ref) {
   parent.append(node("h3", `${ref.name} · ${ref.basis} ${ref.unit}당`));
+  if (ref.kind) {
+    const kind = ref.kind === "product"
+      ? `${referenceKinds.product} · ${ref.brand} ${ref.product_name}`
+      : ref.kind === "product_option"
+        ? `${referenceKinds.product_option} · ${ref.option} · 판매 옵션 미확정`
+        : referenceKinds.general;
+    parent.append(node("p", kind, "reference-kind"));
+  }
   const values = node("dl", undefined, "nutrition");
   labels.forEach((label, index) => {
     const value = ref.values[index];
     values.append(node("dt", label), node("dd", value === null ? "정보 없음" : `${value} ${units[index]}`));
   });
+  for (const [label, [value, unit]] of Object.entries(ref.extra || {})) {
+    values.append(node("dt", label), node("dd", value === null ? "정보 없음" : `${value} ${unit}`));
+  }
   const source = node("a", ref.source);
   source.href = ref.source_url;
   source.target = "_blank";
   source.rel = "noopener noreferrer";
   const provenance = node("p", undefined, "muted");
-  provenance.append(source, ` · ${ref.food_id} · 원자료 기준량 ${ref.original_basis}`);
+  provenance.append(source, `${ref.food_id ? ` · ${ref.food_id}` : ""} · 원자료 기준량 ${ref.original_basis}`);
   parent.append(values, provenance, node("p", `${ref.method} · ${ref.confidence}`, "muted"));
   if (ref.serving_reference) {
     parent.append(node("p", `공공 DB 1회분량 참고 표기 ${ref.serving_reference}`, "muted"));
@@ -343,12 +377,25 @@ async function openDetail(item, button, store) {
     body.append(node("p", "실제 매장 레시피와 원재료, 알레르기 및 교차접촉 정보는 확인이 필요해요.", "muted"));
     appendFranchiseNutrition(body, item);
     if (menu.references?.length) {
-      body.append(node("p", menu.compound
-        ? "구성 음식별 참고값입니다. 전체 메뉴나 매장 1인분의 영양량은 확인되지 않았어요."
-        : "공개 일반음식 참고값입니다. 실제 매장 제공량과 조리법에 따라 달라요.", "muted"));
+      const kinds = new Set(menu.references.map(ref => ref.kind));
+      body.append(node("p", kinds.has("product_option")
+        ? "같은 브랜드의 제품 영양표예요. 이 매장에서 뼈·순살 중 무엇을 파는지 확인되지 않아 옵션별 값을 나란히 보여 줘요. 원문 기준량이며 1인분이 아니에요."
+        : kinds.has("product")
+          ? "판매 매장과 같은 브랜드의 제품 영양정보예요. 원문 기준량이며 매장 1인분으로 바꾸지 않았어요."
+          // 검수 연결(general)은 메뉴 전체와 같은 음식임을 확인한 값이라 구성 음식 안내를 쓰지 않는다.
+          : menu.compound && !kinds.has("general")
+            ? "구성 음식별 참고값입니다. 전체 메뉴나 매장 1인분의 영양량은 확인되지 않았어요."
+            : "공개 일반음식 참고값입니다. 실제 매장 제공량과 조리법에 따라 달라요.", "muted"));
       for (const ref of menu.references) showReference(body, ref);
     } else if (!item.franchise_nutrition && !item.franchise_menu_options?.length) {
       body.append(node("p", "일반 메뉴 영양정보 없음", "muted"));
+    }
+    for (const serving of menu.survey_servings || []) {
+      const nutrients = Object.entries(serving.nutrients || {})
+        .map(([key, value]) => `${key.replace(/_.*$/, "")} ${amount(value)}${key.split("_")[1] || ""}`);
+      body.append(node("p", `출처가 제시한 조사 제공량: ${serving.food} ${amount(serving.grams)}g`
+        + `${nutrients.length ? ` (${nutrients.join(" · ")})` : ""} · ${serving.source}`
+        + " · 자료집 조사 기준이며 이 매장의 1인분이 아니에요.", "muted survey-serving"));
     }
     detailMap?.remove();
     detailMap = null;

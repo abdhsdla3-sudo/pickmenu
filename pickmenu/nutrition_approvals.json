@@ -1,0 +1,2503 @@
+{
+ "reviewed_at": "2026-11-23",
+ "reviewer": "abdhsdla3-sudo(Claude Code와 작업)",
+ "scope": "대표음식 88개 추가 조사 중 '수치 연결 후보' 45개(표준 메뉴 136개) + 치킨 근거 2건",
+ "policy": [
+  "일반 음식 참고값: K-FIND 음식(가정식·외식 분석) 값이고 판매 메뉴와 음식·조리 상태가 같을 때만",
+  "해당 제품 기준: 업체명이 판매 매장 브랜드와 같고 같은 상품일 때만",
+  "가공식품·밀키트·급식·소스·원재료 값과 다른 브랜드 값은 보류",
+  "100g·100mL 원문 단위 유지, 1인분 환산 없음, 결측은 null",
+  "새 값은 화면 표시에만 쓰고 추천 점수·알레르기·채식 판정에는 쓰지 않는다"
+ ],
+ "records": [
+  {
+   "standard_menu_id": "MN_1091adcd47aa1727",
+   "menu_name": "[명품갈비] LA갈비구이",
+   "representative_food": "LA갈비",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "양념 갈비 제품 사례. 조리 전후와 뼈 제외 기준 확인.",
+   "candidate_codes": [
+    "P117-501050100-1099",
+    "P117-501050100-5077"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "고기극찬"
+   ],
+   "decision": "hold",
+   "reason": "후보가 양념육 가공품(조리 전 고기) 값이다. 매장에서 구운 LA갈비와 조리 상태·뼈 포함 기준이 다르다"
+  },
+  {
+   "standard_menu_id": "MN_211536c95c0e7ac0",
+   "menu_name": "[한그릇] 계란구름 위 매콤마요 가라아게 덮밥",
+   "representative_food": "가라아게덮밥",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "치킨가라아게덮밥 완제품 사례.",
+   "candidate_codes": [
+    "P123-201020200-1128"
+   ],
+   "prior_1700_review": "공식 원수치 일치 · 실제 메뉴명 대조 필요",
+   "store_brands": [
+    "카레세끼"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_4dcfa822c512c20e",
+   "menu_name": "[리뉴얼] 매콤마요 가라아게 에그덮밥",
+   "representative_food": "가라아게덮밥",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "치킨가라아게덮밥 완제품 사례.",
+   "candidate_codes": [
+    "P123-201020200-1128"
+   ],
+   "prior_1700_review": "공식 원수치 일치 · 실제 메뉴명 대조 필요",
+   "store_brands": [
+    "고수의"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_c74d223f0a8ef5bc",
+   "menu_name": "계란 구름 위 매콤마요 가라아게 덮밥",
+   "representative_food": "가라아게덮밥",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "치킨가라아게덮밥 완제품 사례.",
+   "candidate_codes": [
+    "P123-201020200-1128"
+   ],
+   "prior_1700_review": "공식 원수치 일치 · 실제 메뉴명 대조 필요",
+   "store_brands": [
+    "카레세끼"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_7bfafb447a760a1f",
+   "menu_name": "가지덮밥",
+   "representative_food": "가지덮밥",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-201020300-6440"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "시온성"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_60fbf0bcd44c5914",
+   "menu_name": "열무 두부강된장덮밥",
+   "representative_food": "강된장덮밥",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-201020300-3941"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "본도시락"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_05e062fffbe6a541",
+   "menu_name": "얼큰고기국수",
+   "representative_food": "고기국수",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "면류 제품과 덮밥·국수 HMR의 조리 상태를 확인.",
+   "candidate_codes": [
+    "P123-204020300-1793",
+    "P108-001000200-0161"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "마선생얼큰국밥"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_882a5ffa3b9b2a61",
+   "menu_name": "[해장에좋은]얼큰고기국수",
+   "representative_food": "고기국수",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "면류 제품과 덮밥·국수 HMR의 조리 상태를 확인.",
+   "candidate_codes": [
+    "P123-204020300-1793",
+    "P108-001000200-0161"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "마선생얼큰국밥"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_fe181b34986ef999",
+   "menu_name": "[담백깔끔]제주고기국수",
+   "representative_food": "고기국수",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "면류 제품과 덮밥·국수 HMR의 조리 상태를 확인.",
+   "candidate_codes": [
+    "P123-204020300-1793",
+    "P108-001000200-0161"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "마선생얼큰국밥"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_05fb31048c8b7ebb",
+   "menu_name": "(국) 고추장 애호박찌개",
+   "representative_food": "고추장찌개",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "두부 고추장찌개는 100mL, 돼지고기 밀키트는 100g. 부피를 중량으로 환산하지 않음.",
+   "candidate_codes": [
+    "D406-263110000-0001",
+    "D306-274000000-0002"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "본도시락"
+   ],
+   "decision": "hold",
+   "reason": "후보가 두부 고추장찌개 100mL(재료량 산출)와 돼지고기 밀키트다. 매장 메뉴의 재료(애호박·곱창 등)와 일치 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_29a8992b8751fce7",
+   "menu_name": "(해장100%) 고추장찌개",
+   "representative_food": "고추장찌개",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "두부 고추장찌개는 100mL, 돼지고기 밀키트는 100g. 부피를 중량으로 환산하지 않음.",
+   "candidate_codes": [
+    "D406-263110000-0001",
+    "D306-274000000-0002"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "소곱창대가"
+   ],
+   "decision": "hold",
+   "reason": "후보가 두부 고추장찌개 100mL(재료량 산출)와 돼지고기 밀키트다. 매장 메뉴의 재료(애호박·곱창 등)와 일치 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_bc3e6cae3615249b",
+   "menu_name": "[밥도둑 한그릇] 칼칼 고추장찌개",
+   "representative_food": "고추장찌개",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "두부 고추장찌개는 100mL, 돼지고기 밀키트는 100g. 부피를 중량으로 환산하지 않음.",
+   "candidate_codes": [
+    "D406-263110000-0001",
+    "D306-274000000-0002"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "한식백반전문점"
+   ],
+   "decision": "hold",
+   "reason": "후보가 두부 고추장찌개 100mL(재료량 산출)와 돼지고기 밀키트다. 매장 메뉴의 재료(애호박·곱창 등)와 일치 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_46ce6b177677e403",
+   "menu_name": "(묵은지) 곱도리탕 한우투뿔 대창",
+   "representative_food": "곱도리탕",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "D311-514000000-0001",
+    "P123-207020300-0087"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "악마의곱도리탕"
+   ],
+   "decision": "hold",
+   "reason": "후보가 간편조리세트·가공품이다. 매장 메뉴(한우 대창·마라 등)와 동일성 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_77ba786bd803e643",
+   "menu_name": "[1인분] 마라 곱도리탕 한우투뿔 대창",
+   "representative_food": "곱도리탕",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "D311-514000000-0001",
+    "P123-207020300-0087"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "악마의곱도리탕"
+   ],
+   "decision": "hold",
+   "reason": "후보가 간편조리세트·가공품이다. 매장 메뉴(한우 대창·마라 등)와 동일성 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_8b504b086d1cd896",
+   "menu_name": "[대창통통] 한우곱도리탕",
+   "representative_food": "곱도리탕",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "D311-514000000-0001",
+    "P123-207020300-0087"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "봉명가닭도리탕"
+   ],
+   "decision": "hold",
+   "reason": "후보가 간편조리세트·가공품이다. 매장 메뉴(한우 대창·마라 등)와 동일성 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_aad800fccff58fcd",
+   "menu_name": "한우대창 순살 곱도리탕",
+   "representative_food": "곱도리탕",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "D311-514000000-0001",
+    "P123-207020300-0087"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "문현동"
+   ],
+   "decision": "hold",
+   "reason": "후보가 간편조리세트·가공품이다. 매장 메뉴(한우 대창·마라 등)와 동일성 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_afece14d874501c1",
+   "menu_name": "[1인분] 배터져 곱도리탕 한우투뿔 대창",
+   "representative_food": "곱도리탕",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "D311-514000000-0001",
+    "P123-207020300-0087"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "악마의곱도리탕"
+   ],
+   "decision": "hold",
+   "reason": "후보가 간편조리세트·가공품이다. 매장 메뉴(한우 대창·마라 등)와 동일성 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_cc1dcae2006eab60",
+   "menu_name": "한우투뿔 대창 곱도리탕",
+   "representative_food": "곱도리탕",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "D311-514000000-0001",
+    "P123-207020300-0087"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "악마의곱도리탕"
+   ],
+   "decision": "hold",
+   "reason": "후보가 간편조리세트·가공품이다. 매장 메뉴(한우 대창·마라 등)와 동일성 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_17e2613dad0acf83",
+   "menu_name": "공기밥 / [볶음밥용이라 고슬고슬 밥]",
+   "representative_food": "공깃밥",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "일반 쌀밥 기준. 공기 중량은 별도 확인.",
+   "candidate_codes": [
+    "D301-022000000-0001"
+   ],
+   "prior_1700_review": "공식 원수치 일치 · 실제 메뉴명 대조 필요",
+   "store_brands": [
+    "라홍방마라탕"
+   ],
+   "decision": "approved",
+   "kind": "general",
+   "food_code": "D301-022000000-0001",
+   "reason": "공기밥 단품. 외식 분석 쌀밥 100g 값과 같은 음식"
+  },
+  {
+   "standard_menu_id": "MN_0100270e97ecfaa3",
+   "menu_name": "그릭 요거트",
+   "representative_food": "그릭요거트",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "그릭요거트 제품 사례. 가당 여부와 토핑 확인.",
+   "candidate_codes": [
+    "P119-202040200-1242",
+    "P119-202040200-0880"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "한입과일"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_175d14afda9bd925",
+   "menu_name": "수제그릭 요거트",
+   "representative_food": "그릭요거트",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "그릭요거트 제품 사례. 가당 여부와 토핑 확인.",
+   "candidate_codes": [
+    "P119-202040200-1242",
+    "P119-202040200-0880"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "한입과일"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_c24af3449deff107",
+   "menu_name": "허니샤워피치 in 그릭요거트",
+   "representative_food": "그릭요거트",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "그릭요거트 제품 사례. 가당 여부와 토핑 확인.",
+   "candidate_codes": [
+    "P119-202040200-1242",
+    "P119-202040200-0880"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "트로피티"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_1d9a82f1e742321c",
+   "menu_name": "신김치말이국수",
+   "representative_food": "김치말이국수",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "D303-142070000-0001"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "스쿨푸드"
+   ],
+   "decision": "approved",
+   "kind": "general",
+   "food_code": "D303-142070000-0001",
+   "reason": "김치말이국수 단품. 외식 분석 김치말이국수와 같은 음식"
+  },
+  {
+   "standard_menu_id": "MN_206636a7cd2ab64e",
+   "menu_name": "(계절메뉴) 새콤시원열무국수",
+   "representative_food": "김치말이국수",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "D303-142070000-0001"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "1984그수육집칼국수"
+   ],
+   "decision": "hold",
+   "reason": "열무국수로 김치말이국수와 구성이 다르다"
+  },
+  {
+   "standard_menu_id": "MN_d44018dfb54f27a6",
+   "menu_name": "[살얼음 동동] 김치말이국수",
+   "representative_food": "김치말이국수",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "D303-142070000-0001"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "한식백반전문점"
+   ],
+   "decision": "approved",
+   "kind": "general",
+   "food_code": "D303-142070000-0001",
+   "reason": "김치말이국수 단품. 외식 분석 김치말이국수와 같은 음식"
+  },
+  {
+   "standard_menu_id": "MN_4364a9f0da3912cb",
+   "menu_name": "김치 참치 덮밥",
+   "representative_food": "김치참치덮밥",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "완제품 간 편차 확인.",
+   "candidate_codes": [
+    "P123-201020300-0696",
+    "P123-201020300-5988"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "한솥도시락"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_59e0d7d128f9d50d",
+   "menu_name": "깐풍육밥",
+   "representative_food": "깐풍육",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "덮밥을 제외한 깐풍육 제품.",
+   "candidate_codes": [
+    "P117-800050200-1130"
+   ],
+   "prior_1700_review": "추정·중앙값·원본 불충분",
+   "store_brands": [
+    "자금성"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_6616b24c758aa950",
+   "menu_name": "깐풍육",
+   "representative_food": "깐풍육",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "덮밥을 제외한 깐풍육 제품.",
+   "candidate_codes": [
+    "P117-800050200-1130"
+   ],
+   "prior_1700_review": "추정·중앙값·원본 불충분",
+   "store_brands": [
+    "자금성"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_250cf3b0190e86fd",
+   "menu_name": "[1.5인] 낙곱새덮밥",
+   "representative_food": "낙곱새",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "D306-270000000-0001",
+    "P123-212020300-1223"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "문현동"
+   ],
+   "decision": "hold",
+   "reason": "후보가 간편조리세트·가공 반찬이다. 덮밥·대창 추가 등 매장 구성과 다르다"
+  },
+  {
+   "standard_menu_id": "MN_b40ccac1b167327d",
+   "menu_name": "[맛있음주의]낙곱새덮밥한끼",
+   "representative_food": "낙곱새",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "D306-270000000-0001",
+    "P123-212020300-1223"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "덮끼"
+   ],
+   "decision": "hold",
+   "reason": "후보가 간편조리세트·가공 반찬이다. 덮밥·대창 추가 등 매장 구성과 다르다"
+  },
+  {
+   "standard_menu_id": "MN_dcbc47931c1ce6d3",
+   "menu_name": "[야식대장] 낙곱새 한우대창",
+   "representative_food": "낙곱새",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "D306-270000000-0001",
+    "P123-212020300-1223"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "문현동"
+   ],
+   "decision": "hold",
+   "reason": "후보가 간편조리세트·가공 반찬이다. 덮밥·대창 추가 등 매장 구성과 다르다"
+  },
+  {
+   "standard_menu_id": "MN_0843d7844eda4b65",
+   "menu_name": "핫 치즈 닭갈비 덮밥",
+   "representative_food": "닭갈비덮밥",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-201020200-0832",
+    "P123-201020300-4945"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "한솥도시락"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_1649de9dcbb31a7f",
+   "menu_name": "오리지널 치즈 닭갈비 덮밥",
+   "representative_food": "닭갈비덮밥",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-201020200-0832",
+    "P123-201020300-4945"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "한솥도시락"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_6fb06ff85f418518",
+   "menu_name": "[저당] 저칼로리 탄단지 닭갈비 뽁밥",
+   "representative_food": "닭갈비덮밥",
+   "catalog_status_before": "최신 음식 분류와 영양 연결 재검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-201020200-0832",
+    "P123-201020300-4945"
+   ],
+   "prior_1700_review": "공식 원수치 일치 · 실제 메뉴명 대조 필요",
+   "store_brands": [
+    "뽁당"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_bddd2c348bf71d1e",
+   "menu_name": "[핫한메뉴] 닭갈비 덮밥",
+   "representative_food": "닭갈비덮밥",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-201020200-0832",
+    "P123-201020300-4945"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "밥찌갱",
+    "비빔밥"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_ccdc8aa5e2c7add8",
+   "menu_name": "[맛있게 매운] 춘천양념닭갈비 구름덮밥",
+   "representative_food": "닭갈비덮밥",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-201020200-0832",
+    "P123-201020300-4945"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "구름계란덮밥"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_d73946fc4467ac86",
+   "menu_name": "닭갈비덮밥",
+   "representative_food": "닭갈비덮밥",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-201020200-0832",
+    "P123-201020300-4945"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "밥찌갱"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_2afe9c69d11aa2b1",
+   "menu_name": "먹거리 추가 (닭껍질 튀김 (중))",
+   "representative_food": "닭껍질튀김",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P117-502050200-0676",
+    "P117-501050100-1953"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "옛통가"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_5be6628e2c4146d9",
+   "menu_name": "바사삭 닭껍질",
+   "representative_food": "닭껍질튀김",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P117-502050200-0676",
+    "P117-501050100-1953"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "노랑통닭"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_9732fb7ae36a62e2",
+   "menu_name": "닭껍질튀김 [박스]",
+   "representative_food": "닭껍질튀김",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P117-502050200-0676",
+    "P117-501050100-1953"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "천년닭강정"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_af352305b298903a",
+   "menu_name": "닭껍질 튀김",
+   "representative_food": "닭껍질튀김",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P117-502050200-0676",
+    "P117-501050100-1953"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "갓",
+    "갓튀긴후라이드",
+    "닭다리",
+    "옛통가",
+    "주상낙원"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_52bc094ec42a52c0",
+   "menu_name": "[숯불] 국내산 소 대창구이",
+   "representative_food": "대창구이",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "D308-370120000-0001"
+   ],
+   "prior_1700_review": "공식 원수치 일치 · 실제 메뉴명 대조 필요",
+   "store_brands": [
+    "곱창다방"
+   ],
+   "decision": "approved",
+   "kind": "general",
+   "food_code": "D308-370120000-0001",
+   "reason": "국내산 소 대창구이. 외식 분석 대창구이_소고기와 같은 음식"
+  },
+  {
+   "standard_menu_id": "MN_0f3b06564b69ebf9",
+   "menu_name": "[목전지] 연탄불고기",
+   "representative_food": "돼지불고기",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "간장형·버섯형을 나눠 조회. 100mL 수치를 중량으로 환산하지 않음.",
+   "candidate_codes": [
+    "D508-375010000-0001",
+    "D508-375070000-0001"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "데일리고기"
+   ],
+   "decision": "hold",
+   "reason": "후보가 초등학교 급식 재료량 산출 100mL 값이다. 연탄·숯불·뚝배기 등 매장 조리와 다르다"
+  },
+  {
+   "standard_menu_id": "MN_28247eb57f6494a5",
+   "menu_name": "[집밥] 바싹불고기 반상",
+   "representative_food": "돼지불고기",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "간장형·버섯형을 나눠 조회. 100mL 수치를 중량으로 환산하지 않음.",
+   "candidate_codes": [
+    "D508-375010000-0001",
+    "D508-375070000-0001"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "본도시락"
+   ],
+   "decision": "hold",
+   "reason": "후보가 초등학교 급식 재료량 산출 100mL 값이다. 연탄·숯불·뚝배기 등 매장 조리와 다르다"
+  },
+  {
+   "standard_menu_id": "MN_535de53ed584f27d",
+   "menu_name": "[밥도둑]이가네 뚝배기 돼지불고기",
+   "representative_food": "돼지불고기",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "간장형·버섯형을 나눠 조회. 100mL 수치를 중량으로 환산하지 않음.",
+   "candidate_codes": [
+    "D508-375010000-0001",
+    "D508-375070000-0001"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "이가네"
+   ],
+   "decision": "hold",
+   "reason": "후보가 초등학교 급식 재료량 산출 100mL 값이다. 연탄·숯불·뚝배기 등 매장 조리와 다르다"
+  },
+  {
+   "standard_menu_id": "MN_7b575e4316a548e1",
+   "menu_name": "에이스 화권 연탄불고기",
+   "representative_food": "돼지불고기",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "간장형·버섯형을 나눠 조회. 100mL 수치를 중량으로 환산하지 않음.",
+   "candidate_codes": [
+    "D508-375010000-0001",
+    "D508-375070000-0001"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "대창을"
+   ],
+   "decision": "hold",
+   "reason": "후보가 초등학교 급식 재료량 산출 100mL 값이다. 연탄·숯불·뚝배기 등 매장 조리와 다르다"
+  },
+  {
+   "standard_menu_id": "MN_9a6210bca1841df6",
+   "menu_name": "(하나만전용) 이가네 뚝배기 돼지불고기",
+   "representative_food": "돼지불고기",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "간장형·버섯형을 나눠 조회. 100mL 수치를 중량으로 환산하지 않음.",
+   "candidate_codes": [
+    "D508-375010000-0001",
+    "D508-375070000-0001"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "이가네"
+   ],
+   "decision": "hold",
+   "reason": "후보가 초등학교 급식 재료량 산출 100mL 값이다. 연탄·숯불·뚝배기 등 매장 조리와 다르다"
+  },
+  {
+   "standard_menu_id": "MN_d527b922e25f03d5",
+   "menu_name": "연탄불고기(조리후 150g)",
+   "representative_food": "돼지불고기",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "간장형·버섯형을 나눠 조회. 100mL 수치를 중량으로 환산하지 않음.",
+   "candidate_codes": [
+    "D508-375010000-0001",
+    "D508-375070000-0001"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "냉면쟁이",
+    "냉면쟁이고기꾼"
+   ],
+   "decision": "hold",
+   "reason": "후보가 초등학교 급식 재료량 산출 100mL 값이다. 연탄·숯불·뚝배기 등 매장 조리와 다르다"
+  },
+  {
+   "standard_menu_id": "MN_f62314946d8ecf84",
+   "menu_name": "숯불 간장 불고기",
+   "representative_food": "돼지불고기",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "간장형·버섯형을 나눠 조회. 100mL 수치를 중량으로 환산하지 않음.",
+   "candidate_codes": [
+    "D508-375010000-0001",
+    "D508-375070000-0001"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "백순대집",
+    "제육집"
+   ],
+   "decision": "hold",
+   "reason": "후보가 초등학교 급식 재료량 산출 100mL 값이다. 연탄·숯불·뚝배기 등 매장 조리와 다르다"
+  },
+  {
+   "standard_menu_id": "MN_05c8ff331c2ed1bf",
+   "menu_name": "해장된장술밥",
+   "representative_food": "된장술밥",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-201020300-4598"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "꽃핀한우"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_d83b9067ee828b91",
+   "menu_name": "[얼큰뜨끈]소고기된장술밥",
+   "representative_food": "된장술밥",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-201020300-4598"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "육식사관학교"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_fb73b7f170df14fd",
+   "menu_name": "[맛없없고기토핑]우삼겹들기름메밀면",
+   "representative_food": "들기름메밀면",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "들기름막국수 후보. 면 종류와 조리·희석 상태 확인 필요.",
+   "candidate_codes": [
+    "P123-204020300-1179",
+    "P108-002000200-0070"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "샌드백"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_43f3bc7a317ad35d",
+   "menu_name": "불똥집",
+   "representative_food": "똥집볶음",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "닭근위볶음 후보.",
+   "candidate_codes": [
+    "P117-501050100-7020",
+    "P114-300030000-0633"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "땡초미남닭발"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_45b0ce8c2f556578",
+   "menu_name": "매운양념똥집",
+   "representative_food": "똥집볶음",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "닭근위볶음 후보.",
+   "candidate_codes": [
+    "P117-501050100-7020",
+    "P114-300030000-0633"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "정든닭발"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_661d7551d3fcab41",
+   "menu_name": "똥집볶음",
+   "representative_food": "똥집볶음",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "닭근위볶음 후보.",
+   "candidate_codes": [
+    "P117-501050100-7020",
+    "P114-300030000-0633"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "땡초미남닭발",
+    "수향닭발"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_6d675233b00e1eb2",
+   "menu_name": "[국내산]소금똥집",
+   "representative_food": "똥집볶음",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "닭근위볶음 후보.",
+   "candidate_codes": [
+    "P117-501050100-7020",
+    "P114-300030000-0633"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "수니열닭발"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_9680077fa331f6bd",
+   "menu_name": "[간술간술]불똥집",
+   "representative_food": "똥집볶음",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "닭근위볶음 후보.",
+   "candidate_codes": [
+    "P117-501050100-7020",
+    "P114-300030000-0633"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "땡초MINAM닭발"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_a84e4dbcbae31510",
+   "menu_name": "통마늘똥집구이",
+   "representative_food": "똥집볶음",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "닭근위볶음 후보.",
+   "candidate_codes": [
+    "P117-501050100-7020",
+    "P114-300030000-0633"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "훌랄라참숯바베큐치킨"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_b995082f14371373",
+   "menu_name": "똥집볶음 2인분",
+   "representative_food": "똥집볶음",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "닭근위볶음 후보.",
+   "candidate_codes": [
+    "P117-501050100-7020",
+    "P114-300030000-0633"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "수향"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_bc9ad16c808baf92",
+   "menu_name": "닭똥집채소",
+   "representative_food": "똥집볶음",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "닭근위볶음 후보.",
+   "candidate_codes": [
+    "P117-501050100-7020",
+    "P114-300030000-0633"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "상무네"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_06a7fca91304dfcc",
+   "menu_name": "가마치 똥집튀김",
+   "representative_food": "똥집튀김",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "매콤형과 간장형 구분.",
+   "candidate_codes": [
+    "D212-548000000-0001",
+    "P123-215020300-0401"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "가마치통닭"
+   ],
+   "decision": "hold",
+   "reason": "후보가 자담치킨 제품값과 다른 업체 가공품이다. 판매 매장과 브랜드·제품이 다르다"
+  },
+  {
+   "standard_menu_id": "MN_1bcc4a9b50de89f0",
+   "menu_name": "똥집튀김",
+   "representative_food": "똥집튀김",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "매콤형과 간장형 구분.",
+   "candidate_codes": [
+    "D212-548000000-0001",
+    "P123-215020300-0401"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "가마치통닭"
+   ],
+   "decision": "hold",
+   "reason": "후보가 자담치킨 제품값과 다른 업체 가공품이다. 판매 매장과 브랜드·제품이 다르다"
+  },
+  {
+   "standard_menu_id": "MN_2c9028c3bdfb3f4a",
+   "menu_name": "먹거리 추가 (똥집 튀김 (후라이드))",
+   "representative_food": "똥집튀김",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "매콤형과 간장형 구분.",
+   "candidate_codes": [
+    "D212-548000000-0001",
+    "P123-215020300-0401"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "옛통가"
+   ],
+   "decision": "hold",
+   "reason": "후보가 자담치킨 제품값과 다른 업체 가공품이다. 판매 매장과 브랜드·제품이 다르다"
+  },
+  {
+   "standard_menu_id": "MN_2c9eb1163e8204fa",
+   "menu_name": "빠삭 대파 똥집후라이드",
+   "representative_food": "똥집튀김",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "매콤형과 간장형 구분.",
+   "candidate_codes": [
+    "D212-548000000-0001",
+    "P123-215020300-0401"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "수원닭발"
+   ],
+   "decision": "hold",
+   "reason": "후보가 자담치킨 제품값과 다른 업체 가공품이다. 판매 매장과 브랜드·제품이 다르다"
+  },
+  {
+   "standard_menu_id": "MN_592c5ea400069357",
+   "menu_name": "간장똥집튀김",
+   "representative_food": "똥집튀김",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "매콤형과 간장형 구분.",
+   "candidate_codes": [
+    "D212-548000000-0001",
+    "P123-215020300-0401"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "가마치통닭"
+   ],
+   "decision": "hold",
+   "reason": "후보가 자담치킨 제품값과 다른 업체 가공품이다. 판매 매장과 브랜드·제품이 다르다"
+  },
+  {
+   "standard_menu_id": "MN_5b0b47f4cbaae331",
+   "menu_name": "가마치 똥집",
+   "representative_food": "똥집튀김",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "매콤형과 간장형 구분.",
+   "candidate_codes": [
+    "D212-548000000-0001",
+    "P123-215020300-0401"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "가마치통닭"
+   ],
+   "decision": "hold",
+   "reason": "후보가 자담치킨 제품값과 다른 업체 가공품이다. 판매 매장과 브랜드·제품이 다르다"
+  },
+  {
+   "standard_menu_id": "MN_6fe87b902060af8e",
+   "menu_name": "소금똥집",
+   "representative_food": "똥집튀김",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "매콤형과 간장형 구분.",
+   "candidate_codes": [
+    "D212-548000000-0001",
+    "P123-215020300-0401"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "정든닭발"
+   ],
+   "decision": "hold",
+   "reason": "후보가 자담치킨 제품값과 다른 업체 가공품이다. 판매 매장과 브랜드·제품이 다르다"
+  },
+  {
+   "standard_menu_id": "MN_729ceee6b2d36b4e",
+   "menu_name": "닭똥집튀김(400g)",
+   "representative_food": "똥집튀김",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "매콤형과 간장형 구분.",
+   "candidate_codes": [
+    "D212-548000000-0001",
+    "P123-215020300-0401"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "닭발공작소"
+   ],
+   "decision": "hold",
+   "reason": "후보가 자담치킨 제품값과 다른 업체 가공품이다. 판매 매장과 브랜드·제품이 다르다"
+  },
+  {
+   "standard_menu_id": "MN_929dfaa5498d8910",
+   "menu_name": "통마늘똥집튀김",
+   "representative_food": "똥집튀김",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "매콤형과 간장형 구분.",
+   "candidate_codes": [
+    "D212-548000000-0001",
+    "P123-215020300-0401"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "훌랄라참숯바베큐치킨"
+   ],
+   "decision": "hold",
+   "reason": "후보가 자담치킨 제품값과 다른 업체 가공품이다. 판매 매장과 브랜드·제품이 다르다"
+  },
+  {
+   "standard_menu_id": "MN_94d01728208cdf15",
+   "menu_name": "청양마늘간장똥집",
+   "representative_food": "똥집튀김",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "매콤형과 간장형 구분.",
+   "candidate_codes": [
+    "D212-548000000-0001",
+    "P123-215020300-0401"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "가마치통닭"
+   ],
+   "decision": "hold",
+   "reason": "후보가 자담치킨 제품값과 다른 업체 가공품이다. 판매 매장과 브랜드·제품이 다르다"
+  },
+  {
+   "standard_menu_id": "MN_95957ec48ee75ebe",
+   "menu_name": "모래집후라이드",
+   "representative_food": "똥집튀김",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "매콤형과 간장형 구분.",
+   "candidate_codes": [
+    "D212-548000000-0001",
+    "P123-215020300-0401"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "멕시카나"
+   ],
+   "decision": "hold",
+   "reason": "후보가 자담치킨 제품값과 다른 업체 가공품이다. 판매 매장과 브랜드·제품이 다르다"
+  },
+  {
+   "standard_menu_id": "MN_b0eedb93baae2538",
+   "menu_name": "[바삭쫄깃] 닭똥집 튀김(박스)",
+   "representative_food": "똥집튀김",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "매콤형과 간장형 구분.",
+   "candidate_codes": [
+    "D212-548000000-0001",
+    "P123-215020300-0401"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "천년닭강정"
+   ],
+   "decision": "hold",
+   "reason": "후보가 자담치킨 제품값과 다른 업체 가공품이다. 판매 매장과 브랜드·제품이 다르다"
+  },
+  {
+   "standard_menu_id": "MN_de1a97dd64a32625",
+   "menu_name": "근위후라이드",
+   "representative_food": "똥집튀김",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "매콤형과 간장형 구분.",
+   "candidate_codes": [
+    "D212-548000000-0001",
+    "P123-215020300-0401"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "후라이드",
+    "후라이드참잘하는집"
+   ],
+   "decision": "hold",
+   "reason": "후보가 자담치킨 제품값과 다른 업체 가공품이다. 판매 매장과 브랜드·제품이 다르다"
+  },
+  {
+   "standard_menu_id": "MN_f7844f1101a00d85",
+   "menu_name": "[국내산]후라이드똥집",
+   "representative_food": "똥집튀김",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "매콤형과 간장형 구분.",
+   "candidate_codes": [
+    "D212-548000000-0001",
+    "P123-215020300-0401"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "수니열닭발"
+   ],
+   "decision": "hold",
+   "reason": "후보가 자담치킨 제품값과 다른 업체 가공품이다. 판매 매장과 브랜드·제품이 다르다"
+  },
+  {
+   "standard_menu_id": "MN_fb7cc19dc125d752",
+   "menu_name": "똥집",
+   "representative_food": "똥집튀김",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "매콤형과 간장형 구분.",
+   "candidate_codes": [
+    "D212-548000000-0001",
+    "P123-215020300-0401"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "갓",
+    "갓튀긴후라이드",
+    "신맛집닭발",
+    "옛통가"
+   ],
+   "decision": "hold",
+   "reason": "후보가 자담치킨 제품값과 다른 업체 가공품이다. 판매 매장과 브랜드·제품이 다르다"
+  },
+  {
+   "standard_menu_id": "MN_173cf75f55ed75fd",
+   "menu_name": "마늘치킨",
+   "representative_food": "마늘치킨",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "D212-549000000-0042",
+    "D212-549000000-0024"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "맥시칸치킨"
+   ],
+   "decision": "hold",
+   "reason": "후보가 자담치킨·비비큐 제품값이다. 판매 매장은 맥시칸치킨·노랑통닭으로 브랜드가 다르다"
+  },
+  {
+   "standard_menu_id": "MN_3c600a2711e58173",
+   "menu_name": "알싸한 마늘 치킨",
+   "representative_food": "마늘치킨",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "D212-549000000-0042",
+    "D212-549000000-0024"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "노랑통닭"
+   ],
+   "decision": "hold",
+   "reason": "후보가 자담치킨·비비큐 제품값이다. 판매 매장은 맥시칸치킨·노랑통닭으로 브랜드가 다르다"
+  },
+  {
+   "standard_menu_id": "MN_9453120f31cfb5d2",
+   "menu_name": "마제소바",
+   "representative_food": "마제소바",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "부타이 마제소바 밀키트 사례. 분류명 메밀소바의 재료를 그대로 추정하지 않음.",
+   "candidate_codes": [
+    "D303-153000000-0001"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "돈소멘"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 밀키트(부타이 마제소바) 분석값이다. 판매 매장 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_4bba86b0177fa1d0",
+   "menu_name": "[햄가득]부대국밥",
+   "representative_food": "부대국밥",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "도시락형과 국물 제품 구분.",
+   "candidate_codes": [
+    "P123-201020300-6043",
+    "P117-800060000-0181"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "국밥생각"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_0fd25e2d69bf2457",
+   "menu_name": "[폭식주의] 매운미니불족발",
+   "representative_food": "불족발",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "땡초 및 미니 불족발 제품.",
+   "candidate_codes": [
+    "P123-212020300-0117",
+    "P117-501050100-4538"
+   ],
+   "prior_1700_review": "추정·중앙값·원본 불충분",
+   "store_brands": [
+    "1984그수육집칼국수"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_cb17dabe442d54c8",
+   "menu_name": "화끈한 직화 불족발 단품",
+   "representative_food": "불족발",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "땡초 및 미니 불족발 제품.",
+   "candidate_codes": [
+    "P123-212020300-0117",
+    "P117-501050100-4538"
+   ],
+   "prior_1700_review": "추정·중앙값·원본 불충분",
+   "store_brands": [
+    "권선시장"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_d61a356ae060ece7",
+   "menu_name": "[감칠맛덩어리]미니불족발",
+   "representative_food": "불족발",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "땡초 및 미니 불족발 제품.",
+   "candidate_codes": [
+    "P123-212020300-0117",
+    "P117-501050100-4538"
+   ],
+   "prior_1700_review": "추정·중앙값·원본 불충분",
+   "store_brands": [
+    "땡초MINAM닭발"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_ebf264d603a844e7",
+   "menu_name": "미니불족발",
+   "representative_food": "불족발",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "땡초 및 미니 불족발 제품.",
+   "candidate_codes": [
+    "P123-212020300-0117",
+    "P117-501050100-4538"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "땡초미남닭발",
+    "불족대가"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_ec1fa138522acbc6",
+   "menu_name": "[매운족발의근본] 청양매운족발",
+   "representative_food": "불족발",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "땡초 및 미니 불족발 제품.",
+   "candidate_codes": [
+    "P123-212020300-0117",
+    "P117-501050100-4538"
+   ],
+   "prior_1700_review": "추정·중앙값·원본 불충분",
+   "store_brands": [
+    "마왕족발"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_0f9cdb4af4382517",
+   "menu_name": "새우강정 맛선택2 (눈꽃새우 후라이드)",
+   "representative_food": "새우강정",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P114-400020100-0229",
+    "P120-600060000-0349"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "천년닭강정"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_21bd1cf0f3a6e6f7",
+   "menu_name": "통통 순대강정",
+   "representative_food": "순대튀김",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-215020300-0106"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "뉴"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_6ec3bef1dbf2ed0a",
+   "menu_name": "호랑이순대튀김 10개",
+   "representative_food": "순대튀김",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-215020300-0106"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "대구3대떡볶이"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_0056f77775dd673b",
+   "menu_name": "[ 영양만점] 조선 알곤이찜",
+   "representative_food": "알곤이찜",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-210020300-0266",
+    "P123-210020300-0735"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "조선아구찜"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_0baa66dfe99fde26",
+   "menu_name": "영양만점 알찜(알만 있어요)",
+   "representative_food": "알곤이찜",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-210020300-0266",
+    "P123-210020300-0735"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "인생아구찜"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_3ab22a373149f8d7",
+   "menu_name": "고소담백 알곤이찜",
+   "representative_food": "알곤이찜",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-210020300-0266",
+    "P123-210020300-0735"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "인생아구찜"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_409eb0e1e5746708",
+   "menu_name": "영양만점 알곤이찜",
+   "representative_food": "알곤이찜",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-210020300-0266",
+    "P123-210020300-0735"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "인생아구찜"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_489c44d7f77d6c0a",
+   "menu_name": "고소담백 알찜",
+   "representative_food": "알곤이찜",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-210020300-0266",
+    "P123-210020300-0735"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "인생아구찜"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_69b1d9f5d357b578",
+   "menu_name": "[]수원맛집[]제주알찜",
+   "representative_food": "알곤이찜",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-210020300-0266",
+    "P123-210020300-0735"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "제주알찜"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_abdb1ee8db1db2f8",
+   "menu_name": "제주알찜",
+   "representative_food": "알곤이찜",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-210020300-0266",
+    "P123-210020300-0735"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "제주알찜"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_dd46db9911f9331b",
+   "menu_name": "영양만점 알찜(주문 폭주 및 재주문율 1위)",
+   "representative_food": "알곤이찜",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-210020300-0266",
+    "P123-210020300-0735"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "인생아구찜"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_1ce55240c805c747",
+   "menu_name": "연어덮밥",
+   "representative_food": "연어덮밥",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "사케동 사례. 생연어와 익힌 연어 구분.",
+   "candidate_codes": [
+    "P123-201020200-0957"
+   ],
+   "prior_1700_review": "추정·중앙값·원본 불충분",
+   "store_brands": [
+    "맘쓰육회연어"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_b8d4a6c8106dad1f",
+   "menu_name": "'NEW' 불닭마요 연어덮밥",
+   "representative_food": "연어덮밥",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "사케동 사례. 생연어와 익힌 연어 구분.",
+   "candidate_codes": [
+    "P123-201020200-0957"
+   ],
+   "prior_1700_review": "추정·중앙값·원본 불충분",
+   "store_brands": [
+    "맘쓰육회연어"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_65a97e0b538e928f",
+   "menu_name": "직화 꼬꼬오돌뼈 (깻잎,샐러드O)",
+   "representative_food": "오돌뼈",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P117-501050100-5295",
+    "P117-501050100-5510"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "닭발공작소"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_4ff54509db322017",
+   "menu_name": "오삼덮밥",
+   "representative_food": "오삼덮밥",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-201020300-1448",
+    "P123-201020200-0769"
+   ],
+   "prior_1700_review": "공식 원수치 일치 · 실제 메뉴명 대조 필요",
+   "store_brands": [
+    "자금성"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_6910e1b2b996ca5c",
+   "menu_name": "수원왕갈비통닭",
+   "representative_food": "왕갈비통닭",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "가공 수원왕갈비통닭 제품. 현지 매장 수치와 구분.",
+   "candidate_codes": [
+    "P117-800050200-0387"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "수원왕갈비통닭"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_885a18126b3cf697",
+   "menu_name": "수원왕갈비통닭",
+   "representative_food": "왕갈비통닭",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "가공 수원왕갈비통닭 제품. 현지 매장 수치와 구분.",
+   "candidate_codes": [
+    "P117-800050200-0387"
+   ],
+   "prior_1700_review": "추정·중앙값·원본 불충분",
+   "store_brands": [
+    "수원왕갈비통닭"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_09d0329952def82a",
+   "menu_name": "바베큐족발덮밥(고기많이)",
+   "representative_food": "족발덮밥",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "순살형 및 태국식 사례.",
+   "candidate_codes": [
+    "P123-201020300-1843",
+    "P123-201020300-3522"
+   ],
+   "prior_1700_review": "공식 원수치 일치 · 실제 메뉴명 대조 필요",
+   "store_brands": [
+    "마왕족발"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_1710e7b4fd9ebbf5",
+   "menu_name": "[직화로 화끈하게 구워낸]직화족발덮밥",
+   "representative_food": "족발덮밥",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "순살형 및 태국식 사례.",
+   "candidate_codes": [
+    "P123-201020300-1843",
+    "P123-201020300-3522"
+   ],
+   "prior_1700_review": "공식 원수치 일치 · 실제 메뉴명 대조 필요",
+   "store_brands": [
+    "꽉찬순대국족발"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_991bf391c472b86b",
+   "menu_name": "[단백질 두부 가득] 청국장 전골",
+   "representative_food": "청국장",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "찌개에 한해 사용. 생청국장이나 분말은 제외.",
+   "candidate_codes": [
+    "D106-297000000-0001"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "한식백반전문점"
+   ],
+   "decision": "hold",
+   "reason": "후보는 청국장찌개 가정식이고 '찌개에 한해 사용' 조건이다. 매장 메뉴는 전골이며 2건은 비조리 상태다"
+  },
+  {
+   "standard_menu_id": "MN_abf6f3cd9ffad4ab",
+   "menu_name": "[단백질 두부 가득] 청국장 전골(비조리)",
+   "representative_food": "청국장",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "찌개에 한해 사용. 생청국장이나 분말은 제외.",
+   "candidate_codes": [
+    "D106-297000000-0001"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "한식백반전문점"
+   ],
+   "decision": "hold",
+   "reason": "후보는 청국장찌개 가정식이고 '찌개에 한해 사용' 조건이다. 매장 메뉴는 전골이며 2건은 비조리 상태다"
+  },
+  {
+   "standard_menu_id": "MN_c6147cbeb2535ff0",
+   "menu_name": "[비조리] 청국장 전골",
+   "representative_food": "청국장",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "찌개에 한해 사용. 생청국장이나 분말은 제외.",
+   "candidate_codes": [
+    "D106-297000000-0001"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "한식백반전문점"
+   ],
+   "decision": "hold",
+   "reason": "후보는 청국장찌개 가정식이고 '찌개에 한해 사용' 조건이다. 매장 메뉴는 전골이며 2건은 비조리 상태다"
+  },
+  {
+   "standard_menu_id": "MN_fef3f28881aa39ef",
+   "menu_name": "(계절메뉴) 살얼름 초계국수",
+   "representative_food": "초계국수",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-204020200-0041",
+    "P123-204020200-0147"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "1984그수육집칼국수"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_0ea152ceb46ab57f",
+   "menu_name": "치킨 난반",
+   "representative_food": "치킨난반",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "치킨난반 제품. 덮밥 및 소스 단독 제외.",
+   "candidate_codes": [
+    "P117-800080000-0239"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "쇼텐"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_3f2ef3ee0b56675c",
+   "menu_name": "치킨너겟",
+   "representative_food": "치킨너겟",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "D212-549150000-0001"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "롯데리아"
+   ],
+   "decision": "approved",
+   "kind": "product",
+   "food_code": "D212-549150000-0001",
+   "brand": "롯데리아",
+   "product_name": "New치킨너겟",
+   "reason": "판매 기록 98건이 모두 롯데리아 매장. 롯데리아 제공 치킨너겟 값. 제품명 표기(New) 차이는 같은 상품으로 보고 화면에 원래 제품명을 함께 표시"
+  },
+  {
+   "standard_menu_id": "MN_927fc48f298effe5",
+   "menu_name": "치킨베이크",
+   "representative_food": "치킨베이크",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "미르브레드랩 제품. 코스트코 자체 메뉴로 해석하지 않음.",
+   "candidate_codes": [
+    "P101-405000400-6686"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "굽네치킨",
+    "굽네치킨&피자"
+   ],
+   "decision": "hold",
+   "reason": "후보가 미르브레드랩 가공품이다. 판매 매장은 굽네치킨이다"
+  },
+  {
+   "standard_menu_id": "MN_065bc740df1dffd3",
+   "menu_name": "느억맘 닭날개 튀김 5조각",
+   "representative_food": "치킨윙·봉",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "노모어피자와 고피자. 조각 수와 소스 옵션 확인.",
+   "candidate_codes": [
+    "D212-549040000-0003",
+    "D212-549000000-0153"
+   ],
+   "prior_1700_review": "추정·중앙값·원본 불충분",
+   "store_brands": [
+    "코끼리쌀국수"
+   ],
+   "decision": "hold",
+   "reason": "후보가 노모어피자·고피자 제품값이다. 판매 매장(굽네·BBQ·BHC·롯데리아 등)과 브랜드가 다르다"
+  },
+  {
+   "standard_menu_id": "MN_11c4d67e6b54d0e1",
+   "menu_name": "고추바사삭 윙/봉",
+   "representative_food": "치킨윙·봉",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "노모어피자와 고피자. 조각 수와 소스 옵션 확인.",
+   "candidate_codes": [
+    "D212-549040000-0003",
+    "D212-549000000-0153"
+   ],
+   "prior_1700_review": "추정·중앙값·원본 불충분",
+   "store_brands": [
+    "굽네치킨"
+   ],
+   "decision": "hold",
+   "reason": "후보가 노모어피자·고피자 제품값이다. 판매 매장(굽네·BBQ·BHC·롯데리아 등)과 브랜드가 다르다"
+  },
+  {
+   "standard_menu_id": "MN_26394875a4b7905a",
+   "menu_name": "서울엄마 파기름떡볶이 치킨 윙봉",
+   "representative_food": "치킨윙·봉",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "노모어피자와 고피자. 조각 수와 소스 옵션 확인.",
+   "candidate_codes": [
+    "D212-549040000-0003",
+    "D212-549000000-0153"
+   ],
+   "prior_1700_review": "추정·중앙값·원본 불충분",
+   "store_brands": [
+    "굽네치킨&피자"
+   ],
+   "decision": "hold",
+   "reason": "후보가 노모어피자·고피자 제품값이다. 판매 매장(굽네·BBQ·BHC·롯데리아 등)과 브랜드가 다르다"
+  },
+  {
+   "standard_menu_id": "MN_3523dbd393139aed",
+   "menu_name": "치킨 추가 (소이갈릭 윙봉 4조각)",
+   "representative_food": "치킨윙·봉",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "노모어피자와 고피자. 조각 수와 소스 옵션 확인.",
+   "candidate_codes": [
+    "D212-549040000-0003",
+    "D212-549000000-0153"
+   ],
+   "prior_1700_review": "추정·중앙값·원본 불충분",
+   "store_brands": [
+    "피자헛"
+   ],
+   "decision": "hold",
+   "reason": "후보가 노모어피자·고피자 제품값이다. 판매 매장(굽네·BBQ·BHC·롯데리아 등)과 브랜드가 다르다"
+  },
+  {
+   "standard_menu_id": "MN_3e5a2a140b19f1db",
+   "menu_name": "치킨다리 1조각",
+   "representative_food": "치킨윙·봉",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "노모어피자와 고피자. 조각 수와 소스 옵션 확인.",
+   "candidate_codes": [
+    "D212-549040000-0003",
+    "D212-549000000-0153"
+   ],
+   "prior_1700_review": "추정·중앙값·원본 불충분",
+   "store_brands": [
+    "롯데리아"
+   ],
+   "decision": "hold",
+   "reason": "후보가 노모어피자·고피자 제품값이다. 판매 매장(굽네·BBQ·BHC·롯데리아 등)과 브랜드가 다르다"
+  },
+  {
+   "standard_menu_id": "MN_49eb131c2fc39aef",
+   "menu_name": "굽네 고추바사삭 윙봉",
+   "representative_food": "치킨윙·봉",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "노모어피자와 고피자. 조각 수와 소스 옵션 확인.",
+   "candidate_codes": [
+    "D212-549040000-0003",
+    "D212-549000000-0153"
+   ],
+   "prior_1700_review": "추정·중앙값·원본 불충분",
+   "store_brands": [
+    "굽네치킨"
+   ],
+   "decision": "hold",
+   "reason": "후보가 노모어피자·고피자 제품값이다. 판매 매장(굽네·BBQ·BHC·롯데리아 등)과 브랜드가 다르다"
+  },
+  {
+   "standard_menu_id": "MN_9a187c1a72c764c9",
+   "menu_name": "고추바사삭 윙박스[윙10/봉10]",
+   "representative_food": "치킨윙·봉",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "노모어피자와 고피자. 조각 수와 소스 옵션 확인.",
+   "candidate_codes": [
+    "D212-549040000-0003",
+    "D212-549000000-0153"
+   ],
+   "prior_1700_review": "추정·중앙값·원본 불충분",
+   "store_brands": [
+    "굽네치킨"
+   ],
+   "decision": "hold",
+   "reason": "후보가 노모어피자·고피자 제품값이다. 판매 매장(굽네·BBQ·BHC·롯데리아 등)과 브랜드가 다르다"
+  },
+  {
+   "standard_menu_id": "MN_a1d1aed0d3d4cfda",
+   "menu_name": "황금올리브치킨TM핫윙(VAP)",
+   "representative_food": "치킨윙·봉",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "노모어피자와 고피자. 조각 수와 소스 옵션 확인.",
+   "candidate_codes": [
+    "D212-549040000-0003",
+    "D212-549000000-0153"
+   ],
+   "prior_1700_review": "추정·중앙값·원본 불충분",
+   "store_brands": [
+    "BBQ"
+   ],
+   "decision": "hold",
+   "reason": "후보가 노모어피자·고피자 제품값이다. 판매 매장(굽네·BBQ·BHC·롯데리아 등)과 브랜드가 다르다"
+  },
+  {
+   "standard_menu_id": "MN_a24e7e3c3eaa80ae",
+   "menu_name": "후라이드 윙",
+   "representative_food": "치킨윙·봉",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "노모어피자와 고피자. 조각 수와 소스 옵션 확인.",
+   "candidate_codes": [
+    "D212-549040000-0003",
+    "D212-549000000-0153"
+   ],
+   "prior_1700_review": "추정·중앙값·원본 불충분",
+   "store_brands": [
+    "BHC"
+   ],
+   "decision": "hold",
+   "reason": "후보가 노모어피자·고피자 제품값이다. 판매 매장(굽네·BBQ·BHC·롯데리아 등)과 브랜드가 다르다"
+  },
+  {
+   "standard_menu_id": "MN_b9253f33d3ef304f",
+   "menu_name": "내맘대로 반/반 윙박스 치킨만[윙10/봉10]",
+   "representative_food": "치킨윙·봉",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "노모어피자와 고피자. 조각 수와 소스 옵션 확인.",
+   "candidate_codes": [
+    "D212-549040000-0003",
+    "D212-549000000-0153"
+   ],
+   "prior_1700_review": "추정·중앙값·원본 불충분",
+   "store_brands": [
+    "굽네치킨"
+   ],
+   "decision": "hold",
+   "reason": "후보가 노모어피자·고피자 제품값이다. 판매 매장(굽네·BBQ·BHC·롯데리아 등)과 브랜드가 다르다"
+  },
+  {
+   "standard_menu_id": "MN_0f138c416dea4e20",
+   "menu_name": "시그니처 치킨핑거 (6개)",
+   "representative_food": "치킨텐더",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "D212-549000000-0166",
+    "D212-549000000-0167"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "슈퍼크리스피"
+   ],
+   "decision": "hold",
+   "reason": "후보가 피자스쿨·지정환피자 제품값이다. 판매 매장(슈퍼크리스피·롯데리아 등)과 브랜드가 다르다"
+  },
+  {
+   "standard_menu_id": "MN_18718f37cbda86e0",
+   "menu_name": "치킨텐더 2개",
+   "representative_food": "치킨텐더",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "D212-549000000-0166",
+    "D212-549000000-0167"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "슈퍼크리스피"
+   ],
+   "decision": "hold",
+   "reason": "후보가 피자스쿨·지정환피자 제품값이다. 판매 매장(슈퍼크리스피·롯데리아 등)과 브랜드가 다르다"
+  },
+  {
+   "standard_menu_id": "MN_3ef9a4ac2994d24f",
+   "menu_name": "치킨텐더",
+   "representative_food": "치킨텐더",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "D212-549000000-0166",
+    "D212-549000000-0167"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "복피자"
+   ],
+   "decision": "hold",
+   "reason": "후보가 피자스쿨·지정환피자 제품값이다. 판매 매장(슈퍼크리스피·롯데리아 등)과 브랜드가 다르다"
+  },
+  {
+   "standard_menu_id": "MN_88158196bd1ff98f",
+   "menu_name": "치킨휠레 4조각",
+   "representative_food": "치킨텐더",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "D212-549000000-0166",
+    "D212-549000000-0167"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "롯데리아"
+   ],
+   "decision": "hold",
+   "reason": "후보가 피자스쿨·지정환피자 제품값이다. 판매 매장(슈퍼크리스피·롯데리아 등)과 브랜드가 다르다"
+  },
+  {
+   "standard_menu_id": "MN_e58e8f5b8032ac96",
+   "menu_name": "치킨 텐더 4개",
+   "representative_food": "치킨텐더",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "D212-549000000-0166",
+    "D212-549000000-0167"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "매드피자"
+   ],
+   "decision": "hold",
+   "reason": "후보가 피자스쿨·지정환피자 제품값이다. 판매 매장(슈퍼크리스피·롯데리아 등)과 브랜드가 다르다"
+  },
+  {
+   "standard_menu_id": "MN_7e0133e2fd7b8f5a",
+   "menu_name": "왕카레치킨 덮밥",
+   "representative_food": "카레덮밥",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "카레라이스 일반 후보.",
+   "candidate_codes": [
+    "D101-044000000-0001"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "한솥도시락"
+   ],
+   "decision": "hold",
+   "reason": "후보는 카레라이스 가정식이다. 매장 메뉴는 돈까스·치킨 토핑이 올라간 덮밥이라 구성이 다르다"
+  },
+  {
+   "standard_menu_id": "MN_ce017cd40b2bdcc8",
+   "menu_name": "왕카레돈까스 덮밥",
+   "representative_food": "카레덮밥",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "카레라이스 일반 후보.",
+   "candidate_codes": [
+    "D101-044000000-0001"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "한솥도시락"
+   ],
+   "decision": "hold",
+   "reason": "후보는 카레라이스 가정식이다. 매장 메뉴는 돈까스·치킨 토핑이 올라간 덮밥이라 구성이 다르다"
+  },
+  {
+   "standard_menu_id": "MN_e5151ca0ed14ade4",
+   "menu_name": "기본 [카레 우동]",
+   "representative_food": "카레우동",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "포장 카레우동. 조리 전후와 국물 포함 확인.",
+   "candidate_codes": [
+    "P108-011000200-0376",
+    "P108-011000200-0510"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "카레집"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_7abeab196f77f542",
+   "menu_name": "탄두리 치킨 반마리 (Tandoori Half)",
+   "representative_food": "탄두리치킨",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P117-501050100-8318"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "인도음식"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_d240ceeb73548570",
+   "menu_name": "탄두리 치킨 한마리 (Tandoori Chiken)",
+   "representative_food": "탄두리치킨",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P117-501050100-8318"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "인도음식"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_fbca0ddeff9e9c3b",
+   "menu_name": "타두리 치킨 반마리Tandoor chiken Half",
+   "representative_food": "탄두리치킨",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P117-501050100-8318"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "인도음식"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_993b9accafba1baf",
+   "menu_name": "[1.1KG대용량]국산파닭치킨",
+   "representative_food": "파닭",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "자담치킨 상품.",
+   "candidate_codes": [
+    "D212-549000000-0111"
+   ],
+   "prior_1700_review": "추정·중앙값·원본 불충분",
+   "store_brands": [
+    "피자먹닭"
+   ],
+   "decision": "hold",
+   "reason": "후보가 자담치킨 제품값이다. 판매 매장(피자먹닭·가마치통닭·노랑통닭)과 브랜드가 다르다"
+  },
+  {
+   "standard_menu_id": "MN_bab7befe0e8d7067",
+   "menu_name": "빠사삭 허니마늘파닭치킨",
+   "representative_food": "파닭",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "자담치킨 상품.",
+   "candidate_codes": [
+    "D212-549000000-0111"
+   ],
+   "prior_1700_review": "추정·중앙값·원본 불충분",
+   "store_brands": [
+    "가마치통닭"
+   ],
+   "decision": "hold",
+   "reason": "후보가 자담치킨 제품값이다. 판매 매장(피자먹닭·가마치통닭·노랑통닭)과 브랜드가 다르다"
+  },
+  {
+   "standard_menu_id": "MN_c25793eab855c641",
+   "menu_name": "웰빙 파닭 후라이드 치킨",
+   "representative_food": "파닭",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "자담치킨 상품.",
+   "candidate_codes": [
+    "D212-549000000-0111"
+   ],
+   "prior_1700_review": "추정·중앙값·원본 불충분",
+   "store_brands": [
+    "노랑통닭"
+   ],
+   "decision": "hold",
+   "reason": "후보가 자담치킨 제품값이다. 판매 매장(피자먹닭·가마치통닭·노랑통닭)과 브랜드가 다르다"
+  },
+  {
+   "standard_menu_id": "MN_ac6397b415e6c8ad",
+   "menu_name": "왕갈비맛 함박스테이크 덮밥",
+   "representative_food": "함박스테이크덮밥",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-201020200-1082",
+    "P123-201020200-1068"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "한솥도시락"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_ad33174873f3dc0c",
+   "menu_name": "치폴레 함박스테이크 덮밥",
+   "representative_food": "함박스테이크덮밥",
+   "catalog_status_before": "검토 필요",
+   "research_verdict": "수치 연결 후보",
+   "research_memo": "같은 이름의 제품 후보. 제조사·조리 상태·옵션이 일치할 때만 해당 제품값으로 표시.",
+   "candidate_codes": [
+    "P123-201020200-1082",
+    "P123-201020200-1068"
+   ],
+   "prior_1700_review": "가공식품 비교 후보 · 제품 동일성 미확인",
+   "store_brands": [
+    "한솥도시락"
+   ],
+   "decision": "hold",
+   "reason": "후보가 특정 제조사 가공식품 값이다. 판매 매장 메뉴가 그 제품이라는 근거가 없다"
+  },
+  {
+   "standard_menu_id": "MN_01a93a8dba2fad9d",
+   "menu_name": "허니버터치킨",
+   "representative_food": "허니버터치킨",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "해당 브랜드 제품 영양표 확인 · 옵션별 제공 가능",
+   "decision": "approved",
+   "kind": "product_options",
+   "brand": "후라이드참잘하는집",
+   "product_name": "허니버터치킨",
+   "source": "후라이드참잘하는집 본사 제품영양정보",
+   "source_url": "https://hoocham.com/menu/info",
+   "basis": 100,
+   "unit": "g",
+   "options": [
+    {
+     "option": "뼈",
+     "energy_kcal": 280,
+     "protein_g": 20,
+     "fat_g": null,
+     "carbohydrate_g": null,
+     "sodium_mg": 340,
+     "sugar_g": 4,
+     "saturated_fat_g": 3
+    },
+    {
+     "option": "순살",
+     "energy_kcal": 300,
+     "protein_g": 21,
+     "fat_g": null,
+     "carbohydrate_g": null,
+     "sodium_mg": 319,
+     "sugar_g": 3,
+     "saturated_fat_g": 3
+    }
+   ],
+   "reason": "판매 매장과 같은 브랜드의 본사 영양표. 판매 기록에 뼈·순살 구분이 없어 옵션별로 나란히 보여 주고 대표 수치를 정하지 않는다"
+  },
+  {
+   "standard_menu_id": "MN_0081e4def640f848",
+   "menu_name": "순살양념치킨",
+   "representative_food": "양념치킨",
+   "catalog_status_before": "자료 없음",
+   "research_verdict": "동명 가공식품 비교자료 · 실제 판매 제품 동일성 미확인",
+   "candidate_codes": [
+    "P117-501050200-0218"
+   ],
+   "decision": "hold",
+   "reason": "동명 가공식품((주)체리푸드)이다. 판매 매장이 그 제품을 쓴다는 근거가 없다"
+  }
+ ]
+}

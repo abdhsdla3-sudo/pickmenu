@@ -19,10 +19,15 @@ REF_FIELDS = (
 )
 
 
+# 1.10.0 검수 연결 참고값에만 있는 칸(없으면 내보내지 않는다).
+REF_OPTIONAL = ("kind", "brand", "product_name", "option", "extra", "origin")
+
+
 def reference(item: dict | None) -> dict | None:
     if item is None:
         return None
-    return {key: item[key] for key in REF_FIELDS}
+    return {**{key: item[key] for key in REF_FIELDS},
+            **{key: item[key] for key in REF_OPTIONAL if key in item}}
 
 
 def shared_menu(item: dict) -> dict:
@@ -32,6 +37,7 @@ def shared_menu(item: dict) -> dict:
                     for region, value in item["regions"].items()},
         "nutrition": reference(item["nutrition"]),
         "references": [reference(ref) for ref in item["references"]],
+        **({"survey_servings": item["survey_servings"]} if item.get("survey_servings") else {}),
     }
 
 
