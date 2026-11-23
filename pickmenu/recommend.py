@@ -432,6 +432,24 @@ MILDER = re.compile(r"로제|크림|까르보|간장|치즈|짜장|궁중|순한
 HOTTER = re.compile(r"매운|매콤|불|마라|김치|짬뽕|고추|얼큰|칼칼|핫|청양|양념|닭갈비|낙지|쭈꾸미|주꾸미|제육")
 
 
+# 참고자료·메뉴 이름 어디에도 맵기 근거가 없을 때 '안 매움'으로 보는 대표 음식(이름이 정확히 같을 때만).
+# 1.9.7부터 맵기를 고르면 맵기가 확인된 음식만 추천해, 샐러드·크림파스타처럼 분명히 안 매운 음식도
+# '안 매운 쪽'에서 빠졌다. 보통 고춧가루·고추장 없이 나오는 음식만 넣는다. 비빔·양념·볶음류, 지역·가게마다
+# 맵게 나오는 음식(육개장·짬뽕·떡볶이·로제·물회·커리 등)은 넣지 않는다. 메뉴 이름에 HOTTER 단서가
+# 있으면(예: 매콤 크림파스타) 그 메뉴는 짐작하지 않는다.
+MILD_FOODS = frozenset((
+    "삼겹살", "목살", "소불고기", "LA갈비", "곱창구이", "막창구이", "대창구이", "육사시미",
+    "국밥", "순대국밥", "내장국밥", "돼지국밥", "북엇국", "곰탕·설렁탕", "갈비탕", "만둣국", "닭곰탕",
+    "냉면", "콩국수", "수제비", "들기름메밀면",
+    "치킨마요덮밥", "마요덮밥", "불고기덮밥", "새우볶음밥", "카레덮밥", "함박스테이크덮밥", "계란덮밥", "잡채밥",
+    "토스트", "포케", "샐러드", "샐러드랩", "반미",
+    "크림파스타", "토마토파스타", "필라프", "리조또", "함박스테이크",
+    "우동", "카츠나베", "오므라이스", "가라아게", "마키", "치킨까스", "생선까스", "연어덮밥", "소바", "텐동", "치킨난반",
+    "전", "족발", "수육", "보쌈구이", "볶음밥", "짜장밥", "유산슬", "갈비찜",
+    "후라이드치킨", "간장치킨", "허니버터치킨", "마늘치킨", "치킨텐더", "왕갈비통닭", "뿌링클·시즈닝치킨", "치킨베이크",
+))
+
+
 # 여러 음식을 묶은 일반 컬럼. 이런 컬럼의 맵기는 개별 음식(계란덮밥·제육덮밥)에 빌려 쓰지 않는다.
 GENERIC_COLUMNS = {"덮밥", "볶음", "찌개", "탕", "찜", "구이", "전골", "국수", "면", "밥", "정식", "세트", "튀김", "전"}
 
@@ -469,9 +487,14 @@ def food_tags(menus: list[dict[str, Any]], tags: dict[str, dict[str, Any]],
             if not value and key == "spice" and name and not exact:
                 value = near_spice(food, name, tags[name]["spice"])
             values[key] = value
+        values["guess"] = "1" if not values["spice"] and food in MILD_FOODS else ""
+        if values["guess"]:
+            values["spice"] = "mild"
         decided[food] = values
     return [{**menu, "family_spice": decided[menu["components"][0]]["spice"],
-             "family_soup": decided[menu["components"][0]]["soup"]} for menu in menus]
+             "family_soup": decided[menu["components"][0]]["soup"],
+             **({"family_spice_guess": True} if decided[menu["components"][0]]["guess"] else {})}
+            for menu in menus]
 
 
 def quality_parts(menu: dict[str, Any], district: str) -> tuple[float | None, float | None, str]:
@@ -570,6 +593,11 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
         # 이야기에서 국물 조건을 썼으면 국물 여부를 확인할 수 있는 메뉴만 남긴다.
         name_spice = menu["spice"] or ("hot" if KNOWN_HOT.search(compact(menu["components"][0] + menu["name"])) else "")
         family_spice = menu.get("family_spice", "")
+        # 이름으로 짐작한 '안 매움'은 메뉴 이름(대표 음식명을 뺀 부분)에 매운 단서가 있으면 쓰지 않는다
+        # (매콤 크림파스타는 빼고, 소불고기의 '불'은 보지 않는다).
+        guessed = bool(menu.get("family_spice_guess")) and not name_spice
+        if guessed and HOTTER.search(compact(menu["name"]).replace(compact(menu["components"][0]), "")):
+            family_spice, guessed = "", False
         effective_spice = family_spice or name_spice
         family_soup = menu.get("family_soup") or menu["soup"]
         if (profile.spice and (profile.spice != effective_spice or (name_spice and name_spice != profile.spice))
@@ -605,7 +633,8 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
                                       "yes" if meat else "")):
             if value:
                 preferences.append(1 if value == actual else (0.35 if not actual else 0))
-                matches.append(f"{label} {'일치' if value == actual else '정보 부족' if not actual else '불일치'}")
+                matches.append(f"{label} {'일치' if value == actual else '정보 부족' if not actual else '불일치'}"
+                               + (" (음식 이름으로 짐작)" if label == "맵기" and guessed and value == actual else ""))
         # 이름 단서는 세트 메뉴명이 아닌 대표 음식명과 분류를 본다.
         taste_signal = f"{menu['components'][0]} {menu['category']}"
         for item in filter(None, profile.taste.split(",")):

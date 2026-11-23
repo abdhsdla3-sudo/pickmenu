@@ -183,6 +183,22 @@ class ReferenceTagTest(unittest.TestCase):
         bossam = next(f["best"] for f in wide["families"] if f["name"] == "보쌈")
         self.assertTrue(bossam["reasons"][1].startswith("참고 영양값 없음 · 후보 중앙값"))
 
+    def test_clearly_mild_food_counts_as_mild_unless_name_says_hot(self):
+        # 샐러드·크림파스타처럼 맵기 근거가 없어도 분명히 안 매운 음식은 안 매운 쪽에 나온다.
+        menus = apply_reference([menu("크림파스타", "양식", menu_id="MN_1"),
+                                 menu("매콤 크림파스타", "양식", menu_id="MN_2", food="크림파스타"),
+                                 menu("소불고기 정식", "고기", menu_id="MN_3", food="소불고기"),
+                                 menu("비빔밥", "밥·덮밥", menu_id="MN_4")], {})
+        self.assertEqual(menus[0]["family_spice"], "mild")
+        self.assertTrue(menus[0]["family_spice_guess"])
+        self.assertEqual(menus[3]["family_spice"], "")  # 목록에 없는 음식은 그대로 미정
+        categories = ["양식", "고기", "밥·덮밥"]
+        mild = recommend(menus, Profile.parse({"spice": "mild"}, categories))
+        self.assertEqual({item["name"] for item in mild["items"]}, {"크림파스타", "소불고기 정식"})
+        self.assertIn("맵기 일치 (음식 이름으로 짐작)", mild["items"][0]["reasons"])
+        hot = recommend(menus, Profile.parse({"spice": "hot"}, categories))
+        self.assertEqual(hot["items"], [])
+
     def test_reference_data_backs_off_after_failure(self):
         with patch.dict(menu_reco._failed, {"at": float("-inf")}), \
                 patch.object(menu_reco, "data", side_effect=OSError("down")) as load:
