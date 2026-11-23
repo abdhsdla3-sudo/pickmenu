@@ -116,10 +116,13 @@ class LLMTest(unittest.TestCase):
             ("더워", {"taste": "cool"}), ("덥다", {"taste": "cool"}), ("더워 죽겠어", {"taste": "cool"}),
             ("찜통이야", {"taste": "cool"}), ("오늘은 안 더워", {"taste": ""}),
             ("땀 뻘뻘 흘리면서 먹을 매운 거", {"taste": ""}),  # 매운 음식 땀은 더위가 아니다
+            ("더워", {"exclude_categories": "국밥·해장국,찌개·탕"}),  # 더위에는 뜨거운 국물 음식군을 뺀다
+            ("더운데 국밥 땡겨", {"query": "국밥", "exclude_categories": ""}),
         ]
         for text, expected in cases:
             with self.subTest(text=text), patch.object(llm, "generate", return_value={}):
-                profile, _ = llm.conditions({"messages": [text], "profile": {}}, [], {"국밥": {"국밥·해장국"}})
+                profile, _ = llm.conditions({"messages": [text], "profile": {}}, ["국밥·해장국", "찌개·탕", "면"],
+                                            {"국밥": {"국밥·해장국"}, "김치찌개": {"찌개·탕"}, "냉면": {"면"}})
                 for field, value in expected.items():
                     self.assertEqual(getattr(profile, field), value)
 

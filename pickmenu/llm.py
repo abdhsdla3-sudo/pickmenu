@@ -314,6 +314,7 @@ INSTEAD = re.compile(r"([A-Za-z]+)\s+instead\s+of\s+([A-Za-z]+)", re.IGNORECASE)
 TAKE_THAT = re.compile(r"(?:그걸로|그거로|그것으로)\s*(?:바꿔|변경|고쳐|할래|해)")
 PAST_ORDER = r"\s*(?:을|를|은|는)?\s*(?:[가-힣]+\s*)?(?:시켰|먹었)"
 WANT_VERB = r"\s*(?:이|가|을|를|은|는)?\s*(?:너무\s*|진짜\s*|좀\s*)?(?:당겨|땡겨|땡기|당기|먹고\s*싶)"
+HOT_WEATHER = re.compile(r"(?<!안\s)(?<!안)(?:더워|더웡|덥|더운|더위|폭염|찜통|무더)")
 PAST_REVIEW = re.compile(r"괜찮았|맛있었|좋았|먹었|끝남|끝났")
 WANT_WORD = re.compile(r"(?<![가-힣])([가-힣]{2,}?)(?:이|가|을|를)?\s*(?:너무\s*|진짜\s*|좀\s*)?(?:당겨|땡겨|땡기|당기|먹고\s*싶)")
 NOT_A_DISH = {"이거", "그거", "저거", "뭔가", "무언가", "오늘은", "오늘", "이번엔", "그냥", "아무거나", "다른", "이제"}
@@ -408,6 +409,14 @@ def plain_fixes(values: dict[str, Any], story: Story, result: dict[str, Any] | N
             and any("고기" in groups for groups in foods.values())):
         values["query"] = query = ""
         values["meal_category"] = "고기"
+    # "더워", "덥다": 시원한 맛은 가산점이라 리뷰 많은 국밥이 1위에 남는다. 국물·메뉴·음식군을 따로 정하지 않았으면
+    # 뜨거운 국물 음식군(국밥·해장국, 찌개·탕)을 빼서 콩국수·물회·냉면 쪽으로 찾는다(1.13.6).
+    if (HOT_WEATHER.search(current) and "cool" in values.get("taste", "").split(",") and not query
+            and values.get("soup") != "yes" and not values.get("meal_category")):
+        known = {group for groups in foods.values() for group in groups}
+        hot_soups = [name for name in ("국밥·해장국", "찌개·탕") if name in known]
+        current_cats = [name for name in values.get("exclude_categories", "").split(",") if name]
+        values["exclude_categories"] = ",".join(dict.fromkeys(current_cats + hot_soups))
     # "해장하고 싶어": 국밥·해장국 음식군.
     if (HANGOVER.search(current) and not values.get("meal_category") and not query
             and any("국밥·해장국" in groups for groups in foods.values())):
