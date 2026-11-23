@@ -126,6 +126,34 @@ class LLMTest(unittest.TestCase):
                 for field, value in expected.items():
                     self.assertEqual(getattr(profile, field), value)
 
+    def test_clarify_when_nothing_understood(self):
+        """조건을 하나도 못 찾은 말에는 되묻고, 그냥 추천해 달라는 말에는 묻지 않는다(1.13.7)."""
+        foods = {"국밥": {"국밥·해장국"}, "죽": {"죽"}}
+        saved = llm.Profile.parse({}, [])
+
+        def ask(messages: list[str]) -> tuple[str, list[str]] | None:
+            with patch.object(llm, "generate", return_value={}):
+                profile, history = llm.conditions({"messages": messages, "profile": {}}, [], foods)
+            return llm.clarify(history, profile, saved)
+
+        tired = ask(["피곤해"])
+        self.assertIsNotNone(tired)
+        assert tired is not None
+        self.assertIn("가볍게", tired[1])
+        self.assertIn("죽", (ask(["감기 걸렸어"]) or ("", []))[1])
+        self.assertIn("달달한 거", (ask(["우울해"]) or ("", []))[1])
+        self.assertIn("아무거나 추천", (ask(["안녕"]) or ("", []))[1])
+        for messages in (["추천해줘"], ["배고파"], ["아무거나"], ["추워"], ["국밥"], ["고마워"], ["다른 거"],
+                         ["피곤해", "따뜻한 국물"], ["피곤해", "아무거나 추천"], ["점메추"], ["ㅊㅊ"], ["카레 땡김"],
+                         ["야근해서 너무 지쳤어 기운 나는 거 먹고 싶다"], ["우유 먹으면 배 아파"], ["오늘 날씨 어때?"]):
+            with self.subTest(messages=messages):
+                self.assertIsNone(ask(messages))
+        # "심심해"(지루하다)는 맛이 아니라 되묻는다. 맛으로 쓴 "심심한 맛"은 담백한 맛이다.
+        self.assertIsNotNone(ask(["심심해"]))
+        with patch.object(llm, "generate", return_value={}):
+            profile, _ = llm.conditions({"messages": ["심심한 맛으로"], "profile": {}}, [], foods)
+        self.assertEqual(profile.taste, "plain")
+
     def test_goal_note_uses_serving_estimate_only_when_known(self):
         family = {"name": "육회", "best": {"serving_estimate": {"grams": 150, "energy_kcal": 210, "protein_g": 30.0}}}
         light = llm.Profile.parse({"goal": "light"}, [])

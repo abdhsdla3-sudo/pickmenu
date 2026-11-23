@@ -1576,6 +1576,12 @@ async function respond(answer) {
     chatConditions = data.conditions;
     updateChatTurns();
     lastRequest = null;
+    if (data.clarify) {
+      // 조건을 찾지 못한 말에는 추천 대신 되묻는다. 답 버튼을 누르면 앞의 말과 함께 다시 보낸다.
+      bubble(data.reply);
+      setChatChips(data.clarify.options || []);
+      return;
+    }
     showPicked(data.conditions);
     render(data.result);
     if (data.result.families?.length) rememberFoods(data.result.families.map(family => family.name));

@@ -386,6 +386,11 @@ class Handler(BaseHTTPRequestHandler):
             groups = categories(menus)
             saved = Profile.parse(payload.get("profile"), groups)
             profile = llm.resolve_story(history, saved, groups, foods(menus))
+            # 조건을 하나도 찾지 못한 말("피곤해", "우울해")에는 기본 목록 대신 되묻는다(1.13.7).
+            if asked := llm.clarify(history, profile, saved):
+                self.send_json(200, {"reply": asked[0], "clarify": {"options": asked[1]},
+                                     "result": None, "conditions": vars(profile)})
+                return
             result = self.recommendation(menus, profile, recent, conversation=True)
             answer = llm.reply(result, history, taste=profile.taste, profile=profile, saved=saved)
             self.send_json(200, {"reply": answer, "result": result, "conditions": vars(profile)})
