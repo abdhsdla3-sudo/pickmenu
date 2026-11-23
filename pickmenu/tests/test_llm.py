@@ -83,6 +83,30 @@ class LLMTest(unittest.TestCase):
                 for field, value in expected.items():
                     self.assertEqual(getattr(profile, field), value)
 
+    def test_plain_model_output_roles_from_text(self):
+        """조건만 내는 AI(v1) 출력에서도 문장 단서로 메뉴 역할을 고친다(1.13.5)."""
+        foods = {"족발": {"족발·보쌈"}, "피자": {"피자"}, "떡볶이": {"분식"}, "짬뽕": {"중식"}, "짜장면": {"중식"},
+                 "포케": {"샐러드"}, "해장국": {"국밥·해장국"}, "순대국밥": {"국밥·해장국"}}
+        cases = [
+            (["어제 시킨 족발 아직 남았는데 같이 먹을 거 추천해줘"], {"query": "족발", "meal_category": "족발·보쌈"},
+             {"query": "", "meal_category": ""}),
+            (["친구가 피자 먹재"], {"query": "피자"}, {"query": ""}),
+            (["떡볶이는 이제 질렸어. 다른 분식"], {"meal_category": "분식"},
+             {"query": "", "avoid_menus": "떡볶이"}),
+            (["점심에 짬뽕 먹었는데 다시 생각나네"], {}, {"query": "짬뽕", "avoid_menus": ""}),
+            (["Jjamppong instead of jajangmyeon, but mild please"], {"query": "Jjamppong"}, {"query": "짬뽕"}),
+            (["떡볶이 추천해줘", "아니, 회덮밥 먹고 싶어. 그걸로 바꿔줘"], {}, {"query": "회덮밥"}),
+            (["예전에 포케 시켰는데 오늘은 회덮밥이 당겨"], {"query": "회덮밥"}, {"query": "회덮밥"}),
+            (["어제 술 마시고 해장국 먹었으니까 오늘은 해장국 빼고 국물 있는 거"], {"exclude": "해장국"}, {"exclude": ""}),
+            (["해물 빼 줘"], {"exclude": "해물"}, {"exclude": "해물"}),
+            (["튀김 종류는 속이 안 좋아서 피할래"], {"exclude": "튀김"}, {"exclude_groups": "튀김"}),
+        ]
+        for messages, output, expected in cases:
+            with self.subTest(messages=messages), patch.object(llm, "generate", return_value=output):
+                profile, _ = llm.conditions({"messages": messages, "profile": {}}, [], foods)
+                for field, value in expected.items():
+                    self.assertEqual(getattr(profile, field), value)
+
     def test_goal_note_uses_serving_estimate_only_when_known(self):
         family = {"name": "육회", "best": {"serving_estimate": {"grams": 150, "energy_kcal": 210, "protein_g": 30.0}}}
         light = llm.Profile.parse({"goal": "light"}, [])
@@ -583,11 +607,11 @@ class LLMTest(unittest.TestCase):
             with self.subTest(messages=messages), patch.object(llm, "generate", return_value=output):
                 profile, _ = llm.conditions({"messages": messages, "profile": {}}, categories, foods)
                 self.assertEqual({key: getattr(profile, key) for key in want}, want)
-        # v1 출력(mentions 없음)은 지금과 같다: 먹은 절의 메뉴는 뺀다.
+        # v1 출력(mentions 없음)도 "또 땡김"이면 먹은 메뉴를 다시 원한다고 본다(1.13.5).
         with patch.object(llm, "generate", return_value={"query": "순대국밥"}):
             profile, _ = llm.conditions({"messages": ["순댓국밥 어제 먹었는데 또 땡김"], "profile": {}},
                                         categories, foods)
-        self.assertEqual(profile.avoid_menus, "순대국밥")
+        self.assertEqual((profile.query, profile.avoid_menus), ("순대국밥", ""))
 
     def test_v2_prompt_is_opt_in(self):
         with patch.object(llm, "generate", return_value={}) as generate:

@@ -174,6 +174,7 @@ def resolve_story(history: list[str], profile: Profile, categories: list[str],
     resolve_menus(values, result, story, categories, mentions)
     resolve_exclusions(values, story, categories, result)
     final_fixes(values, story)
+    plain_fixes(values, story, result)
     apply_explicit(values, history)
     try:
         parsed = Profile.parse(values, categories)
@@ -292,6 +293,143 @@ def final_fixes(values: dict[str, Any], story: Story) -> None:
     if ("샐러드" in avoided and "샐러드" not in excluded and "샐러드" != query
             and re.search(r"샐러드\s*(?:은|는|도)?\s*(?:말고|빼|싫|별로|ㄴㄴ|제외)", current)):
         excluded.append("샐러드")
+    values["exclude"] = ",".join(excluded)
+    values["avoid_menus"] = ",".join(avoided)
+
+
+# 1.13.5 기본 모델(조건만 내는 AI) 보정. AI가 메뉴의 역할(남은 것·남의 것·다시 원함)을 말하지 않아도
+# 문장에 분명한 단서가 있을 때만 고친다.
+NO_LONGER = re.compile(r"\s*(?:은|는|도)?\s*(?:이제\s*|좀\s*|진짜\s*|너무\s*)?(?:질렸|질려|물렸|물려|지겨|지겹)"
+                       r"|\s*(?:은|는)?\s*(?:이번\s*주(?:만|에|에만)?\s*)?(?:벌써\s*)?(?:두|세|네|다섯)\s*번째")
+AGAIN_WANT = re.compile(r"(?:또|다시)\s*(?:[가-힣]+\s*)?(?:먹고\s*싶|땡|당기|당겨|생각)")
+LEFTOVER_TAIL = r"\s*(?:이|가|은|는|도)?\s*(?:[가-힣]+\s*){0,2}?(?:남았|남은|남아)"
+INSTEAD = re.compile(r"([A-Za-z]+)\s+instead\s+of\s+([A-Za-z]+)", re.IGNORECASE)
+TAKE_THAT = re.compile(r"(?:그걸로|그거로|그것으로)\s*(?:바꿔|변경|고쳐|할래|해)")
+PAST_ORDER = r"\s*(?:을|를|은|는)?\s*(?:[가-힣]+\s*)?(?:시켰|먹었)"
+WANT_VERB = r"\s*(?:이|가|을|를|은|는)?\s*(?:너무\s*|진짜\s*|좀\s*)?(?:당겨|땡겨|땡기|당기|먹고\s*싶)"
+PAST_REVIEW = re.compile(r"괜찮았|맛있었|좋았|먹었|끝남|끝났")
+WANT_WORD = re.compile(r"(?<![가-힣])([가-힣]{2,}?)(?:이|가|을|를)?\s*(?:너무\s*|진짜\s*|좀\s*)?(?:당겨|땡겨|땡기|당기|먹고\s*싶)")
+NOT_A_DISH = {"이거", "그거", "저거", "뭔가", "무언가", "오늘은", "오늘", "이번엔", "그냥", "아무거나", "다른", "이제"}
+
+
+def wanted_word(text: str) -> str:
+    """"회덮밥 먹고 싶어", "회덮밥이 당겨"의 메뉴 말(대표 음식이 아니어도 검색어로 쓴다)."""
+    words = [m.group(1) for m in WANT_WORD.finditer(text) if m.group(1) not in NOT_A_DISH]
+    return words[-1] if words else ""
+
+
+def plain_fixes(values: dict[str, Any], story: Story, result: dict[str, Any] | None) -> None:
+    """AI가 언급 역할 없이 조건만 냈을 때 놓치는 분명한 표현을 고친다(1.13.5, 기본 모델 오답 정리)."""
+    history, text, current, foods = story.history, story.text, story.current, story.foods
+    last = history[-1]
+    names = [food for food in foods if len(food) >= 2]
+    avoided = [name for name in values.get("avoid_menus", "").split(",") if name]
+    excluded = [term for term in values.get("exclude", "").split(",") if term]
+
+    def forms(food: str) -> list[str]:
+        return [food, *(alias for alias, name in FOOD_ALIASES.items() if name == food)]
+
+    def mentioned(food: str, source: str) -> list[re.Match[str]]:
+        return [m for form in forms(food) for m in re.finditer(rf"(?<![가-힣]){re.escape(form)}", source)]
+
+    def drop_query(food: str) -> None:
+        """그 메뉴를 검색어로 쓰지 않는다. 그 메뉴 때문에 고른 음식군도 다른 말로 하지 않았으면 푼다."""
+        if values.get("query") == food:
+            values["query"] = ""
+        category = values.get("meal_category", "")
+        rest = text
+        for form in forms(food):
+            rest = rest.replace(form, " ")
+        if category and category in foods.get(food, set()) and not any(
+                word.strip() and word.strip() in rest for word in category_words(category)):
+            values["meal_category"] = ""
+
+    query = values.get("query", "")
+    # "족발 아직 남았는데 같이 먹을 거", "치킨 반 마리 남았어": 남은 음식은 찾는 메뉴가 아니다.
+    if query and any(re.search(rf"(?<![가-힣]){re.escape(form)}{LEFTOVER_TAIL}", text) for form in forms(query)):
+        drop_query(query)
+    # "친구가 피자 먹재", "사진 속 메뉴는 돈가스": 남의 메뉴·사진 절에만 나온 메뉴는 찾는 메뉴가 아니다.
+    query = values.get("query", "")
+    found = mentioned(query, text) if query else []
+    if found and all(any(s <= m.start() < e for s, e in story.others) for m in found):
+        drop_query(query)
+    # "가족 모임 끝남! 족발이 괜찮았음 / 이제 영통구에서 가벼운 저녁": 지난 일로 앞 말에만 나온 메뉴.
+    query = values.get("query", "")
+    if query and len(history) > 1 and not mentioned(query, last) and not food_mentions(last, names)[0] and any(
+            mentioned(query, message) and PAST_REVIEW.search(message) and not WANT_NOW.search(message)
+            for message in history[:-1]):
+        drop_query(query)
+    # "떡볶이는 이제 질렸어", "햄버거는 이번 주만 세 번째야", "피자는 좀 물렸어": 뺄 메뉴다.
+    for food in names:
+        if any(re.search(rf"(?<![가-힣]){re.escape(form)}(?:{NO_LONGER.pattern})", current) for form in forms(food)):
+            if food not in avoided:
+                avoided.append(food)
+            drop_query(food)
+    query = values.get("query", "")
+    # "순댓국밥 어제 먹었는데 또 땡김": 먹은 절의 메뉴를 다시 원한다.
+    if not query and AGAIN_WANT.search(last):
+        again = [food for start, end in story.past for food in food_mentions(text[start:end], names)[0]]
+        if again:
+            values["query"] = query = again[-1]
+            avoided = [name for name in avoided if not (name.startswith(query) or name.endswith(query))]
+            excluded = [term for term in excluded if term != query]
+    # "Jjamppong instead of jajangmyeon"
+    if match := INSTEAD.search(last):
+        want, avoid = (ENGLISH_FOOD_ALIASES.get(word.lower()) for word in match.groups())
+        if want in foods:
+            values["query"] = query = want
+            avoided = [name for name in avoided if name != want]
+        if avoid in foods and avoid not in avoided:
+            avoided.append(avoid)
+    # "아니, 회덮밥 먹고 싶어. 그걸로 바꿔줘": 마지막 말에서 고른 메뉴.
+    if TAKE_THAT.search(last):
+        picked = sorted((m.start(), food) for food in names if food not in avoided for m in mentioned(food, last))
+        if picked:
+            values["query"] = query = picked[-1][1]
+        elif word := wanted_word(last):
+            values["query"] = query = word
+    # "예전에 포케 시켰는데 오늘은 회덮밥이 당겨": 지난번 메뉴가 아니라 지금 당기는 메뉴.
+    if query and any(re.search(rf"(?<![가-힣]){re.escape(form)}{PAST_ORDER}", current) for form in forms(query)):
+        wanted = [food for food in names if food != query
+                  and any(re.search(rf"(?<![가-힣]){re.escape(form)}{WANT_VERB}", current) for form in forms(food))]
+        if len(wanted) == 1:
+            values["query"] = query = wanted[0]
+        elif not wanted and (word := wanted_word(current)) and word != query and word not in forms(query):
+            values["query"] = query = word
+    # "해장하고 싶어": 국밥·해장국 음식군.
+    if (HANGOVER.search(current) and not values.get("meal_category") and not query
+            and any("국밥·해장국" in groups for groups in foods.values())):
+        values["meal_category"] = "국밥·해장국"
+    # 먹은·뺀 메뉴 때문에 AI가 고른 음식군("어제 족발 먹었는데 … 어울리는 국물" → 족발·보쌈)은 푼다.
+    category = values.get("meal_category", "")
+    if category and not query:
+        for food in avoided:
+            if category in foods.get(food, set()):
+                drop_query(food)
+    # 음식 묶음을 피하는 말("밀가루 들어간 건 요즘 좀 그래", "튀김 종류는 … 피할래", "돼지고기는 종교적인 이유로 안 먹어요").
+    raw = " ".join(str((result or {}).get(key) or "") for key in ("exclude", "allergy"))
+    avoid_tail = rf"[^.!?\n]{{0,20}}?(?:{EXCLUDE_CUE}|피할|피해|끊었|좀\s*그래|안\s*먹어|부담)"
+    groups = [group for group in values.get("exclude_groups", "").split(",") if group]
+    for name, rule in STORY_GROUPS.items():
+        words = [word for word in [*rule["words"], name] if word.strip() and word.strip() in raw]
+        if name in groups or not any(re.search(rf"(?<![가-힣]){re.escape(word.strip())}{avoid_tail}", current)
+                                     for word in words):
+            continue
+        groups.append(name)
+        if query and any(word in query for word in rule["names"]):
+            values["query"] = query = ""
+        if values.get("meal_category") in rule["categories"]:
+            values["meal_category"] = ""
+        if values.get("allergy") in [word.strip() for word in rule["words"]] and not ALLERGY_WORD.search(text):
+            values["allergy"] = ""
+    values["exclude_groups"] = ",".join(groups)
+    # 메뉴로 뺀 이름("해장국 빼고", "피자랑 치킨만 빼고")과 음식군으로 뺀 이름("면은 빼줘")은 재료로 다시 빼지 않는다.
+    # 샐러드는 여러 메뉴 이름에 붙어 재료처럼도 뺀다(1.13.1).
+    covered = {word.strip() for category in values.get("exclude_categories", "").split(",") if category
+               for word in category_words(category)}
+    excluded = [term for term in excluded
+                if (term not in covered or term in COMMON_INGREDIENTS or any(term in group for group in ALIASES))
+                and (term == "샐러드" or term not in avoided or term not in foods)]
     values["exclude"] = ",".join(excluded)
     values["avoid_menus"] = ",".join(avoided)
 
@@ -888,7 +1026,7 @@ FOOD_NEGATIVE = re.compile(r"^\s*(?:류|종류)?\s*(?:까지는|까지도|까지
                            r"(?:(?:아예|완전|진짜|정말|이번엔|이번에는|오늘은|좀)\s*)?"
                            r"(?:무거워서\s*(?:이번에는\s*|이번엔\s*|오늘은\s*)?(?=빼))?"
                            r"(?:(?:너무\s*)?(?:매워|맵더라|맵다)(?!도|서\s*좋)|말고|빼|싫|별로|말구|아니|안\s*먹|못\s*먹|먹지\s*말|질려|물려|ㄴㄴ|노노|패스|극혐|극불호|사양|제외"
-                           r"|쉬는|ㄴ(?![가-힣ㄱ-ㅎ])|(?i:pass)\b|담에|다음에)")
+                           r"|쉬는|ㄴ(?![가-힣ㄱ-ㅎ])|(?i:pass)\b|(?i:no)\b|담에|다음에)")
 # 음식군·음식 묶음 이름 뒤의 부정("중식 말고", "면은 빼줘", "밀가루 음식 말고", "튀김류까지는 안 먹고", "닭 없이")
 GROUP_NEGATIVE = (r"(?:\s*(?:류|종류|음식|요리|들어간\s*(?:거|건|것|음식)?|든\s*(?:거|건|것)))?\s*"
                   r"(?:까지는|까지도|까지|은|는|이|가|도|을|를|만)?\s*"
