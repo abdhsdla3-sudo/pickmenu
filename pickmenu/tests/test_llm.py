@@ -408,6 +408,34 @@ class LLMTest(unittest.TestCase):
                 profile, _ = llm.conditions({"messages": messages, "profile": {}}, categories, foods)
                 self.assertEqual({key: getattr(profile, key) for key in want}, want)
 
+    def test_story_learn_1_13_4(self):
+        """1.13.4: 새 이야기 문장 141개 실험에서 틀린 말투(마신 절·'~이었어' 절·줄임말 메뉴·맵기 ㄴㄴ·든든하게)."""
+        foods = {"치킨": {"치킨"}, "떡볶이": {"분식"}, "삼겹살": {"고기"}, "라면": {"면"}, "회": {"해산물"}}
+        categories = ["치킨", "분식", "고기", "면", "해산물", "국밥·해장국"]
+        cases = [
+            (["어제 소주 3병 마셨더니 속이 뒤집어짐 해장 좀"], {"soup": "yes"}, {"meal_category": "국밥·해장국"}),
+            (["어제 저녁 삼겹살이었어 오늘은 해산물"], {"meal_category": "해산물"},
+             {"query": "", "meal_category": "해산물", "avoid_menus": "삼겹살"}),
+            (["치킨은 이번주만 세 번 먹어서 그거 빼고"], {"exclude": "치킨"}, {"query": "", "avoid_menus": "치킨"}),
+            (["엽떡 같은 거 먹고 싶다"], {"query": "엽떡"}, {"query": "떡볶이"}),
+            (["삼쏘 땡긴다"], {"query": "삼겹살"}, {"query": "삼겹살"}),
+            (["치맥 각"], {"query": "치맥"}, {"query": "치킨"}),
+            (["국물 ㅇㅇ 맵기 ㄴㄴ"], {"soup": "yes", "spice": "hot"}, {"soup": "yes", "spice": "mild"}),
+            (["맵찔이라 진라면 순한맛도 매워요"], {"query": "진라면 순한맛"}, {"query": "", "spice": "mild"}),
+            (["바디프로필 촬영 2주 남았어 닭가슴살 같은 거 없나"], {"goal": "protein"}, {"goal": "protein"}),
+            (["PT쌤이 탄수화물 줄이래 고기 위주로"], {"goal": "protein"}, {"goal": "protein"}),
+            (["가벼운 거", "근데 배고파서 든든하게 바꿀래"], {"goal": "balance"}, {"goal": "balance"}),
+            (["치킨 먹고 싶어", "음 그래도 다이어트 중이니까 가벼운 걸로 바꿔줘"], {"goal": "light", "query": "치킨"},
+             {"goal": "light", "query": ""}),
+            (["몸살 나서 힘이 없어 든든한 보양식 같은 거"], {}, {"soup": "yes"}),
+        ]
+        for messages, model, want in cases:
+            with self.subTest(messages=messages), patch.object(llm, "generate", return_value=model):
+                profile, _ = llm.conditions({"messages": messages, "profile": {}}, categories, foods)
+                self.assertEqual({key: getattr(profile, key) for key in want}, want)
+        self.assertIn("-rich", llm.tastes("기름진 건 보기도 싫고 국물로 속 풀고 싶어").split(","))
+        self.assertIn("crispy", llm.tastes("바삭한 거랑 맥주 생각나는데").split(","))
+
     def test_story_tune_1_9_2(self):
         """1.9.2: 회귀 시험 2,325문장에서 아직 틀리던 말투(남의 메뉴·지난 식사·'상관없어'·국물 부정·채식·맛 부정·오타)."""
         foods = {"치킨": {"치킨"}, "피자": {"피자"}, "김밥": {"분식"}, "돈가스": {"양식"}, "떡볶이": {"분식"},

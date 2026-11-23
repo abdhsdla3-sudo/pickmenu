@@ -44,6 +44,9 @@ ALLERGEN_DISHES = {
     "견과": r"견과|호두|아몬드|땅콩|피넛|잣|캐슈|팟타이|탄탄",
     "메밀": r"메밀|소바|막국수|냉면",
 }
+# 해산물 알레르기는 생선·갑각류·조개·오징어와 연체류 음식을 모두 뺀다(초밥·포케·물회 등).
+ALLERGEN_DISHES["해산물"] = "|".join(ALLERGEN_DISHES[name] for name in ("생선", "갑각류", "조개", "오징어")) \
+    + "|낙지|쭈꾸미|주꾸미|문어|포케|해산물"
 # 맛 선호. 메뉴 자료에 맛 정보가 없어 메뉴 이름·분류·구성 음식 이름의 단서로 짐작한다(맵기·국물은 따로 있다).
 # 키: (화면 이름, 메뉴 단서). 단서가 없는 메뉴는 '정보 부족'으로 점수만 낮춘다.
 TASTES = {
@@ -84,7 +87,8 @@ STORY_GROUPS: dict[str, dict[str, list[str]]] = {
 ALIASES = (("계란", "달걀", "난류", "에그"), ("우유", "유제품", "치즈", "버터", "유청"),
            ("밀", "밀가루", "밀글루텐"), ("땅콩", "피넛"), ("돼지", "돼지고기", "돈육"),
            ("새우", "쉬림프"), ("대두", "콩", "두부", "두유"), ("생선", "물고기", "어류", "생선류"),
-           ("갑각류", "갑각"), ("조개", "조개류", "패류"), ("견과", "견과류", "너트"))
+           ("갑각류", "갑각"), ("조개", "조개류", "패류"), ("견과", "견과류", "너트"),
+           ("해산물", "해물", "해산물류", "씨푸드"))
 
 
 def compact(value: str) -> str:
@@ -795,6 +799,8 @@ def recommend_relaxed(menus: list[dict[str, Any]], profile: Profile, recent: Seq
         return result, profile
     fields = [(field, label) for field, label in RELAXABLE
               if getattr(profile, field) and not (field == "soup" and conversation)]
+    if conversation and profile.spice and query and any(query == compact(m["components"][0]) for m in menus):
+        fields.append(("spice", "맵기 조건"))
     for size in range(1, len(fields) + 1):
         for chosen in combinations(fields, size):
             blank: dict[str, Any] = {field: "" for field, _ in chosen}
