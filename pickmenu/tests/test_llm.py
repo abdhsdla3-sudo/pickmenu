@@ -18,6 +18,31 @@ class LLMTest(unittest.TestCase):
             with self.assertRaises(llm.Unavailable):
                 llm.conditions(payload, [])
 
+    def test_english_allergy_mild_and_short_past_meal(self):
+        cases = [
+            ("I'm allergic to peanuts. 오늘은 가볍게", {"goal": "light", "allergy": "땅콩"}, {"goal": "light"}),
+            ("shrimp allergy 있어요, no eggplant please", {"allergy": "새우", "exclude": ""}, {}),
+            ("I cannot eat pork", {"exclude": "돼지고기"}, {}),
+            ("Jjamppong instead of jajangmyeon, but mild please", {"spice": "mild"}, {"query": "짬뽕"}),
+            ("점심 순대국밥 먹음 저녁은 좀 라이트하게 추천 ㄱ", {"goal": "light"}, {"goal": "light"}),
+        ]
+        for text, expected, output in cases:
+            with self.subTest(text=text), patch.object(llm, "generate", return_value=output):
+                profile, _ = llm.conditions({"messages": [text], "profile": {}}, [], {"짬뽕": {"중식"}})
+                for field, value in expected.items():
+                    self.assertEqual(getattr(profile, field), value)
+
+    def test_goal_note_uses_serving_estimate_only_when_known(self):
+        family = {"name": "육회", "best": {"serving_estimate": {"grams": 150, "energy_kcal": 210, "protein_g": 30.0}}}
+        light = llm.Profile.parse({"goal": "light"}, [])
+        protein = llm.Profile.parse({"goal": "protein"}, [])
+        balance = llm.Profile.parse({"goal": "balance"}, [])
+        self.assertEqual(llm.goal_note(light, [family]),
+                         "육회는 한 그릇(150g 추정) 약 210kcal예요. 조사 자료로 낸 추정치라 매장마다 달라요.")
+        self.assertIn("단백질 약 30g", llm.goal_note(protein, [family]))
+        self.assertEqual(llm.goal_note(balance, [family]), "")
+        self.assertEqual(llm.goal_note(light, [{"name": "보쌈", "best": {"serving_estimate": None}}]), "")
+
     def test_invalid_input_never_calls_model(self):
         for messages in ([], [3], ["x" * 301], ["x"] * 7, ["a\nb"]):
             with self.subTest(messages=messages), patch.object(llm, "generate") as generate:

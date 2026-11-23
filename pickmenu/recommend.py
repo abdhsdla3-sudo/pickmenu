@@ -450,6 +450,11 @@ MILD_FOODS = frozenset((
 ))
 
 
+# 안 매운 쪽에서 빼는 메뉴 이름의 분명한 매운 단서(대표 음식명을 뺀 부분에서 본다). 음식 자체가 안 매운 죽이어도
+# 신짬뽕죽, 매콤 크림파스타는 맵다. 불고기 김밥의 불처럼 약한 단서는 보지 않는다.
+STRONG_HOT = re.compile(r"(?<!안)(?<!덜)(?:매운|매콤|얼큰|칼칼)|마라|짬뽕|땡초|청양|불닭|고추|화끈|핫(?!도그|케이크|바)")
+
+
 # 여러 음식을 묶은 일반 컬럼. 이런 컬럼의 맵기는 개별 음식(계란덮밥·제육덮밥)에 빌려 쓰지 않는다.
 GENERIC_COLUMNS = {"덮밥", "볶음", "찌개", "탕", "찜", "구이", "전골", "국수", "면", "밥", "정식", "세트", "튀김", "전"}
 
@@ -570,7 +575,9 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
     for menu in menus:
         if OPTION_ONLY.fullmatch(compact(menu["name"])) or OPTION_ONLY.fullmatch(compact(menu["components"][0])):
             continue
-        if avoided and any(compact(name) in avoided for name in menu["components"]):
+        # 뺀 메뉴와 같은 음식, 또는 그 이름으로 시작하는 대표 음식(짬뽕 → 짬뽕밥, 돈가스 → 돈가스덮밥)을 뺀다.
+        if avoided and (any(compact(name) in avoided for name in menu["components"])
+                        or any(compact(menu["components"][0]).startswith(name) for name in avoided if len(name) >= 2)):
             excluded += 1
             continue
         evidence = menu["regions"].get(region)
@@ -599,6 +606,9 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
         if guessed and HOTTER.search(compact(menu["name"]).replace(compact(menu["components"][0]), "")):
             family_spice, guessed = "", False
         effective_spice = family_spice or name_spice
+        if profile.spice == "mild" and STRONG_HOT.search(compact(menu["name"]).replace(compact(menu["components"][0]), "")):
+            mismatched += 1
+            continue
         family_soup = menu.get("family_soup") or menu["soup"]
         if (profile.spice and (profile.spice != effective_spice or (name_spice and name_spice != profile.spice))
                 or any(profile.soup and actual and profile.soup != actual for actual in (menu["soup"], family_soup))
@@ -778,6 +788,10 @@ def recommend_relaxed(menus: list[dict[str, Any]], profile: Profile, recent: Seq
             if good(retry):
                 retry["relaxed"] = [label for _, label in chosen]
                 return retry, current
+    # 이야기 추천에서 말한 메뉴(대표 음식)가 조건에 맞지 않아 그 이름이 세트·메뉴 이름에만 든 다른 음식
+    # (짬뽕 + 국물 없음 → 신짬뽕죽·짬뽕 파스타)만 남으면, 엉뚱한 음식 대신 맞는 메뉴가 없다고 알린다.
+    if conversation and result["families"] and not good(result):
+        return {**result, "items": [], "families": [], "eligible": 0}, profile
     # 이야기 추천에서 대표 메뉴 이름이 아닌 검색어("치팅", "적당히 든든한")만으로 0개가 되면 검색어를 뺀다.
     if conversation and query and not result["families"] and not any(
             query == compact(m["components"][0]) for m in menus):

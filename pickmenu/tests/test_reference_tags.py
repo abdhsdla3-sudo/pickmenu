@@ -199,6 +199,29 @@ class ReferenceTagTest(unittest.TestCase):
         hot = recommend(menus, Profile.parse({"spice": "hot"}, categories))
         self.assertEqual(hot["items"], [])
 
+    def test_avoided_variants_hot_names_and_missing_named_menu(self):
+        from recommend import recommend_relaxed
+        menus = apply_reference([menu("짬뽕", "중식", soup="yes", menu_id="MN_1"),
+                                 menu("짬뽕밥", "중식", soup="yes", menu_id="MN_2"),
+                                 menu("우동", "일식", soup="yes", menu_id="MN_3"),
+                                 menu("신짬뽕죽", "죽", spice="", soup="yes", menu_id="MN_4", food="죽"),
+                                 menu("안 매운 돈가스", "일식", soup="no", menu_id="MN_5", food="돈가스"),
+                                 menu("호박죽", "죽", spice="mild", soup="yes", menu_id="MN_6", food="죽"),
+                                 menu("전복죽", "죽", spice="mild", soup="yes", menu_id="MN_7", food="죽")], {})
+        self.assertEqual(menus[3]["family_spice"], "mild")
+        categories = ["중식", "일식", "죽"]
+        avoided = recommend(menus, Profile.parse({"avoid_menus": "짬뽕"}, categories))
+        self.assertNotIn("짬뽕밥", [item["name"] for item in avoided["items"]])  # 짬뽕으로 시작하는 음식도 뺀다
+        self.assertIn("우동", [item["name"] for item in avoided["items"]])
+        mild = recommend(menus, Profile.parse({"spice": "mild"}, categories))
+        names = [item["name"] for item in mild["items"]]
+        self.assertIn("호박죽", names)
+        self.assertNotIn("신짬뽕죽", names)  # 죽이 안 매운 음식이어도 이름에 짬뽕이 있으면 뺀다
+        # 이야기에서 '짬뽕 + 국물 없음'이면 짬뽕이 든 다른 음식 대신 맞는 메뉴가 없다고 한다.
+        story, _ = recommend_relaxed(menus, Profile.parse({"query": "짬뽕", "soup": "no"}, categories), [],
+                                     conversation=True)
+        self.assertEqual(story["families"], [])
+
     def test_reference_data_backs_off_after_failure(self):
         with patch.dict(menu_reco._failed, {"at": float("-inf")}), \
                 patch.object(menu_reco, "data", side_effect=OSError("down")) as load:

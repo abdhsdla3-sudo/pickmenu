@@ -22,6 +22,7 @@ from recommend import (
     Profile,
     cooking_signal,
     reference_fat,
+    serving_estimate,
 )
 
 _slot = threading.BoundedSemaphore(1)
@@ -420,6 +421,7 @@ def resolve_ingredients(values: dict[str, Any], result: dict[str, Any], story: S
         terms = [term.strip() for term in re.split(r"[,;/]", f"{values[field]},{model_terms}") if term.strip()]
         terms.extend(match.group(1) for message in story.history
                      for match in EXPLICIT_INGREDIENT[field].finditer(message))
+        terms.extend(term for message in story.history for term in english_ingredients(message, field))
         values[field] = ",".join(dict.fromkeys(terms))
     allergic = set(values["allergy"].split(","))
     values["exclude"] = ",".join(term for term in values["exclude"].split(",") if term and term not in allergic)
@@ -640,7 +642,7 @@ SUPPORT = {
                       r"|(?:매운|맵고|맵게|매콤한)(?:(?!싶|좋|땡|당기|먹고|먹을|은데|는데|지만|[,.!?\n]).){0,16}?"
                       r"(?:싫|먹지\s*말|먹으면\s*안|못\s*먹|별로|피하|피해)"
                       r"|자극적(?:인|이고)?\s*(?:건|거|것|음식)?" + NEGATIVE
-                      + r"|덜\s*얼얼|맵기\s*(?:는|은)?\s*ㄴ(?![가-힣ㄱ-ㅎ])|(?i:not\s+(?:too\s+|so\s+)?spicy)",
+                      + r"|덜\s*얼얼|맵기\s*(?:는|은)?\s*ㄴ(?![가-힣ㄱ-ㅎ])|(?i:not\s+(?:too\s+|so\s+)?spicy|\bmild\b|less\s+spicy)",
               "hot": r"매콤|매운|맵게|맵고|매워|맵다|얼큰|(?<!목이 )(?<!목 )(?<!목이)칼칼|화끈"
                      r"|(?<![가-힣])맵(?=단|\s|!|$)|(?<![가-힣])마라(?=\s|가|를|$)|spicy",
               "": r"(?:매운|맵)[가-힣]{0,2}\s*(?:건|거|것|맛)?\s*(?:은|는|도)?\s*(?:이제\s*)?(?:괜찮|상관\s*없|무관)"
@@ -690,6 +692,28 @@ EXPLICIT_INGREDIENT = {
     "exclude": re.compile(rf"(?<![가-힣])({KNOWN_INGREDIENTS})(?:은|는|이|가|을|를|도|랑|이랑)?\s*"
                           r"(?:못\s*먹|빼|제외|피하고\s*싶|싫|별로|안\s*들어|말고|없이|넣지|극혐|극불호|ㄴㄴ|노노|패스)"),
 }
+# 영어로 말한 알레르기·기피 재료("I'm allergic to peanuts", "no shrimp please"). 재료 이름이 한글이 아니라
+# AI가 한글로 넘겨도 문장 확인(ingredients)에서 빠지므로 따로 찾는다. 단어 경계로만 맞춘다(eggplant의 egg 제외).
+ENGLISH_INGREDIENTS = {"peanut": "땅콩", "shrimp": "새우", "prawn": "새우", "egg": "계란", "milk": "우유",
+                       "dairy": "우유", "wheat": "밀", "gluten": "밀", "soy": "대두", "soybean": "대두",
+                       "fish": "생선", "crab": "게", "shellfish": "갑각류", "pork": "돼지고기", "beef": "소고기",
+                       "chicken": "닭고기", "nut": "견과", "sesame": "참깨", "buckwheat": "메밀", "peach": "복숭아",
+                       "tomato": "토마토", "squid": "오징어", "clam": "조개", "oyster": "굴", "seafood": "해산물",
+                       "mushroom": "버섯", "cucumber": "오이", "cilantro": "고수", "coriander": "고수", "onion": "양파"}
+_EN_WORD = rf"(?:tree\s+)?({'|'.join(sorted(ENGLISH_INGREDIENTS, key=len, reverse=True))})(?:e?s)?"
+ENGLISH_INGREDIENT = {
+    "allergy": re.compile(rf"\ballerg(?:ic|y|ies)\s+(?:to\s+)?(?:(?:all|any)\s+)?{_EN_WORD}\b"
+                          rf"|\b{_EN_WORD}\s+allerg(?:y|ies)\b", re.I),
+    "exclude": re.compile(rf"\b(?:no|without|hate|avoid|skip|(?:can'?t|cannot|don'?t|do\s+not)\s+eat)\s+"
+                          rf"(?:any\s+)?{_EN_WORD}\b", re.I),
+}
+
+
+def english_ingredients(text: str, field: str) -> list[str]:
+    return [ENGLISH_INGREDIENTS[next(g for g in match.groups() if g).lower()]
+            for match in ENGLISH_INGREDIENT[field].finditer(text)]
+
+
 EXPLICIT_VEGAN = re.compile(r"(?<![가-힣])(?:비건|vegan)(?:주의자)?(?:이야|이에요|입니다|인데|이라|이고|이거든)"
                             r"(?=$|\s|[,.!?])|(?<![가-힣])비건\s*(?:친구|지인|동료|손님)|(?<![가-힣])완전\s*채식"
                             r"|(?<![가-힣])비건\s*(?:식단|모드|메뉴|으로|위주|식)", re.I)
@@ -829,7 +853,7 @@ def without_foods(text: str, foods: dict[str, set[str]]) -> str:
 MEAL_CLAUSE_BREAK = re.compile(
     r"[.!?;,\n]+|(?<=먹었고)\s+|(?<=먹었는데)\s+|(?<=먹었지만)\s+|(?<=먹었더니)\s+|(?<=먹었으니까)\s+"
     r"|(?<=먹었으니)\s+|(?<=먹었길래)\s+|(?<=먹어서)\s+|(?<=나왔는데)\s+|(?<=때웠고)\s+|(?<=때웠는데)\s+|(?<=클리어)[^\s가-힣A-Za-z0-9]*\s+"
-    r"|(?<=먹었어)\s+(?=오늘|이번|저녁|지금|내일)|(?<=먹었음)\s+(?=오늘|이번|저녁|지금|내일)"
+    r"|(?<=먹었어)\s+(?=오늘|이번|저녁|지금|내일)|(?<=먹었음)\s+(?=오늘|이번|저녁|지금|내일)|(?<=먹음)\s+(?=오늘|이번|저녁|지금|내일)"
 )
 # '먹어서'는 때를 함께 말했을 때만 먹은 것으로 본다("점심에 치킨 먹어서", "든든하게 먹어서 힘내고 싶어"는 아니다).
 PAST_MEAL = re.compile(r"먹었|먹은\s|먹고\s*왔|먹어\s*봤|먹고\s*나서|(?<!못)(?<!못\s)(?<!안)(?<!안\s)먹음(?:\s|$)|마셨|식사했|시켜\s*먹었"
@@ -1031,6 +1055,27 @@ def taste_note(history: list[str], result: dict[str, Any] | None = None, *,
     if names:
         notes.append(f"{names}은 맛 자료가 없어 메뉴 이름으로 짐작해 반영했어요.")
     return " ".join(notes)
+
+
+def goal_note(profile: Profile | None, families: list[dict[str, Any]]) -> str:
+    """가볍게·단백질 목표일 때 1순위 메뉴의 한 그릇 추정치를 한 문장으로 알린다(추정치가 있을 때만)."""
+    if profile is None or profile.goal not in ("light", "protein") or not families:
+        return ""
+    best = families[0]["best"]
+    # 화면 응답은 서버가 붙인 serving_estimate를, 화면 변환 전 결과(시험)는 메뉴에서 바로 계산한다.
+    estimate = best.get("serving_estimate") if "serving_estimate" in best else serving_estimate(best)
+    if not estimate:
+        return ""
+    name = families[0]["name"]
+    topic = "은" if "가" <= name[-1] <= "힣" and (ord(name[-1]) - 0xAC00) % 28 else "는"
+    kcal, protein, grams = estimate["energy_kcal"], estimate.get("protein_g"), estimate["grams"]
+    if profile.goal == "light":
+        amount = f"약 {kcal:,}kcal"
+    elif protein is not None:
+        amount = f"단백질 약 {protein:g}g"
+    else:
+        return ""
+    return f"{name}{topic} 한 그릇({grams:g}g 추정) {amount}예요. 조사 자료로 낸 추정치라 매장마다 달라요."
 
 
 def understood(profile: Profile, payload: dict[str, Any], categories: list[str]) -> bool:
@@ -1266,7 +1311,7 @@ def reply(result: dict[str, Any], history: list[str] | None = None, *, taste: st
     return " ".join(filter(None, (
         "" if relaxed else opener(history, rng),
         f"말씀하신 조건에 맞는 메뉴가 없어 {'·'.join(relaxed)}을 빼고 찾았어요." if relaxed else "",
-        main, top, note,
+        main, top, goal_note(profile, families), note,
         "알레르기·채식 조건은 재료 정보가 없어 확인하지 못했으니 주문 전에 가게에 꼭 확인해 주세요."
         if any(f["best"].get("needs_check") for f in families) else "",
         next_question(profile, rng))))
