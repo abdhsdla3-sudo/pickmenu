@@ -52,6 +52,17 @@ class LLMTest(unittest.TestCase):
                 for field, value in expected.items():
                     self.assertEqual(getattr(profile, field), value)
 
+    def test_eaten_dish_stem_avoids_every_matching_food(self):
+        foods = {"곱창구이": {"고기·구이"}, "곱창볶음": {"고기·구이"}, "치킨": {"치킨"}, "죽": {"죽"}}
+        eaten = ["어제 친구들이랑 곱창 먹고 2차로 치킨까지 먹었더니 아직도 더부룩해. 오늘은 속 편한 거"]
+        with patch.object(llm, "generate", return_value={"goal": "light"}):
+            profile, _ = llm.conditions({"messages": eaten, "profile": {}}, [], foods)
+        self.assertEqual(set(profile.avoid_menus.split(",")), {"곱창구이", "곱창볶음", "치킨"})
+        # 원하는 메뉴로 말하면 두 음식 메뉴에 다 맞는 검색어를 그대로 두고 빼지 않는다.
+        with patch.object(llm, "generate", return_value={"query": "곱창"}):
+            profile, _ = llm.conditions({"messages": ["곱창 먹고 싶어"], "profile": {}}, [], foods)
+        self.assertEqual((profile.query, profile.avoid_menus), ("곱창", ""))
+
     def test_goal_note_uses_serving_estimate_only_when_known(self):
         family = {"name": "육회", "best": {"serving_estimate": {"grams": 150, "energy_kcal": 210, "protein_g": 30.0}}}
         light = llm.Profile.parse({"goal": "light"}, [])

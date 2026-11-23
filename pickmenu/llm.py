@@ -193,6 +193,9 @@ MEAT_WANT = re.compile(r"(?<![가-힣])(소고기|돼지고기|닭고기|오리�
                        r"(?:먹고\s*싶|땡|당기|먹을래|추천|ㄱㄱ)")
 MALA = re.compile(r"(?<![가-힣])마라(?!탕|샹궈|샹|볶음|전골)")
 GRASS_ONLY = re.compile(r"풀만\s*(?:있|나오|든|가득)|풀\s*(?:떼기|때기)")
+# 대표 음식이 여러 개로 나뉜 부위 이름(곱창 → 곱창구이·곱창볶음). 먹은 절에서만 그 음식들을 모두 뺀다.
+# 원하는 메뉴로 말하면 검색어가 두 음식 메뉴에 다 맞으므로 고치지 않는다.
+DISH_STEMS = ("곱창", "대창", "막창", "똥집", "쭈꾸미", "주꾸미")
 DONE = re.compile(r"추천\s*(?:은|는)?\s*(?:여기서|이제)?\s*(?:그만|됐|끝)|(?<![가-힣])(?:메뉴\s*)?(?:다\s*)?정했어(?:요)?(?![가-힣?])")
 
 
@@ -216,6 +219,12 @@ def final_fixes(values: dict[str, Any], story: Story) -> None:
         values["spice"] = "mild"
     values["taste"] = ",".join(dict.fromkeys(taste))
     avoided = [name for name in values.get("avoid_menus", "").split(",") if name]
+    # "어제 친구들이랑 곱창 먹고": 먹은 절의 부위 이름은 그 이름으로 시작하는 대표 음식을 모두 뺀다.
+    for start, end in story.past:
+        clause = story.text[start:end]
+        for stem in DISH_STEMS:
+            if re.search(rf"(?<![가-힣]){stem}(?!구이|볶음|찜|튀김)", clause) and not values.get("query", "").startswith(stem):
+                avoided.extend(food for food in food_names if food.startswith(stem) and food not in avoided)
     # "돈까쓰 땡기는디 / 아 이건 점심에 먹었다 비빔밥으로 고쳐줘": 앞 말의 메뉴를 뺄 메뉴로 돌린다.
     if len(history) > 1 and THIS_EATEN.search(last):
         for message in history[:-1]:
