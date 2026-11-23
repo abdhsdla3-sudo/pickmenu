@@ -497,6 +497,28 @@ def median(values: list[float], default: float = 0.5) -> float:
     return ordered[middle] if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2
 
 
+# 후보 중앙값을 믿으려면 영양값이 있는 서로 다른 대표 음식이 이만큼은 있어야 한다.
+MIN_MEDIAN_FOODS = 5
+_CATALOG_MEDIAN: dict[tuple[int, int, str], float] = {}
+
+
+def catalog_median(menus: list[dict[str, Any]], goal: str) -> float:
+    """목표별 전체 메뉴 영양 점수 중앙값. 같은 카탈로그 목록이면 한 번만 계산한다."""
+    key = (id(menus), len(menus), goal)
+    if key not in _CATALOG_MEDIAN:
+        values = []
+        for menu in menus:
+            # 추천 후보가 될 수 있는 식사 메뉴만 본다(곁들임·옵션 제외).
+            if menu.get("side") or OPTION_ONLY.fullmatch(compact(menu["name"])):
+                continue
+            survey = survey_serving(menu)
+            n = nutrition_score(menu["nutrition"], goal, survey[0] if survey else None, cooking_signal(menu))
+            if n is not None:
+                values.append(n)
+        _CATALOG_MEDIAN[key] = median(values)
+    return _CATALOG_MEDIAN[key]
+
+
 def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[str] = (), *,
               conversation: bool = False) -> dict[str, Any]:
     """`recent`: 최근 추천에서 본 대표 음식 이름(중복은 본 횟수). 본 만큼 조금 뒤로 보낸다."""
@@ -627,7 +649,13 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
                        "_parts": (n, t, e, s, r), "_preferred": bool(profile.category) and profile.category in groups,
                        "_unknown_taste": int(bool(profile.soup and not family_soup))})
     # 영양 자료가 없는 메뉴는 감점하지 않고 이번 후보들의 영양 점수 중앙값을 쓴다.
-    middle = median([menu["_parts"][0] for menu in ranked if menu["_parts"][0] is not None])
+    # 영양값이 있는 후보 음식이 너무 적으면(예: 족발·보쌈만 고르면 족발 하나) 그 한두 음식 점수가
+    # 그대로 들어가므로, 이때는 같은 목표로 본 전체 메뉴의 중앙값을 쓴다.
+    scored = [menu for menu in ranked if menu["_parts"][0] is not None]
+    if len({compact(menu["components"][0]) for menu in scored}) >= MIN_MEDIAN_FOODS:
+        middle, middle_scope = median([menu["_parts"][0] for menu in scored]), "후보"
+    else:
+        middle, middle_scope = catalog_median(menus, profile.goal), "전체 메뉴"
     # 만족도·단골 주문 자료가 없는 음식도 같은 방식으로 후보 중앙값을 쓴다.
     middle_s = median([menu["_parts"][3] for menu in ranked if menu["_parts"][3] is not None])
     middle_r = median([menu["_parts"][4] for menu in ranked if menu["_parts"][4] is not None])
@@ -649,7 +677,7 @@ def recommend(menus: list[dict[str, Any]], profile: Profile, recent: Sequence[st
         menu["score"] = round(max(0.0, score - penalty), 3)
         # 메뉴 상세에서 감점 이유를 볼 수 있게 남긴다.
         if n is None:
-            menu["reasons"][1] = f"참고 영양값 없음 · 후보 중앙값 {round(middle * 100)}점으로 계산"
+            menu["reasons"][1] = f"참고 영양값 없음 · {middle_scope} 중앙값 {round(middle * 100)}점으로 계산"
         if unknown_taste:
             menu["reasons"].append(f"국물 정보를 확인할 수 없어 {UNKNOWN_TASTE_PENALTY * unknown_taste}점 감점")
         if outside:

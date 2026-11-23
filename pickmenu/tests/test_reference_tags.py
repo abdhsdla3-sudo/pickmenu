@@ -161,9 +161,27 @@ class ReferenceTagTest(unittest.TestCase):
         jjamppong = result["items"][1]
         self.assertIn("선호 음식군 밖이라 25점 감점", jjamppong["reasons"])
         self.assertIn("국물 정보를 확인할 수 없어 15점 감점", result["items"][0]["reasons"])
-        self.assertTrue(jjamppong["reasons"][1].startswith("참고 영양값 없음 · 후보 중앙값"))
+        self.assertTrue(jjamppong["reasons"][1].startswith("참고 영양값 없음 · 전체 메뉴 중앙값"))
         none = recommend(menus, Profile.parse({"category": "피자"}, ["전·부침", "중식", "피자"]))
         self.assertEqual(none["preferred_foods"], 0)
+
+    def test_unknown_nutrition_uses_catalog_median_when_few_candidates(self):
+        # 족발·보쌈만 고르면 영양값 있는 후보가 족발 하나라 그 점수(0점)가 보쌈에 그대로 들어가던 문제
+        def fed(name, category, menu_id, protein):
+            item = menu(name, category, menu_id=menu_id)
+            item["nutrition"] = {"basis": 100, "unit": "g", "values": [120, protein, 13, 4, None]}
+            return item
+        menus = [fed("족발", "족발·보쌈", "MN_1", 0), menu("보쌈", "족발·보쌈", menu_id="MN_2"),
+                 *(fed(name, "고기", f"MN_{i}", 20) for i, name in enumerate(("제육볶음", "삼겹살", "불고기", "닭갈비"), 3))]
+        categories = ["족발·보쌈", "고기"]
+        result = recommend(menus, Profile.parse({"goal": "protein", "category": "족발·보쌈",
+                                                 "meal_category": "족발·보쌈"}, categories))
+        bossam = next(item for item in result["items"] if item["name"] == "보쌈")
+        self.assertEqual(bossam["reasons"][1], "참고 영양값 없음 · 전체 메뉴 중앙값 100점으로 계산")
+        # 영양값 있는 후보 음식이 5개 이상이면 그대로 후보 중앙값을 쓴다.
+        wide = recommend(menus, Profile.parse({"goal": "protein"}, categories))
+        bossam = next(f["best"] for f in wide["families"] if f["name"] == "보쌈")
+        self.assertTrue(bossam["reasons"][1].startswith("참고 영양값 없음 · 후보 중앙값"))
 
     def test_reference_data_backs_off_after_failure(self):
         with patch.dict(menu_reco._failed, {"at": float("-inf")}), \
