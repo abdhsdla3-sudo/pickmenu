@@ -176,7 +176,12 @@ class AdminHttpTest(unittest.TestCase):
         self.assertEqual(self.call("GET", "/api/admin/summary", cookie=cookie)[0], 403)
         with closing(auth.connect()) as db:
             user_id = db.execute("SELECT id FROM users").fetchone()[0]
+        self.assertIs(self.call("GET", "/api/auth/me", cookie=cookie)[1]["user"]["admin"], False)
         admin.grant(user_id, "j***")
+        # 로그인·세션 응답에 관리자 여부가 실려 화면이 관리자 버튼을 보인다.
+        self.assertIs(self.call("GET", "/api/auth/me", cookie=cookie)[1]["user"]["admin"], True)
+        status, login, _ = self.call("POST", "/api/auth/login", {"username": "judge_01", "password": "password1"})
+        self.assertEqual((status, login["user"]["admin"]), (200, True))
         status, me, _ = self.call("GET", "/api/admin/me", cookie=cookie)
         self.assertEqual((status, me["user"]), (200, "j***"))
         self.assertEqual(self.call("GET", "/api/admin/summary?days=7", cookie=cookie)[1]["days"], 7)
@@ -190,6 +195,7 @@ class AdminHttpTest(unittest.TestCase):
         self.assertEqual(self.call("POST", "/api/admin/menus/MN_0000000000000zz9", {"hidden": True}, cookie)[0], 404)
         admin.revoke(user_id, "j***")
         self.assertEqual(self.call("GET", "/api/admin/me", cookie=cookie)[0], 403)
+        self.assertIs(self.call("GET", "/api/auth/me", cookie=cookie)[1]["user"]["admin"], False)
 
     def test_visitor_cookie_events_and_feedback_without_login(self):
         status, _, cookies = self.call("GET", "/")
@@ -213,6 +219,9 @@ class AssetsTest(unittest.TestCase):
     def test_admin_assets_exist(self):
         for path in ("/admin", "/admin.js", "/admin.css"):
             self.assertTrue((server.BASE / "web" / server.ASSETS[path][0]).exists())
+        page = (server.BASE / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="admin-link" href="/admin" aria-label="관리자 페이지" hidden', page)
+        self.assertIn('id="admin-entry" href="/admin" hidden', page)
 
 
 if __name__ == "__main__":

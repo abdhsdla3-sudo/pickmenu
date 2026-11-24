@@ -13,7 +13,7 @@
 <div class="keywords"><span>#나를아는한끼</span><span>#수원에서시작</span><span>#취향대로픽</span></div><div class="story-line">취향을 담고 <i></i> 고민을 덜고</div>
 </aside>
 <main class="phone" aria-label="픽메뉴 모바일 앱 데모">
-<header class="app-header"><a class="wordmark small" href="/" aria-label="픽메뉴 시작 화면"><img src="/mark.svg" alt="">픽메뉴<span class="demo-label">DEMO</span></a><div class="header-right"><span class="location">⌖ 수원시</span><button type="button" class="account-button" id="account-open" aria-label="로그인">로그인</button><button type="button" class="account-button" id="signup-open">회원가입</button></div></header>
+<header class="app-header"><a class="wordmark small" href="/" aria-label="픽메뉴 시작 화면"><img src="/mark.svg" alt="">픽메뉴<span class="demo-label">DEMO</span></a><div class="header-right"><span class="location">⌖ 수원시</span><a class="account-button admin-link" id="admin-link" href="/admin" aria-label="관리자 페이지" hidden>⚙ 관리</a><button type="button" class="account-button" id="account-open" aria-label="로그인">로그인</button><button type="button" class="account-button" id="signup-open">회원가입</button></div></header>
 <div class="app-scroll" id="app-scroll">
 <section class="screen welcome" data-screen="welcome" aria-labelledby="welcome-title">
 <div class="welcome-top"><span class="mini-badge">나를 아는 한 끼</span><span class="spark">✳</span></div>
@@ -92,7 +92,7 @@
 <label class="field">알레르기<input name="allergy" maxlength="100" placeholder="예. 땅콩, 우유"><span class="tiny">여러 재료는 쉼표로 나눠 적어주세요. 원재료·교차접촉은 주문 전 매장에 확인해 주세요.</span></label><label class="field">기피 식재료<input name="exclude" maxlength="100" placeholder="예. 오이, 고수"></label></details></fieldset>
 <p id="auth-status" class="status" role="status"></p><div class="step-bottom"><button class="primary" id="auth-submit" type="submit">로그인 <span>→</span></button></div></form>
 <div class="soft-note"><span>◌</span><p>입력한 정보는 계정에 암호화해 저장해요.<br>공용 기기에서는 사용 후 로그아웃해 주세요.</p></div></div>
-<div id="account-member" hidden><p class="eyebrow">MY INFO</p><h2 id="account-member-title" tabindex="-1">내 정보</h2><p class="lead"><span id="account-name"></span>님, 안녕하세요.</p>
+<div id="account-member" hidden><p class="eyebrow">MY INFO</p><h2 id="account-member-title" tabindex="-1">내 정보</h2><p class="lead"><span id="account-name"></span>님, 안녕하세요.</p><a class="primary admin-entry" id="admin-entry" href="/admin" hidden>관리자 페이지로 가기 <span>→</span></a>
 <div class="info-card"><p class="info-label">♡ 추천에 쓰는 내 프로필</p><p class="tiny" id="account-profile-summary"></p><p class="tiny" id="account-sync"></p><button class="secondary" type="button" id="account-edit-profile">취향·알레르기·신체 정보 수정</button><button class="text-button danger" type="button" id="delete-profile">저장한 프로필 삭제</button></div>
 <p class="info-label">계정</p>
 <form id="account-settings"><label class="field">닉네임<input name="nickname" maxlength="12" placeholder="비워두면 랜덤 닉네임을 정해드려요" autocomplete="nickname"></label><button class="secondary" type="submit">닉네임 저장</button><p id="settings-status" class="status" role="status"></p></form>

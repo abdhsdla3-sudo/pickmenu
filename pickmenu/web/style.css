@@ -316,3 +316,7 @@ dialog h3 { font-size: 14px; margin-top: 20px; }
 .feedback-form .small-link { justify-self: end; }
 .feedback-done:empty { display: none; }
 .chat-notice { padding: 0 20px; }
+
+/* 관리자 계정 전용 버튼 */
+.admin-link{text-decoration:none;display:inline-flex;align-items:center}
+.admin-entry{display:flex;justify-content:space-between;align-items:center;box-sizing:border-box;text-decoration:none;margin:12px 0}

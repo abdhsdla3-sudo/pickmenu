@@ -1154,6 +1154,8 @@ function updateAccountUI() {
   const button = document.querySelector("#account-open");
   button.textContent = account ? profile.nickname || account.username : "로그인";
   button.setAttribute("aria-label", account ? "계정 설정" : "로그인");
+  // 관리자 권한 계정이면 관리자 페이지로 가는 버튼을 보인다(권한 검사는 서버의 관리자 API가 한다).
+  for (const id of ["admin-link", "admin-entry"]) document.getElementById(id).hidden = account?.admin !== true;
   for (const id of ["welcome-login", "welcome-signup", "signup-open"]) {
     document.getElementById(id).hidden = Boolean(account);
   }

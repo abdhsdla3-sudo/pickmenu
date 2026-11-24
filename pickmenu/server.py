@@ -150,6 +150,11 @@ def guest_allowed() -> bool:
     return os.environ.get("PICKMENU_GUEST") == "1"
 
 
+def with_admin(user_id: int, account: dict[str, Any]) -> dict[str, Any]:
+    """계정 응답에 관리자 여부를 더한다. 화면은 이 값으로 관리자 페이지 버튼만 보이고, 권한 검사는 관리자 API가 한다."""
+    return {**account, "user": {**account["user"], "admin": admin.is_admin(user_id)}}
+
+
 def visitor_cookie(value: str) -> str:
     """방문자 수·재방문을 세는 임의 값. 회원 정보와 연결하지 않는다."""
     parts = [f"{VISITOR_COOKIE}={value}", "Path=/", "HttpOnly", "SameSite=Lax", "Max-Age=31536000"]
@@ -255,6 +260,8 @@ class Handler(BaseHTTPRequestHandler):
                 action = auth.signup if path.endswith("signup") else auth.login
                 with auth.credential_slot():
                     token, account = action(payload)
+                if (found := auth.current(token)) is not None:
+                    account = with_admin(found[0], account)
                 self.send_json(201 if path.endswith("signup") else 200, account,
                                [("Set-Cookie", session_cookie(token))])
             elif path == "/api/auth/logout":
@@ -262,7 +269,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, {"user": None}, [("Set-Cookie", session_cookie(None))])
             elif path == "/api/auth/me":
                 found = auth.current(self.session_token())
-                self.send_json(200, {**(found[1] if found else {"user": None, "profile": None}),
+                self.send_json(200, {**(with_admin(*found) if found else {"user": None, "profile": None}),
                                      "guest": guest_allowed()})
             elif path == "/api/profile":
                 if (found := auth.current(self.session_token())) is None:
