@@ -10,7 +10,7 @@ PRIVATE_FILES = re.compile(
     r"\.(?:sqlite[23]?|db|dump|key|pem|p12|pfx|fernet|gguf|safetensors)(?:$|-(?:wal|shm|journal)$)"
 )
 PATTERNS = {
-    "local Windows path": re.compile(r"\b[A-Z]:[\\/]+(?!Program Files\b|Windows\b)[\w%]", re.IGNORECASE),
+    "local Windows path": re.compile(r"(?<![?\w])[A-Z]:[\\/]+(?!Program Files\b|Windows\b)[\w%]", re.IGNORECASE),
     "local account home": re.compile(r"/(?:home|Users)/[\w.-]+/", re.IGNORECASE),
     "private network access": re.compile(
         r"https://(?:login|console)\.tailscale\.com/uinv/[\w-]+|"

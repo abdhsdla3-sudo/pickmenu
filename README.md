@@ -1,9 +1,8 @@
 # 픽메뉴
 
-픽메뉴의 소스와 개발 가이드를 관리하는 비공개 저장소다.
+자취생이 "오늘 뭐 먹지"를 빨리 정하도록 돕는 수원 지역 메뉴·가게 추천 서비스(캡스톤 디자인 5조)의 소스와 개발 문서 저장소다. 조건을 고르거나 하고 싶은 말을 적으면, 리뷰를 집계한 메뉴 카탈로그와 공공 영양 자료를 바탕으로 메뉴와 가게를 추천한다.
 
-- 서비스 주소: https://pickmenu-dev.tail048532.ts.net (휴대폰·노트북에서 바로 접속, HTTPS)
-- 관리자 화면: https://pickmenu-dev.tail048532.ts.net/admin (관리자 권한 계정만, [관리자 페이지](docs/admin.md))
+- 서비스 주소: 저장소 오른쪽 About의 웹사이트 링크와 심사 제출 양식에 적는다(휴대폰·노트북에서 바로 접속, HTTPS). 관리자 화면은 서비스 주소 뒤 `/admin`이며 관리자 권한 계정만 쓴다([관리자 페이지](docs/admin.md)).
 - 구성: VMware Ubuntu VM의 Python API·SQLite 카탈로그·PostgreSQL 참고자료 + Windows GPU의 Ollama(파인튜닝 Qwen3-8B). 공개 HTTPS는 Tailscale Funnel이 앞단을 맡는다.
 
 | 위치 | 역할 |
@@ -28,12 +27,10 @@
 - [2026-11-14 자료 수정 반영과 재실행](docs/data-update-20261114.md)
 - [데이터와 추천 기준](pickmenu/DATA.md)
 
-Windows CMD에서 GitHub에 인증한 뒤 저장소를 내려받는다.
+Windows CMD에서 저장소를 내려받고 데이터 없이 도는 테스트를 실행한다.
 
 ```bat
-gh auth login
-gh auth setup-git --hostname github.com
-gh repo clone abdhsdla3-sudo/pickmenu pickmenu-dev
+git clone https://github.com/abdhsdla3-sudo/pickmenu.git pickmenu-dev
 cd /d pickmenu-dev
 python -m pip install -r pickmenu\requirements-preprocess.txt ruff mypy
 cd pickmenu
@@ -65,4 +62,4 @@ start.cmd --port 8766
 
 ## 비밀 설정
 
-API 키(네이버 지도), DB 접속 정보, 회원 계정 암호화 키 경로는 서버의 systemd 환경변수와 권한 600 파일에만 둔다. 화면(JavaScript)과 저장소에는 넣지 않는다. 브라우저는 같은 출처의 픽메뉴 API만 부르고, 지도 검색·AI 호출은 서버가 대신한다. 원본 리뷰, 개인 식별자, DB, 모델 가중치, 생성된 카탈로그도 커밋하지 않는다(AGENTS.md).
+API 키(네이버 지도), DB 접속 정보, 회원 계정 암호화 키 경로는 서버의 systemd 환경변수와 권한 600 파일에만 둔다. 화면(JavaScript)과 저장소에는 넣지 않는다. 브라우저는 같은 출처의 픽메뉴 API만 부르고, 지도 검색·AI 호출은 서버가 대신한다. 원본 리뷰, 개인 식별자, DB, 모델 가중치, 생성된 카탈로그도 커밋하지 않는다(AGENTS.md). 그래서 이 저장소만으로는 추천 데이터가 없고, 카탈로그는 팀이 따로 관리한다. push마다 `.github/scripts/check_repository_privacy.py`가 비밀값·DB 파일·사설 주소가 들어오지 않았는지 검사한다.
