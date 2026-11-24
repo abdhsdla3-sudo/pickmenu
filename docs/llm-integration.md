@@ -12,7 +12,7 @@ Environment=PICKMENU_LLM_URL=http://127.0.0.1:11435
 Environment=PICKMENU_LLM_MODEL=pickmenu-llm:8b
 ```
 
-- `POST /api/chat`: `messages`(최대 6개 사용자 발화, 각각 300자), `profile`(기존 추천 조건).
+- `POST /api/chat`: `messages`(최대 10개 사용자 발화, 각각 300자), `profile`(기존 추천 조건).
   `reply`, `conditions`, `result`를 돌려준다. 로그인 정책은 기존 추천과 같다.
 - 모델은 조건을 정리하고 서버가 문장과 대조해 고친다(1.6.5).
   - 목표·맵기·국물: 문장에서 가장 뒤에 나온 표현을 따른다. "매운 건 싫어", "맵찔이", "국물업는거",
