@@ -144,6 +144,18 @@ legend { font-size: 12px; font-weight: 650; margin-bottom: 10px; }
 .step-bottom { margin-top: 28px; padding-top: 10px; }
 .status { font-size: 11px; line-height: 1.8; color: var(--rust); margin-top: 14px; overflow-wrap: anywhere; }
 .status:empty { display: none; }
+.review-summary { margin: 16px 0; }
+.review-summary h3 { margin: 0 0 8px; }
+.review-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.review-chip { background: #f3ead6; color: #5f4a26; font-size: 12px; font-weight: 700; padding: 6px 11px; border-radius: 999px; }
+.review-notice { background: #efeee8; color: #62665b; font-size: 12px; padding: 10px 12px; border-radius: 12px; margin-bottom: 10px; }
+.review-toggle { width: 100%; min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 8px; background: #f3f6eb; border: 1.5px solid var(--green); border-radius: 14px; color: var(--green); font-size: 13px; font-weight: 700; }
+.review-arrow { transition: transform .15s; }
+.review-toggle[aria-expanded="true"] .review-arrow { transform: rotate(180deg); }
+.review-panel { background: #f8f1e2; border-radius: 14px; padding: 12px 14px; margin-top: 8px; font-size: 13px; }
+.review-bar { height: 8px; border-radius: 8px; background: #e2d8c2; overflow: hidden; margin-bottom: 8px; }
+.review-bar i { display: block; height: 100%; background: var(--green); }
+@media (prefers-reduced-motion: reduce) { .review-arrow { transition: none; } }
 .detail-location { background: #f3f6eb; border-radius: 14px; padding: 12px 14px; margin: 14px 0; }
 .detail-location h3 { margin: 0 0 6px; }
 .detail-store-name { font-weight: 700; }

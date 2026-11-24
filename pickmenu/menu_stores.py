@@ -242,6 +242,55 @@ def store_facts() -> dict[str, dict[str, Any]] | None:
         return _facts["value"]
 
 
+REPEAT_SAMPLES = 20
+
+
+def load_review_summaries() -> dict[tuple[str, str], dict[str, Any]]:
+    """(매장 ID, 표준 음식명)별 리뷰 판정 집계. 리뷰 문장·작성자는 읽지 않는다.
+
+    `disappointing`은 만족이 아닌 리뷰(혼합+불만)로, 만족과 더하면 리뷰 수와 같다(중립은 리뷰 수에 들어 있지 않다).
+    """
+    import psycopg
+
+    with psycopg.connect(menu_reco.dsn(), connect_timeout=5) as db:
+        db.read_only = True
+        rows = db.execute("""
+            SELECT integrated_store_id, detail_food, review_count, few_reviews, positive, disappointing_reviews,
+                   repeat_ratio, repeat_sample_count, quantity_review
+            FROM pickmenu_data.current_menu_scores""").fetchall()
+    result: dict[tuple[str, str], dict[str, Any]] = {}
+    for store_id, food, reviews, few, positive, disappointing, repeat, samples, quantity in rows:
+        if not store_id or not food or not reviews or positive is None or disappointing is None:
+            continue
+        if positive + disappointing != reviews:
+            continue  # 합이 맞지 않는 행은 잘못된 비율을 보여 주지 않게 뺀다.
+        item: dict[str, Any] = {"food": food, "reviews": reviews, "few": bool(few), "positive": positive,
+                                "disappointing": disappointing}
+        if quantity in {"많음", "보통", "적음"}:
+            item["quantity"] = quantity
+        if repeat is not None and (samples or 0) >= REPEAT_SAMPLES:
+            item["repeat_ratio"] = round(float(repeat), 3)
+        result[(store_id, food)] = item
+    return result
+
+
+_summaries: dict[str, Any] = {"value": None, "checked": float("-inf")}
+
+
+def review_summaries() -> dict[tuple[str, str], dict[str, Any]]:
+    """리뷰 판정 집계를 5분 동안 메모리에 둔다. 불러오지 못하면 빈 값(1분 뒤 다시 시도)."""
+    with _lock:
+        age = time.monotonic() - _summaries["checked"]
+        if age < (CACHE_SECONDS if _summaries["value"] is not None else RETRY_SECONDS):
+            return _summaries["value"] or {}
+        try:
+            _summaries["value"] = load_review_summaries()
+        except Exception:  # 집계가 없으면 리뷰 요약 없이 진행한다.
+            _summaries["value"] = None
+        _summaries["checked"] = time.monotonic()
+        return _summaries["value"] or {}
+
+
 def stores(path: Path, menus: list[dict[str, Any]], district: str, limit: int = 50,
            origin: tuple[float, float] | None = None) -> dict[str, Any]:
     """고른 순서의 실제 메뉴별 판매 매장. 고른 구에 없으면 수원 전체로 넓힌다.
@@ -267,6 +316,7 @@ def stores(path: Path, menus: list[dict[str, Any]], district: str, limit: int = 
         menu_reviews[mid] += count
         menu_store_ids[mid].add(store_id)
     facts = (store_facts() or {}) if rows else {}
+    summaries = review_summaries() if rows else {}
     names = store_names()
     nutrition = franchise_nutrition() if rows else {}
     products_by_store: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
@@ -302,6 +352,10 @@ def stores(path: Path, menus: list[dict[str, Any]], district: str, limit: int = 
         store["evidence"] = {"menu_stores": len(menu_store_ids[mid]),
                              "menu_share": round(count / menu_reviews[mid], 3) if menu_reviews[mid] else None,
                              **facts.get(store_id, {})}
+        # 여러 음식을 묶은 메뉴는 첫 음식의 집계가 메뉴 전체 평가가 아니므로 붙이지 않는다.
+        components = by_id[mid]["components"]
+        if len(components) == 1 and (summary := summaries.get((store_id, components[0]))):
+            store["review_summary"] = summary
         products = products_by_store.get(store_id, {})
         reference = products.get(mid)
         if reference:

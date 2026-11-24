@@ -385,6 +385,7 @@ async function openDetail(item, button, store) {
     const body = document.querySelector("#detail-body");
     body.replaceChildren(node("p", [menu.category, ...menu.components].join(" · "), "muted"));
     addReasons(body, item.reasons);
+    if (store) body.append(reviewSummary(store));
     body.append(node("p", "실제 매장 레시피와 원재료, 알레르기 및 교차접촉 정보는 확인이 필요해요.", "muted"));
     if (menu.cooking_reference) {
       const ref = menu.cooking_reference;
@@ -437,6 +438,53 @@ async function openDetail(item, button, store) {
   }
 }
 
+// 이 매장·이 음식(이름이 다른 같은 음식 메뉴를 합친 값)의 리뷰 판정 집계. 리뷰 원문은 공개하지 않으므로 인용문을 만들지 않고 건수만 보여 준다.
+function reviewSummary(store) {
+  const section = node("section", undefined, "review-summary");
+  const data = store.review_summary;
+  section.append(node("h3", data ? `이 매장의 ${data.food} 리뷰 요약` : "이 매장의 리뷰 요약"));
+  if (!data) {
+    section.append(node("p", "이 매장의 이 음식은 리뷰가 적거나 없어 요약이 없어요.", "review-notice"));
+    return section;
+  }
+  const count = value => value.toLocaleString("ko-KR");
+  const chips = node("div", undefined, "review-chips");
+  const chip = text => chips.append(node("span", text, "review-chip"));
+  // 리뷰가 적은 매장은 비율을 강조하지 않는다.
+  if (!data.few && data.positive / data.reviews >= 0.8) chip("만족 리뷰가 많아요 👍");
+  if (data.quantity === "많음") chip("양이 푸짐해요 🍚");
+  if (data.quantity === "적음") chip("양이 적다는 평이 있어요");
+  if (!data.few && data.repeat_ratio >= 0.5) chip("단골 주문이 많아요 🔁");
+  if (chips.children.length) section.append(chips);
+  if (data.few) {
+    section.append(node("p", `이 매장의 ${data.food} 리뷰가 적어(${count(data.reviews)}건) 참고만 해 주세요.`, "review-notice"));
+  }
+  const toggle = node("button", undefined, "review-toggle");
+  toggle.type = "button";
+  toggle.append(node("span", `만족 리뷰 (${count(data.positive)}건)`), node("span", "⌄", "review-arrow"));
+  toggle.lastChild.setAttribute("aria-hidden", "true");
+  toggle.setAttribute("aria-expanded", "false");
+  const panel = node("div", undefined, "review-panel");
+  panel.id = "review-panel";
+  panel.hidden = true;
+  toggle.setAttribute("aria-controls", panel.id);
+  const bar = node("div", undefined, "review-bar");
+  bar.setAttribute("aria-hidden", "true");
+  const fill = node("i");
+  fill.style.width = `${Math.round(100 * data.positive / data.reviews)}%`;
+  bar.append(fill);
+  panel.append(bar, node("p", `${data.food} 리뷰 ${count(data.reviews)}건 중 만족 ${count(data.positive)}건 · 아쉬움 ${count(data.disappointing)}건`));
+  if (data.quantity) panel.append(node("p", `양: ${data.quantity} (리뷰 기반 판정)`));
+  if (data.repeat_ratio !== undefined) panel.append(node("p", `이 매장 ${data.food} 단골 주문 ${Math.round(100 * data.repeat_ratio)}%`));
+  panel.append(node("p", `이 매장에서 이름이 다른 ${data.food} 메뉴까지 합쳐 리뷰 내용을 분석한 값이에요. 리뷰 원문은 보여 주지 않아요.`, "tiny"));
+  toggle.addEventListener("click", () => {
+    panel.hidden = !panel.hidden;
+    toggle.setAttribute("aria-expanded", String(!panel.hidden));
+  });
+  section.append(toggle, panel);
+  return section;
+}
+
 async function showDetailLocation(body, store) {
   const section = node("section", undefined, "detail-location");
   section.append(node("h3", "매장 위치"));
@@ -454,7 +502,7 @@ async function showDetailLocation(body, store) {
   }
   section.append(feedback);
   if (store.store_name || store.address) section.append(storeMapLink(store, "네이버 지도에서 보기"));
-  body.insertBefore(section, body.children[2] || null);
+  body.insertBefore(section, body.querySelector(".review-summary")?.nextSibling || body.children[2] || null);
   if (!store.location) return;
   const map = await storeMap(holder, [store], {
     singleStore: true,

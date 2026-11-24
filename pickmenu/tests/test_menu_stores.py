@@ -116,6 +116,23 @@ class StoreApiTest(unittest.TestCase):
                              lambda: {"SW_a": {"repeat_ratio": 0.5, "positive_ratio": 0.9, "quantity": "많음"}})
         facts.start()
         self.addCleanup(facts.stop)
+        self.summary = {"food": "육회", "reviews": 5, "few": True, "positive": 4, "disappointing": 1, "quantity": "많음"}
+        reviews = patch.object(menu_stores, "review_summaries", lambda: {("SW_a", "육회"): self.summary})
+        reviews.start()
+        self.addCleanup(reviews.stop)
+
+    def test_review_summary_matches_store_and_food(self):
+        _, result = self.call("/api/recommend/stores", {"menu_ids": list(IDS.values()), "district": ""})
+        by_store = {s["store_name"]: s.get("review_summary") for s in result["stores"]}
+        self.assertEqual(by_store.pop("가 육회"), self.summary)
+        self.assertTrue(by_store)
+        self.assertEqual(set(by_store.values()), {None})
+
+    def test_review_summary_skips_compound_menu(self):
+        compound = {**menu("최상급 육회"), "components": ["육회", "공깃밥"]}
+        result = menu_stores.stores(self.path, [compound], "")
+        self.assertTrue(result["stores"])
+        self.assertTrue(all("review_summary" not in s for s in result["stores"]))
 
     def test_step_one_has_exact_family_evidence(self):
         status, result = self.call("/api/recommend", {})
