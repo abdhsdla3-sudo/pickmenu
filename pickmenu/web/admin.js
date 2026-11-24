@@ -216,7 +216,7 @@ async function feedback(status = "") {
     pick.append(option);
   }
   pick.addEventListener("change", () => feedback(pick.value));
-  tools.append(pick, el("span", "추천 화면의 '👎 추천이 별로예요', '오류 신고·의견'으로 들어온 내용이에요.", "muted"));
+  tools.append(pick, el("span", "사용자 하단의 ‘피드백·신고’와 추천 화면에서 들어온 내용이에요.", "muted"));
   panel.append(tools);
   if (!data.feedback.length) panel.append(el("p", "들어온 의견이 없어요.", "muted"));
   for (const item of data.feedback) {

@@ -73,8 +73,10 @@ function showScreen(name) {
   for (const screen of document.querySelectorAll("[data-screen]")) {
     screen.hidden = screen.dataset.screen !== name;
   }
-  document.querySelector(".bottom-nav").hidden = ["welcome", "onboarding"].includes(name)
+  const hideAccountNav = ["welcome", "onboarding"].includes(name)
     || (name === "account" && !hasProfile);
+  document.querySelector("#nav-home").hidden = hideAccountNav;
+  document.querySelector("#nav-account").hidden = hideAccountNav;
   for (const button of document.querySelectorAll(".mode-switch button")) {
     button.setAttribute("aria-pressed", String(button.dataset.mode === name));
   }
@@ -521,56 +523,76 @@ function track(kind, detail = "") {
     body: JSON.stringify({kind, detail: String(detail).slice(0, 80)})}).catch(() => {});
 }
 
-// 추천 결과 아래의 의견 보내기. 운영자가 관리 화면에서 확인하고 처리 상태를 바꾼다.
+const feedbackDialog = document.querySelector("#feedback-dialog");
+const feedbackForm = document.querySelector("#feedback-form");
+const feedbackStatus = document.querySelector("#feedback-status");
+const feedbackSend = feedbackForm.querySelector("button[type=submit]");
+let feedbackContext = {};
+
+function openFeedback(context = {}, kind = "idea") {
+  if (feedbackSend.disabled) return;
+  feedbackContext = context;
+  feedbackForm.reset();
+  feedbackForm.elements.kind.value = kind;
+  feedbackForm.hidden = false;
+  feedbackStatus.textContent = "";
+  feedbackDialog.showModal();
+}
+
+async function sendFeedback(kind, message, context) {
+  await request("/api/feedback", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({kind, message, context})});
+}
+
+document.querySelector("#nav-feedback").addEventListener("click", () => openFeedback());
+feedbackForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  if (feedbackSend.disabled) return;
+  const message = feedbackForm.elements.message.value.trim();
+  if (message.length < 2) {
+    feedbackStatus.textContent = "내용을 2자 이상 적어 주세요.";
+    return;
+  }
+  feedbackSend.disabled = true;
+  feedbackStatus.textContent = "의견을 보내는 중이에요.";
+  try {
+    await sendFeedback(feedbackForm.elements.kind.value, message, feedbackContext);
+    feedbackForm.hidden = true;
+    feedbackStatus.textContent = "의견을 보냈어요. 운영자가 확인할게요.";
+    if (feedbackDialog.open) feedbackDialog.querySelector(".icon-button").focus();
+  } catch (error) {
+    feedbackStatus.textContent = error.message;
+  } finally {
+    feedbackSend.disabled = false;
+  }
+});
+
 function feedbackBox(data) {
   const box = node("div", undefined, "feedback-box");
+  const row = node("div", undefined, "feedback-actions");
   const bad = node("button", "👎 추천이 별로예요", "small-link");
   const open = node("button", "오류 신고·의견", "small-link");
   bad.type = open.type = "button";
-  const row = node("div", undefined, "feedback-actions");
-  row.append(bad, open);
+  open.setAttribute("aria-haspopup", "dialog");
   const done = node("p", "", "tiny feedback-done");
   done.setAttribute("role", "status");
-  const formBox = node("form", undefined, "feedback-form");
-  formBox.hidden = true;
-  const kind = node("select");
-  kind.setAttribute("aria-label", "의견 종류");
-  for (const [value, label] of [["bad_recommendation", "추천이 별로예요"], ["error", "오류 신고"], ["idea", "의견"]]) {
-    const option = node("option", label);
-    option.value = value;
-    kind.append(option);
-  }
-  const text = node("textarea");
-  text.maxLength = 300;
-  text.rows = 3;
-  text.placeholder = "어떤 점이 아쉬웠는지 적어 주세요 (개인정보는 적지 마세요)";
-  text.setAttribute("aria-label", "의견 내용");
-  const send = node("button", "보내기", "small-link");
-  send.type = "submit";
-  formBox.append(kind, text, send);
-  const context = () => ({mode: sourceMode, menus: (data.families || []).map(family => family.name).slice(0, 8),
-    conditions: (document.querySelector("#picked-tags")?.textContent || "").slice(0, 200)});
-  async function submit(value, message) {
+  // 추천 화면의 검색어와 알레르기 등 사용자의 입력 조건은 자동 전송하지 않는다.
+  const context = {mode: sourceMode, menus: (data.families || []).slice(0, 5).map(family => family.name.slice(0, 24))};
+  bad.addEventListener("click", async () => {
+    bad.disabled = true;
     try {
-      await request("/api/feedback", {method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({kind: value, message, context: context()})});
-      formBox.hidden = true;
-      row.hidden = true;
-      done.textContent = "의견을 보냈어요. 운영자가 확인할게요. 고마워요!";
+      await sendFeedback("bad_recommendation", "", context);
+      bad.hidden = true;
+      done.textContent = "의견을 보냈어요. 운영자가 확인할게요.";
     } catch (error) {
       done.textContent = error.message;
+    } finally {
+      bad.disabled = false;
     }
-  }
-  bad.addEventListener("click", () => submit("bad_recommendation", ""));
-  open.addEventListener("click", () => {
-    formBox.hidden = !formBox.hidden;
-    if (!formBox.hidden) text.focus();
   });
-  formBox.addEventListener("submit", event => {
-    event.preventDefault();
-    submit(kind.value, text.value.trim());
-  });
-  box.append(row, formBox, done);
+  open.addEventListener("click", () => openFeedback(context, "error"));
+  row.append(bad, open);
+  box.append(row, done);
   return box;
 }
 
