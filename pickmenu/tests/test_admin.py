@@ -7,6 +7,7 @@ import tempfile
 import threading
 import unittest
 from contextlib import closing
+from datetime import datetime
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
@@ -61,6 +62,23 @@ class AdminStoreTest(unittest.TestCase):
         self.assertEqual((data["ai"]["calls"], data["ai"]["errors"], data["ai"]["avg_ms"]), (2, 1, 300))
         self.assertEqual(data["ai"]["prompt_tokens"] + data["ai"]["output_tokens"], 120)
         self.assertEqual(len(data["daily"]), 7)
+
+    def test_past_requests_are_separate_from_current_usage(self):
+        with admin.connect() as db:
+            db.execute("INSERT INTO past_requests VALUES (?, ?, ?, ?, ?)", ("2026-11-23", 8, 6, 4, 2))
+        start = int(datetime(2026, 11, 24, 0, 5, tzinfo=admin.KST).timestamp())
+        with patch("admin.now", return_value=start):
+            admin.record_event("visit", "visitor-aaaaaaaaaaaaaaaa")
+            admin.record_event("recommend", "visitor-aaaaaaaaaaaaaaaa")
+        with patch("admin.now", return_value=start + 86400 + 70000):
+            data = admin.summary(3)
+        self.assertEqual(data["past_requests"], [
+            {"day": "2026-11-23", "home": 8, "recommend": 6, "chat": 4, "stores": 2},
+        ])
+        self.assertEqual([(row["day"], row["collected"]) for row in data["daily"]],
+                         [("11-23", False), ("11-24", True), ("11-25", True)])
+        self.assertEqual(data["totals"]["visitors"], 1)
+        self.assertEqual(data["totals"]["recommend"], 1)
 
     def test_feedback_review_and_menu_override_leave_audit(self):
         with self.assertRaises(ValueError):

@@ -93,7 +93,7 @@ async function dashboard(days = 14) {
     pick.append(option);
   }
   pick.addEventListener("change", () => dashboard(Number(pick.value)));
-  tools.append(pick, el("span", "모든 수치는 실제 사용 기록에서 바로 계산해요. 시각은 한국 시간이에요.", "muted"));
+  tools.append(pick, el("span", "사용 지표는 수집된 기간을 집계해요. 날짜와 시각은 한국 시간이에요.", "muted"));
   panel.append(tools);
 
   const t = data.totals;
@@ -115,9 +115,18 @@ async function dashboard(days = 14) {
   const max = Math.max(1, ...data.daily.map(row => row.recommend + row.chat));
   const maxVisit = Math.max(1, ...data.daily.map(row => row.visitors));
   daily.append(table(["날짜", "방문자", "", "추천(선택지+이야기)", "", "메뉴 클릭"],
-    data.daily.map(row => [row.day, row.visitors, bar(row.visitors, maxVisit, true),
-      `${row.recommend}+${row.chat}`, bar(row.recommend + row.chat, max), row.menu_click])));
+    data.daily.map(row => row.collected ? [row.day, row.visitors, bar(row.visitors, maxVisit, true),
+      `${row.recommend}+${row.chat}`, bar(row.recommend + row.chat, max), row.menu_click]
+      : [row.day, "미수집", "", "미수집", "", "미수집"])));
   panel.append(el("h2", "날짜별"), daily);
+
+  if (data.past_requests?.length) {
+    const archive = el("div", undefined, "card");
+    archive.append(el("p", "사용 기록 수집 전에 서버 로그에 남은 건수예요. 새로고침·팀 테스트·실패 요청도 포함하며, 방문자 수와 사용 지표 합계에는 포함하지 않아요.", "muted"),
+      table(["날짜", "홈페이지 요청", "선택지 요청", "이야기 요청", "가게 조회 요청"],
+        data.past_requests.map(row => [row.day, row.home, row.recommend, row.chat, row.stores])));
+    panel.append(el("h2", "과거 서버 요청 수"), archive);
+  }
 
   const two = el("div", undefined, "grid2");
   const menus = el("div", undefined, "card");

@@ -37,6 +37,10 @@ CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY, at INTEGER NOT NULL, kind TEXT NOT NULL, visitor TEXT NOT NULL, detail TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS events_at ON events(at);
+CREATE TABLE IF NOT EXISTS past_requests (
+    day TEXT PRIMARY KEY NOT NULL, home INTEGER NOT NULL, recommend INTEGER NOT NULL,
+    chat INTEGER NOT NULL, stores INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS ai_calls (
     id INTEGER PRIMARY KEY, at INTEGER NOT NULL, purpose TEXT NOT NULL, model TEXT NOT NULL, ms INTEGER NOT NULL,
     prompt_tokens INTEGER, output_tokens INTEGER, status TEXT NOT NULL, error TEXT NOT NULL DEFAULT ''
@@ -274,18 +278,28 @@ def day(ts: int) -> str:
 
 def summary(days: int = 14) -> dict[str, Any]:
     days = max(1, min(days, 90))
-    start = now() - days * 86400
+    current = now()
+    today = datetime.fromtimestamp(current, KST).replace(hour=0, minute=0, second=0, microsecond=0)
+    first_day = today - timedelta(days=days - 1)
+    start = int(first_day.timestamp())
     with connect() as db:
-        db.execute("DELETE FROM events WHERE at < ?", (now() - EVENT_DAYS * 86400,))
+        db.execute("DELETE FROM events WHERE at < ?", (current - EVENT_DAYS * 86400,))
         events = db.execute("SELECT at,kind,visitor,detail FROM events WHERE at >= ?", (start,)).fetchall()
+        first_event, = db.execute("SELECT MIN(at) FROM events").fetchone()
         first_seen = dict(db.execute("SELECT visitor, MIN(at) FROM events WHERE kind='visit' GROUP BY visitor"))
+        past = db.execute("SELECT day,home,recommend,chat,stores FROM past_requests ORDER BY day").fetchall()
         calls = db.execute("SELECT at,purpose,ms,prompt_tokens,output_tokens,status FROM ai_calls WHERE at >= ?",
                            (start,)).fetchall()
         feedback = Counter(status for status, in db.execute("SELECT status FROM feedback"))
         reviews = Counter(status for status, in db.execute("SELECT status FROM chats"))
-    labels = [day(now() - offset * 86400) for offset in range(days - 1, -1, -1)]
+    dates = [first_day + timedelta(days=offset) for offset in range(days)]
+    collected_from = datetime.fromtimestamp(first_event, KST).date() if first_event is not None else None
+    labels = [date.strftime("%m-%d") for date in dates]
     daily: dict[str, dict[str, Any]] = {label: {"day": label, "visitors": set(), "recommend": 0, "chat": 0,
-                                                "menu_click": 0, "store_click": 0} for label in labels}
+                                                "menu_click": 0, "store_click": 0,
+                                                "collected": collected_from is not None
+                                                and date.date() >= collected_from}
+                                        for label, date in zip(labels, dates)}
     visitors: set[str] = set()
     returning: set[str] = set()
     visit_days: dict[str, set[str]] = {}
@@ -317,6 +331,8 @@ def summary(days: int = 14) -> dict[str, Any]:
     ok = [call for call in calls if call[5] == "ok"]
     return {
         "days": days,
+        "past_requests": [{"day": date, "home": home, "recommend": recommend, "chat": chat, "stores": stores}
+                          for date, home, recommend, chat, stores in past],
         "daily": [{**row, "visitors": len(row["visitors"])} for row in daily.values()],
         "totals": {
             "visitors": len(visitors), "returning": len(returning),
