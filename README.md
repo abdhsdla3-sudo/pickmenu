@@ -1,6 +1,10 @@
 # 픽메뉴
 
-픽메뉴의 소스와 개발 가이드를 관리하는 비공개 저장소다. 공개 데모는 Sites에서 볼 수 있다. [픽메뉴 데모](https://pickmenu-suwon-demo.jmk031204.chatgpt.site/)
+픽메뉴의 소스와 개발 가이드를 관리하는 비공개 저장소다.
+
+- 서비스 주소: https://pickmenu-dev.tail048532.ts.net (휴대폰·노트북에서 바로 접속, HTTPS)
+- 관리자 화면: https://pickmenu-dev.tail048532.ts.net/admin (관리자 권한 계정만, [관리자 페이지](docs/admin.md))
+- 구성: VMware Ubuntu VM의 Python API·SQLite 카탈로그·PostgreSQL 참고자료 + Windows GPU의 Ollama(파인튜닝 Qwen3-8B). 공개 HTTPS는 Tailscale Funnel이 앞단을 맡는다.
 
 | 위치 | 역할 |
 | --- | --- |
@@ -16,6 +20,7 @@
 - [다른 기기에서 Codex로 개발하기](docs/codex-access.md)
 - [Windows LLM PC에 접속하기](docs/llm-access.md)
 - [버전과 릴리스 관리](docs/releases.md)
+- [관리자(Admin) 페이지](docs/admin.md)
 - [모바일 앱형 데모 흐름](docs/mobile-demo.md)
 - [회원 계정과 로그인](docs/accounts.md)
 - [가입 기본정보·암호화·마스킹](docs/account-privacy.md)
@@ -46,3 +51,18 @@ start.cmd --port 8766
 브라우저에서 [새 체크아웃 테스트](http://127.0.0.1:8766/)를 연다. 일반 실행은 기본 포트 8765를 사용한다. 카탈로그 없이 실행하면 화면은 열리며 추천 API는 데이터가 필요하다는 응답을 반환한다. 원본부터 다시 생성하려면 [전처리 안내](pickmenu/README.md)를 따른다.
 
 기존 카탈로그로 전체 데이터 테스트를 할 때는 같은 전처리에서 생성한 감사 JSON 폴더를 `PICKMENU_AUDIT_DIR`로 지정한다. 공유본 비교 검사에 다른 포트를 쓴다면 `PICKMENU_VERIFY_ORIGIN`에 로컬 서버 주소를 지정한다.
+
+## 배포
+
+서버(VM)에서는 개발 폴더를 덮어쓰지 않고 버전별 릴리스 폴더로 바꾼다. 자세한 절차는 [버전과 릴리스 관리](docs/releases.md)에 있다.
+
+```sh
+# 새 릴리스 폴더 ~/pickmenu-releases/vX.Y.Z (source/ = 커밋을 git archive로 푼 코드, catalog.sqlite3, systemd-release.conf, deploy.sh)
+~/pickmenu-releases/vX.Y.Z/deploy.sh --check     # 코드 버전·카탈로그·커밋 점검, 서비스는 그대로
+~/pickmenu-releases/vX.Y.Z/deploy.sh --apply     # 서비스를 새 폴더로 바꾸고 화면·API 응답 확인
+~/pickmenu-releases/vX.Y.Z/deploy.sh --rollback  # 이전 릴리스 설정으로 되돌림
+```
+
+## 비밀 설정
+
+API 키(네이버 지도), DB 접속 정보, 회원 계정 암호화 키 경로는 서버의 systemd 환경변수와 권한 600 파일에만 둔다. 화면(JavaScript)과 저장소에는 넣지 않는다. 브라우저는 같은 출처의 픽메뉴 API만 부르고, 지도 검색·AI 호출은 서버가 대신한다. 원본 리뷰, 개인 식별자, DB, 모델 가중치, 생성된 카탈로그도 커밋하지 않는다(AGENTS.md).
