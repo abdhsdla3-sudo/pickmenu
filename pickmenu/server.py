@@ -5,6 +5,7 @@ import hmac
 import json
 import os
 import re
+import secrets
 import sqlite3
 import sys
 import threading
@@ -16,6 +17,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
+import admin
 import auth
 import llm
 import menu_reco
@@ -34,6 +36,9 @@ from recommend import (
 CATALOG = LOCAL / "catalog.sqlite3"
 MENU_ID = re.compile(r"MN_[0-9a-f]{16}")
 SESSION_COOKIE = "pickmenu_session"
+VISITOR_COOKIE = "pickmenu_visitor"
+VISITOR = re.compile(r"[A-Za-z0-9_-]{16,40}")
+ADMIN_ITEM = re.compile(r"/api/admin/(chats|feedback)/([0-9]{1,9})")
 INVALID = object()
 ASSETS = {
     "/": ("index.html", "text/html; charset=utf-8"),
@@ -41,6 +46,9 @@ ASSETS = {
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/mark.svg": ("mark.svg", "image/svg+xml"),
     "/meal-category-icons.webp": ("meal-category-icons.webp", "image/webp"),
+    "/admin": ("admin.html", "text/html; charset=utf-8"),
+    "/admin.js": ("admin.js", "text/javascript; charset=utf-8"),
+    "/admin.css": ("admin.css", "text/css; charset=utf-8"),
 }
 ASSETS.update({f"/menu-photos/{path.name}": (f"menu-photos/{path.name}", "image/webp")
                for path in (BASE / "web" / "menu-photos").glob("[0-9][0-9][0-9].webp")})
@@ -48,6 +56,7 @@ PHOTO_CACHE = "public, max-age=86400"
 REVIEW_PERIOD = os.environ.get("PICKMENU_REVIEW_PERIOD") or (BASE / "review_period.txt").read_text(encoding="utf-8").strip()
 _loaded: dict[str, Any] = {"key": None, "reference": None, "menus": None}
 _loaded_lock = threading.Lock()
+llm.on_call = admin.record_ai_call  # AI 호출 수·응답 시간·토큰·오류를 운영 기록에 남긴다(1.14.0).
 
 
 def catalog_path() -> Path:
@@ -123,6 +132,11 @@ def foods(menus: list[dict[str, Any]]) -> dict[str, set[str]]:
     return result
 
 
+def search_words(profile: Profile) -> str:
+    """사용 현황의 '검색어'. 대화 원문 대신 해석된 메뉴 검색어·음식군만 남긴다."""
+    return "|".join(word for word in (profile.query, profile.meal_category) if word)[:80]
+
+
 def public_menu(menu: dict[str, Any]) -> dict[str, Any]:
     result = {key: value for key, value in menu.items() if key not in {"regions", "mapping_note"}}
     # 카드·상세가 추천 점수와 같은 추정치를 보이게 서버에서 한 번 계산한다.
@@ -134,6 +148,14 @@ def public_menu(menu: dict[str, Any]) -> dict[str, Any]:
 def guest_allowed() -> bool:
     """둘러보기: 로그인 없이 선택지 추천·가게 목록·메뉴 상세만 쓴다. 대화(AI)·위치 검색·프로필 저장은 로그인 필요."""
     return os.environ.get("PICKMENU_GUEST") == "1"
+
+
+def visitor_cookie(value: str) -> str:
+    """방문자 수·재방문을 세는 임의 값. 회원 정보와 연결하지 않는다."""
+    parts = [f"{VISITOR_COOKIE}={value}", "Path=/", "HttpOnly", "SameSite=Lax", "Max-Age=31536000"]
+    if os.environ.get("PICKMENU_COOKIE_SECURE") == "1":
+        parts.append("Secure")
+    return "; ".join(parts)
 
 
 def session_cookie(token: str | None) -> str:
@@ -194,13 +216,35 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(503, {"error": "가게 추천 자료를 불러올 수 없어요. 잠시 뒤 다시 시도해 주세요."})
             return None
 
-    def session_token(self) -> str | None:
+    def cookie(self, name: str) -> str | None:
         try:
             cookie = SimpleCookie(self.headers.get("Cookie", ""))
         except CookieError:
             return None
-        morsel = cookie.get(SESSION_COOKIE)
+        morsel = cookie.get(name)
         return morsel.value if morsel and morsel.value else None
+
+    def session_token(self) -> str | None:
+        return self.cookie(SESSION_COOKIE)
+
+    def visitor(self) -> str:
+        value = self.cookie(VISITOR_COOKIE) or ""
+        return value if VISITOR.fullmatch(value) else "-"
+
+    def admin_actor(self) -> str | None:
+        """관리자면 화면에 보일 이름(마스킹 아이디)을 돌려준다. 아니면 오류 응답을 보내고 None."""
+        try:
+            found = auth.current(self.session_token())
+        except sqlite3.Error:
+            self.send_json(503, {"error": "로그인 상태를 확인할 수 없어요."})
+            return None
+        if found is None:
+            self.send_json(401, {"error": "관리자 계정으로 로그인해 주세요."})
+            return None
+        if not admin.is_admin(found[0]):
+            self.send_json(403, {"error": "관리자 권한이 없는 계정이에요."})
+            return None
+        return str(found[1]["user"]["username"])
 
     def handle_auth(self, path: str) -> None:
         """회원가입, 로그인, 로그아웃과 서버 저장 프로필 요청을 처리한다."""
@@ -245,9 +289,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(401, {"error": "API 인증이 필요해요."})
         return False
 
-    def load(self) -> list[dict[str, Any]] | None:
+    def load(self, *, original: bool = False) -> list[dict[str, Any]] | None:
+        """추천에 쓰는 메뉴 목록. 관리 화면에서 숨긴 메뉴를 빼고 표시 이름을 바꾼다(original=True면 원본)."""
         try:
-            return prepared_menus()
+            menus = prepared_menus()
+            return menus if original else admin.apply_overrides(menus)
         except (OSError, sqlite3.Error, ValueError) as error:
             self.log_error("카탈로그 오류 %s", type(error).__name__)
             self.send_json(503, {"error": "추천 데이터를 열 수 없어요. 전처리를 완료한 뒤 다시 시도해 주세요."})
@@ -281,8 +327,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path in ASSETS:
             filename, content_type = ASSETS[path]
-            self.reply(200, content_type, (BASE / "web" / filename).read_bytes(),
+            headers = []
+            if path == "/" and self.visitor() == "-":
+                headers.append(("Set-Cookie", visitor_cookie(secrets.token_urlsafe(18))))
+            self.reply(200, content_type, (BASE / "web" / filename).read_bytes(), headers,
                        cache=PHOTO_CACHE if content_type == "image/webp" else "no-store")
+        elif path.startswith("/api/admin/"):
+            self.admin_get(path)
         elif path == "/api/auth/me":
             self.handle_auth(path)
         elif path == "/api/v2/stores":
@@ -332,6 +383,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/chat":
             self.chat()
             return
+        if path in {"/api/events", "/api/feedback"}:
+            if self.authorize_api():
+                self.client_record(path)
+            return
+        if path.startswith("/api/admin/"):
+            if self.authorize_api():
+                self.admin_post(path)
+            return
         if path in {"/api/auth/signup", "/api/auth/login", "/api/auth/logout"}:
             if self.authorize_api():
                 self.handle_auth(path)
@@ -372,6 +431,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(400, {"error": str(error)})
             return
         self.send_json(200, self.recommendation(menus, profile, recent))
+        admin.record_event("recommend", self.visitor(), search_words(profile))
 
     def chat(self) -> None:
         if not self.authorize_api() or not self.require_session():
@@ -385,19 +445,114 @@ class Handler(BaseHTTPRequestHandler):
                 return
             groups = categories(menus)
             saved = Profile.parse(payload.get("profile"), groups)
+            llm.reset_last_output()
             profile = llm.resolve_story(history, saved, groups, foods(menus))
             # 조건을 하나도 찾지 못한 말("피곤해", "우울해")에는 기본 목록 대신 되묻는다(1.13.7).
             if asked := llm.clarify(history, profile, saved):
                 self.send_json(200, {"reply": asked[0], "clarify": {"options": asked[1]},
                                      "result": None, "conditions": vars(profile)})
+                self.remember_chat(history, profile, saved, [], clarified=True)
                 return
             result = self.recommendation(menus, profile, recent, conversation=True)
             answer = llm.reply(result, history, taste=profile.taste, profile=profile, saved=saved)
             self.send_json(200, {"reply": answer, "result": result, "conditions": vars(profile)})
+            self.remember_chat(history, profile, saved, [family["name"] for family in result.get("families", [])])
         except ValueError as error:
             self.send_json(400, {"error": str(error)})
         except llm.Unavailable as error:
             self.send_json(503, {"error": str(error)})
+
+    def remember_chat(self, history: list[str], profile: Profile, saved: Profile, menus: list[str], *,
+                      clarified: bool = False) -> None:
+        """AI 결과 검수용 대화 기록(14일 보관, 회원 ID 없음)과 사용 현황. 조건은 저장된 취향에서 바뀐 것만 남긴다."""
+        conditions = {key: value for key, value in vars(profile).items()
+                      if value != getattr(saved, key) and key != "district"}
+        admin.record_chat(history, llm.last_output(), conditions, menus, clarified)
+        admin.record_event("chat", self.visitor(), search_words(profile))
+
+    def client_record(self, path: str) -> None:
+        """화면이 보내는 사용 기록(방문·메뉴 클릭·가게 클릭)과 사용자 의견."""
+        if (payload := self.read_json(2048)) is INVALID:
+            return
+        if path == "/api/events":
+            kind = payload.get("kind") if isinstance(payload, dict) else None
+            detail = payload.get("detail", "") if isinstance(payload, dict) else ""
+            if kind not in admin.CLIENT_EVENTS or not isinstance(detail, str) or len(detail) > 80:
+                self.send_json(400, {"error": "기록 형식을 확인해 주세요."})
+                return
+            admin.record_event(kind, self.visitor(), detail)
+            self.send_json(200, {"ok": True})
+            return
+        try:
+            feedback_id = admin.add_feedback(payload)
+        except ValueError as error:
+            self.send_json(400, {"error": str(error)})
+            return
+        except sqlite3.Error as error:
+            self.log_error("운영 DB 오류 %s", type(error).__name__)
+            self.send_json(503, {"error": "의견을 저장하지 못했어요. 잠시 뒤 다시 시도해 주세요."})
+            return
+        self.send_json(201, {"id": feedback_id})
+
+    def admin_get(self, path: str) -> None:
+        if not self.authorize_api() or (actor := self.admin_actor()) is None:
+            return
+        params = parse_qs(urlsplit(self.path).query)
+
+        def param(name: str, default: str = "") -> str:
+            return (params.get(name) or [default])[0][:80]
+
+        try:
+            if path == "/api/admin/me":
+                self.send_json(200, {"user": actor})
+            elif path == "/api/admin/summary":
+                days = param("days", "14")
+                self.send_json(200, admin.summary(int(days) if days.isdigit() else 14))
+            elif path == "/api/admin/chats":
+                self.send_json(200, {"chats": admin.chats(param("status")), "keep_days": admin.CHAT_DAYS})
+            elif path == "/api/admin/feedback":
+                self.send_json(200, {"feedback": admin.feedback_rows(param("status")),
+                                     "kinds": admin.FEEDBACK_KINDS})
+            elif path == "/api/admin/ai-calls":
+                self.send_json(200, {"calls": admin.ai_calls()})
+            elif path == "/api/admin/audit":
+                self.send_json(200, {"audit": admin.audit_rows()})
+            elif path == "/api/admin/menus":
+                if (menus := self.load(original=True)) is not None:
+                    self.send_json(200, {"menus": admin.menu_rows(menus, param("q"))})
+            else:
+                self.send_json(404, {"error": "페이지를 찾을 수 없어요."})
+        except sqlite3.Error as error:
+            self.log_error("운영 DB 오류 %s", type(error).__name__)
+            self.send_json(503, {"error": "운영 자료를 열 수 없어요."})
+
+    def admin_post(self, path: str) -> None:
+        if (actor := self.admin_actor()) is None or (payload := self.read_json(2048)) is INVALID:
+            return
+        try:
+            if match := ADMIN_ITEM.fullmatch(path):
+                if match.group(1) == "chats":
+                    admin.review_chat(int(match.group(2)), payload, actor)
+                else:
+                    admin.update_feedback(int(match.group(2)), payload, actor)
+                self.send_json(200, {"ok": True})
+            elif path.startswith("/api/admin/menus/") and MENU_ID.fullmatch(mid := path.removeprefix("/api/admin/menus/")):
+                if (menus := self.load(original=True)) is None:
+                    return
+                found = next((menu for menu in menus if menu["standard_menu_id"] == mid), None)
+                if found is None:
+                    self.send_json(404, {"error": "메뉴를 찾을 수 없어요."})
+                    return
+                self.send_json(200, admin.update_menu(mid, payload, actor, found["name"]))
+            else:
+                self.send_json(404, {"error": "페이지를 찾을 수 없어요."})
+        except ValueError as error:
+            self.send_json(400, {"error": str(error)})
+        except LookupError as error:
+            self.send_json(404, {"error": str(error)})
+        except sqlite3.Error as error:
+            self.log_error("운영 DB 오류 %s", type(error).__name__)
+            self.send_json(503, {"error": "운영 자료를 저장하지 못했어요."})
 
     def recommendation(self, menus: list[dict[str, Any]], profile: Profile,
                        recent: list[str] | None = None, *, conversation: bool = False) -> dict[str, Any]:
@@ -475,9 +630,11 @@ class Handler(BaseHTTPRequestHandler):
             "/", "/api/catalog", "/api/recommend", "/api/recommend/stores", "/api/chat",
             "/api/auth/signup", "/api/auth/login", "/api/auth/logout", "/api/auth/me", "/api/profile",
             "/api/location/status", "/api/location/search", "/api/location/address",
-            "/api/v2/options", "/api/v2/recommend", "/api/v2/stores",
+            "/api/v2/options", "/api/v2/recommend", "/api/v2/stores", "/api/events", "/api/feedback",
         }:
             route = path
+        elif path.startswith("/api/admin/"):
+            route = "/api/admin"
         elif path.startswith("/api/menus/"):
             route = "/api/menus/:id"
         elif path in ASSETS:

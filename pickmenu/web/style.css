@@ -309,3 +309,10 @@ dialog h3 { font-size: 14px; margin-top: 20px; }
 .store-actions a.small-link { text-decoration: none; }
 .mode-switch button.locked { opacity: .5; }
 .menu-comment { font-size: 12px; line-height: 1.6; color: var(--ink); margin-top: 10px; }
+.feedback-box { margin-top: 16px; padding: 12px 14px; border: 1px dashed #cfd6c2; border-radius: 14px; }
+.feedback-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.feedback-form { display: grid; gap: 8px; margin-top: 10px; }
+.feedback-form select, .feedback-form textarea { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 8px; font: inherit; font-size: 14px; background: white; }
+.feedback-form .small-link { justify-self: end; }
+.feedback-done:empty { display: none; }
+.chat-notice { padding: 0 20px; }

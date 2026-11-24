@@ -467,6 +467,65 @@ async function showDetailLocation(body, store) {
   else map?.remove();
 }
 
+// 운영 화면의 사용 현황(1.14.0). 실패해도 화면 동작에는 영향이 없다. 회원 정보는 보내지 않는다.
+function track(kind, detail = "") {
+  fetch("/api/events", {method: "POST", headers: {"Content-Type": "application/json"}, keepalive: true,
+    body: JSON.stringify({kind, detail: String(detail).slice(0, 80)})}).catch(() => {});
+}
+
+// 추천 결과 아래의 의견 보내기. 운영자가 관리 화면에서 확인하고 처리 상태를 바꾼다.
+function feedbackBox(data) {
+  const box = node("div", undefined, "feedback-box");
+  const bad = node("button", "👎 추천이 별로예요", "small-link");
+  const open = node("button", "오류 신고·의견", "small-link");
+  bad.type = open.type = "button";
+  const row = node("div", undefined, "feedback-actions");
+  row.append(bad, open);
+  const done = node("p", "", "tiny feedback-done");
+  done.setAttribute("role", "status");
+  const formBox = node("form", undefined, "feedback-form");
+  formBox.hidden = true;
+  const kind = node("select");
+  kind.setAttribute("aria-label", "의견 종류");
+  for (const [value, label] of [["bad_recommendation", "추천이 별로예요"], ["error", "오류 신고"], ["idea", "의견"]]) {
+    const option = node("option", label);
+    option.value = value;
+    kind.append(option);
+  }
+  const text = node("textarea");
+  text.maxLength = 300;
+  text.rows = 3;
+  text.placeholder = "어떤 점이 아쉬웠는지 적어 주세요 (개인정보는 적지 마세요)";
+  text.setAttribute("aria-label", "의견 내용");
+  const send = node("button", "보내기", "small-link");
+  send.type = "submit";
+  formBox.append(kind, text, send);
+  const context = () => ({mode: sourceMode, menus: (data.families || []).map(family => family.name).slice(0, 8),
+    conditions: (document.querySelector("#picked-tags")?.textContent || "").slice(0, 200)});
+  async function submit(value, message) {
+    try {
+      await request("/api/feedback", {method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({kind: value, message, context: context()})});
+      formBox.hidden = true;
+      row.hidden = true;
+      done.textContent = "의견을 보냈어요. 운영자가 확인할게요. 고마워요!";
+    } catch (error) {
+      done.textContent = error.message;
+    }
+  }
+  bad.addEventListener("click", () => submit("bad_recommendation", ""));
+  open.addEventListener("click", () => {
+    formBox.hidden = !formBox.hidden;
+    if (!formBox.hidden) text.focus();
+  });
+  formBox.addEventListener("submit", event => {
+    event.preventDefault();
+    submit(kind.value, text.value.trim());
+  });
+  box.append(row, formBox, done);
+  return box;
+}
+
 function render(data) {
   lastResult = data;
   if (!data.items.length) {
@@ -622,6 +681,7 @@ function renderFamilies(data) {
     more.addEventListener("click", () => recommendNow(lastRequest.conditions, lastRequest.mode));
     results.append(more);
   }
+  if (count) results.append(feedbackBox(data));
 }
 
 // 배달 위치는 이 페이지의 현재 로그인에서만 사용한다.
@@ -919,6 +979,7 @@ function storeMapLink(store, text = "지도에서 보기") {
   map.target = "_blank";
   map.rel = "noopener noreferrer";
   map.setAttribute("aria-label", `${store.store_name || store.address} 네이버 지도에서 보기 (새 창)`);
+  map.addEventListener("click", () => track("store_map", store.store_name || ""));
   return map;
 }
 
@@ -945,6 +1006,7 @@ function familyStoreItem(store, family) {
   button.type = "button";
   button.setAttribute("aria-label", `${store.menu_name} 상세 보기`);
   const member = family.members.find(m => m.standard_menu_id === store.standard_menu_id);
+  button.addEventListener("click", () => track("store_click", store.store_name || ""));
   button.addEventListener("click", () => openDetail({standard_menu_id: store.standard_menu_id,
     reasons: member ? member.reasons : [], franchise_nutrition: store.franchise_nutrition,
     franchise_menu_options: store.franchise_menu_options}, button, store));
@@ -954,6 +1016,7 @@ function familyStoreItem(store, family) {
 
 // 2단계: 고른 대표 메뉴의 실제 메뉴 이름과 판매 가게를 추천한다.
 async function showFamily(family, data) {
+  track("menu_click", family.name);
   const back = node("button", "← 다른 메뉴 고르기", "secondary family-back");
   back.type = "button";
   back.addEventListener("click", () => {
@@ -1639,6 +1702,7 @@ function renderCategoryCards(grid, name, categories, selected = "") {
 }
 
 async function initialize() {
+  track("visit");
   updateAgeLabels();
   persistLocal();
   try {

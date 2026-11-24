@@ -6,8 +6,9 @@ import os
 import random
 import re
 import threading
+import time
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from difflib import SequenceMatcher
 from typing import Any
@@ -56,14 +57,47 @@ class Unavailable(Exception):
     pass
 
 
+# 운영 기록(1.14.0): AI를 부를 때마다 on_call(용도, 모델, ms, 입력 토큰, 출력 토큰, 상태, 오류)을 부른다.
+# 서버가 admin.record_ai_call을 연결한다. 이 모듈은 저장 방식을 모른다.
+on_call: Callable[[str, str, int, int | None, int | None, str, str], None] | None = None
+_last = threading.local()
+
+
+def last_output() -> dict[str, Any] | None:
+    """이 스레드에서 마지막으로 받은 조건 추출 AI 출력(검수 화면용)."""
+    return getattr(_last, "conditions", None)
+
+
+def reset_last_output() -> None:
+    _last.conditions = None
+
+
+def _report(purpose: str, model: str, started: float, body: dict[str, Any] | None, status: str, error: str) -> None:
+    if on_call is None:
+        return
+    ms = int((time.monotonic() - started) * 1000)
+    prompt = body.get("prompt_eval_count") if body else None
+    output = body.get("eval_count") if body else None
+    try:
+        on_call(purpose, model, ms, prompt if isinstance(prompt, int) else None,
+                output if isinstance(output, int) else None, status, error)
+    except Exception:  # 기록 실패가 추천을 막지 않는다.
+        pass
+
+
 def generate(instruction: str, data: Any, schema: dict[str, Any] | None = None,
              temperature: float = 0.1, *, wait: bool = False) -> dict[str, Any]:
     """wait=True면 다른 요청이 AI를 쓰는 동안 대기열에서 기다린다(PICKMENU_LLM_QUEUE명, PICKMENU_LLM_WAIT_SECONDS초)."""
     base = os.environ.get("PICKMENU_LLM_URL", "").rstrip("/")
+    model = os.environ.get("PICKMENU_LLM_MODEL", "pickmenu-llm:8b")
+    purpose = "조건 추출" if instruction.startswith(CONDITION_PROMPT) else "매장 소개"
+    started = time.monotonic()
     if not base or not _enter(wait):
+        _report(purpose, model, started, None, "busy" if base else "off", "")
         raise Unavailable("AI가 준비되지 않았거나 다른 요청을 처리 중이에요. 잠시 후 다시 시도해 주세요.")
+    body: dict[str, Any] | None = None
     try:
-        payload = {"model": os.environ.get("PICKMENU_LLM_MODEL", "pickmenu-llm:8b"),
+        payload = {"model": model,
                    "stream": False, "think": False, "format": schema or "json", "keep_alive": "5m",
                    "options": {"num_ctx": 8192, "num_predict": 1536, "temperature": temperature},
                    "messages": [{"role": "system", "content": instruction},
@@ -74,11 +108,18 @@ def generate(instruction: str, data: Any, schema: dict[str, Any] | None = None,
             raw = response.read(65537)
         if len(raw) > 65536:
             raise ValueError("large response")
-        result = json.loads(json.loads(raw)["message"]["content"])
+        body = json.loads(raw)
+        result = json.loads(body["message"]["content"])  # type: ignore[index]
         if not isinstance(result, dict):
             raise ValueError("object required")
+        _report(purpose, model, started, body, "ok", "")
+        if purpose == "조건 추출":
+            _last.conditions = result
         return result
     except (URLError, OSError, ValueError, KeyError, TypeError) as error:
+        _report(purpose, model, started, body if isinstance(body, dict) else None,
+                "timeout" if isinstance(error, TimeoutError) or "timed out" in str(error) else "error",
+                type(error).__name__)
         raise Unavailable("AI 응답을 가져오지 못했어요. 다시 시도하거나 선택지 추천을 이용해 주세요.") from error
     finally:
         _slot.release()
